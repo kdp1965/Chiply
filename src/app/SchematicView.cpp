@@ -385,6 +385,20 @@ notDrawing:
         // A press in a pin's hit region starts a wire; it never selects the part.
         auto [part, pin] = pinAt(pos);
         if (part && pin) {
+            const auto* def = part->def();
+            if (def && def->pins.size() == 1 && def->width <= 12 && def->height <= 12) {
+                // A junction is all pin: a click starts a wire from it, a
+                // drag moves it. Decide on release / first movement.
+                m_pressPos = pos;
+                m_lastMousePos = pos;
+                m_lastMods = event->modifiers();
+                m_pressItem = part;
+                m_press = Press::Item;
+                m_pendingWirePart = part;
+                m_pendingWirePin = pin;
+                event->accept();
+                return;
+            }
             startWire(part, pin);
             m_pressPos = pos;
             m_drawPressMoved = false;
@@ -511,6 +525,8 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
                 selectOnly(m_pressItem);
         }
         m_press = Press::Moving;
+        m_pendingWirePart = nullptr; // a junction drag is a move, not a wire
+        m_pendingWirePin = nullptr;
         viewport()->setCursor(Qt::SizeAllCursor);
         emit moveStarted(QString::fromStdString(itemPartId(m_pressItem)), m_lastMods & Qt::AltModifier);
     }
@@ -609,6 +625,20 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         m_pressItem = nullptr;
         viewport()->setCursor(Qt::ArrowCursor);
         emit moveEnded(true);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton && m_press == Press::Item && m_pendingWirePart) {
+        // Junction clicked without dragging: start a wire from it.
+        PartItem* part = m_pendingWirePart;
+        const chiply::PinDef* pin = m_pendingWirePin;
+        m_pendingWirePart = nullptr;
+        m_pendingWirePin = nullptr;
+        m_press = Press::None;
+        m_pressItem = nullptr;
+        startWire(part, pin);
+        m_drawPressMoved = false;
+        updateWirePreview(pos, event->modifiers());
         event->accept();
         return;
     }

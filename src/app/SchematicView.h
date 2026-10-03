@@ -126,6 +126,8 @@ private:
     bool m_dragAtStart = true;
     std::size_t m_dragCorner = 0;
     QGraphicsItem* m_pressItem = nullptr;
+    PartItem* m_pendingWirePart = nullptr; // junction pressed: wire on click, move on drag
+    const chiply::PinDef* m_pendingWirePin = nullptr;
     bool m_placing = false;
 
     // Wire drawing (PLAN.md 4.6).

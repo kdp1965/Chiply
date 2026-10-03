@@ -25,6 +25,16 @@ std::optional<Point> pinPosition(const Part& part, const PartDef& def, const std
 // Axis-aligned bounding box of the part's rotated outline.
 Rect partBounds(const Part& part, const PartDef& def);
 
+// Offset from the part's top-left (left/top) to its first pin, for its
+// current rotation. Snapping uses this pin, not the corner, so parts whose
+// pins sit between grid lines relative to their outline (junction, Tiny
+// Tapeout blocks, ...) still end up with pins on the grid. (0,0) for parts
+// without pins or without a definition.
+Point snapPinOffset(const Part& part, const PartDef* def);
+
+// left/top that put the part's snap pin on the nearest multiple of `grid`.
+Point snapPlacement(const Part& part, const PartDef* def, double left, double top, double grid);
+
 // Resolves a wire end through a library; nullopt for unknown parts/pins.
 std::optional<Point> pinPosition(const Document& doc, const PartLibrary& lib, const PinRef& ref);
 

@@ -201,6 +201,38 @@ private slots:
         QVERIFY(!s->document().findPart("mux63"));
     }
 
+    void junctionPinLandsOnGrid()
+    {
+        auto onGrid = [](double v) { const double r = std::fmod(std::fabs(v), 9.6); return r < 0.02 || r > 9.58; };
+        v->clearSelection();
+        const QPointF where = outline("flop238").center() + QPointF(-157.3, 41.9); // deliberately off-grid
+        s->startPlacing("wokwi-junction");
+        QTest::mouseMove(v->viewport(), at(where));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(where));
+        const auto sel = s->selectedPartIds();
+        QCOMPARE(sel.size(), size_t(1));
+        const std::string id = sel.front();
+        auto pin = [&] { return *pinPosition(s->document(), PartLibrary::builtin(), PinRef{id, "J"}); };
+        QVERIFY2(onGrid(pin().x) && onGrid(pin().y), "placed junction pin on grid");
+        // Dragging keeps it on the grid.
+        const QPointF c(pin().x, pin().y);
+        QGraphicsItem* item = nullptr;
+        for (QGraphicsItem* it : v->scene()->items())
+            if (itemPartId(it) == id)
+                item = it;
+        QVERIFY(item);
+        drag(c + QPointF(1, 1), c + QPointF(23.7, -13.1));
+        QVERIFY2(onGrid(pin().x) && onGrid(pin().y), "dragged junction pin on grid");
+        QVERIFY(std::fabs(pin().x - c.x()) > 1); // it did move
+        // A plain click on the junction starts a wire from it.
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(QPointF(pin().x, pin().y)));
+        QVERIFY(v->drawingWire());
+        QTest::keyClick(v, Qt::Key_Escape);
+        QVERIFY(!v->drawingWire());
+        s->undoStack()->undo();
+        s->undoStack()->undo();
+    }
+
     void renameValidatesAndRewritesWires()
     {
         QVERIFY(!s->renamePart("flop238", "2bad").isEmpty());

@@ -56,6 +56,28 @@ Rect partBounds(const Part& part, const PartDef& def)
     return {x0, y0, x1 - x0, y1 - y0};
 }
 
+Point snapPinOffset(const Part& part, const PartDef* def)
+{
+    if (!def || def->pins.empty())
+        return {0, 0};
+    const Point p = partToDiagram(part, *def, {def->pins.front().x, def->pins.front().y});
+    return {p.x - part.left, p.y - part.top};
+}
+
+Point snapPlacement(const Part& part, const PartDef* def, double left, double top, double grid)
+{
+    if (grid <= 0)
+        return {left, top};
+    const Point off = snapPinOffset(part, def);
+    const double px = std::round((left + off.x) / grid) * grid;
+    const double py = std::round((top + off.y) / grid) * grid;
+    auto r2 = [](double v) {
+        const double r = std::round(v * 100.0) / 100.0;
+        return r == 0.0 ? 0.0 : r;
+    };
+    return {r2(px - off.x), r2(py - off.y)};
+}
+
 std::optional<Point> pinPosition(const Document& doc, const PartLibrary& lib, const PinRef& ref)
 {
     const Part* part = doc.findPart(ref.part);

@@ -200,3 +200,31 @@ TEST_CASE("every reference wire routes exactly as wokwi.com renders it")
     }
     CHECK(mismatches == 0);
 }
+
+TEST_CASE("snapping puts the first pin on the grid")
+{
+    const PartLibrary& lib = PartLibrary::builtin();
+    Part j;
+    j.type = "wokwi-junction";
+    // Junction: 9.6 px square, pin J at its center (4.8, 4.8).
+    Point s = snapPlacement(j, lib.find(j.type), 100, 100, 9.6);
+    Part placed = j;
+    placed.left = s.x;
+    placed.top = s.y;
+    auto pin = pinPosition(placed, *lib.find(j.type), "J");
+    REQUIRE(pin);
+    auto onGrid = [](double v) { const double r = std::fmod(std::fabs(v), 9.6); return r < 0.01 || r > 9.59; };
+    INFO("junction at " << s.x << "," << s.y << " pin " << pin->x << "," << pin->y);
+    CHECK(onGrid(pin->x));
+    CHECK(onGrid(pin->y));
+    // Gates: pins already on grid steps from the corner, so the corner snaps
+    // to the grid exactly as before.
+    Part g;
+    g.type = "wokwi-gate-and-2";
+    for (double x : {-37.0, 0.0, 99.0, 101.0, 1234.5})
+        for (double y : {-5.0, 99.0, 104.0}) {
+            Point gs = snapPlacement(g, lib.find(g.type), x, y, 9.6);
+            CHECK(gs.x == Approx(std::round(x / 9.6) * 9.6).margin(0.01));
+            CHECK(gs.y == Approx(std::round(y / 9.6) * 9.6).margin(0.01));
+        }
+}

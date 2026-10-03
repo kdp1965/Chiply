@@ -434,16 +434,21 @@ void EditorSession::previewMove(double dx, double dy)
 {
     if (m_moveStart.empty())
         return;
-    // Snap the grabbed part's origin to the grid; everything moves by the
-    // same delta so the group stays rigid.
+    // Snap the grabbed part's first pin to the grid; everything moves by
+    // the same delta so the group stays rigid.
     Placement grab = m_moveStart.front();
     for (const Placement& p : m_moveStart)
         if (p.id == m_moveGrab)
             grab = p;
     double nx = grab.left + dx, ny = grab.top + dy;
     if (m_snap > 0) {
-        nx = std::round(nx / m_snap) * m_snap;
-        ny = std::round(ny / m_snap) * m_snap;
+        if (const chiply::Part* gp = m_doc.findPart(grab.id)) {
+            chiply::Part q = *gp;
+            q.rotate = grab.rotate;
+            const chiply::Point s = chiply::snapPlacement(q, chiply::PartLibrary::builtin().find(q.type), nx, ny, m_snap);
+            nx = s.x;
+            ny = s.y;
+        }
     }
     const double ddx = nx - grab.left, ddy = ny - grab.top;
     std::vector<Placement> ps = m_moveStart;
@@ -550,14 +555,14 @@ chiply::Part newPart(const std::string& type, const chiply::Document& doc)
     return p;
 }
 
-// Top-left that puts the part's center under `c`, snapped to the grid.
+// Top-left that puts the part's center under `c`, with its first pin
+// snapped to the grid.
 QPointF placementOrigin(const chiply::Part& p, QPointF c)
 {
     const chiply::PartDef* def = chiply::PartLibrary::builtin().find(p.type);
     const double w = def ? def->width : 38.4, h = def ? def->height : 38.4;
-    const double g = SchematicView::kGrid;
-    return QPointF(chiply::round2(std::round((c.x() - w / 2) / g) * g),
-                   chiply::round2(std::round((c.y() - h / 2) / g) * g));
+    const chiply::Point s = chiply::snapPlacement(p, def, c.x() - w / 2, c.y() - h / 2, SchematicView::kGrid);
+    return QPointF(s.x, s.y);
 }
 } // namespace
 
@@ -725,11 +730,15 @@ EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anc
         rep.error = tr("Nothing left to paste.");
         return rep;
     }
-    // Fragment's top-left goes to the (snapped) anchor.
+    // Fragment's top-left goes to the anchor, then the whole fragment
+    // shifts so its first part's first pin lands on the grid.
     const chiply::Point o = chiply::fragmentOrigin(f);
-    const double g = SchematicView::kGrid;
-    const double dx = chiply::round2(std::round(anchor.x() / g) * g - o.x);
-    const double dy = chiply::round2(std::round(anchor.y() / g) * g - o.y);
+    const chiply::Part& first = f.parts.front();
+    const chiply::Point s = chiply::snapPlacement(first, chiply::PartLibrary::builtin().find(first.type),
+                                                  first.left + anchor.x() - o.x, first.top + anchor.y() - o.y,
+                                                  SchematicView::kGrid);
+    const double dx = chiply::round2(s.x - first.left);
+    const double dy = chiply::round2(s.y - first.top);
     chiply::Document after = m_doc;
     int dropped = 0;
     const std::vector<std::string> newIds = chiply::insertFragment(after, f, dx, dy, &dropped);
