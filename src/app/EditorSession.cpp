@@ -1,4 +1,5 @@
 #include "EditorSession.h"
+#include "Text.h"
 
 #include "SchematicView.h"
 #include "Theme.h"
@@ -37,6 +38,14 @@ EditorSession::EditorSession(QObject* parent)
     m_scene.setItemIndexMethod(QGraphicsScene::BspTreeIndex);
     m_view = new SchematicView(&m_scene);
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
+    // Live DRC: re-check what an edit touched, ~100 ms after the last one.
+    m_drcTimer.setSingleShot(true);
+    m_drcTimer.setInterval(100);
+    connect(&m_drcTimer, &QTimer::timeout, this, [this] { runDrc(false); });
+    connect(this, &EditorSession::documentChanged, this, [this] {
+        if (drcLive())
+            m_drcTimer.start();
+    });
     // Undo/redo while pasted parts float: the paste is gone, stop floating.
     connect(&m_undo, &QUndoStack::indexChanged, this, [this] {
         if (m_pasteFloating && m_undo.command(m_undo.index() - 1) != m_pasteCmdBase) {
@@ -167,6 +176,9 @@ void EditorSession::load(const QString& path)
     m_undo.clear();
     rebuildScene();
     loadProbes();
+    loadSidecar();
+    m_drc.clear();
+    runDrc(true);
     emit titleChanged();
 }
 
@@ -177,6 +189,11 @@ void EditorSession::newDocument(const QString& author)
     m_warnings.clear();
     m_undo.clear();
     rebuildScene();
+    m_waivers.clear();
+    m_checkOverrides.clear();
+    m_sidecarDirty = false;
+    m_drc.resetChecks();
+    runDrc(true);
     emit titleChanged();
 }
 
@@ -185,6 +202,7 @@ void EditorSession::save(const QString& path)
     const QString target = path.isEmpty() ? m_path : path;
     chiply::saveWokwiFile(m_doc, target.toStdString());
     m_path = target;
+    saveSidecar();
     saveProbes(); // a Save As keeps the probes under the new name
     m_undo.setClean();
     emit titleChanged();
@@ -761,6 +779,178 @@ void EditorSession::stopSimulation()
     emit simulationChanged();
 }
 
+// ---- design rule checks ----
+
+bool EditorSession::drcLive() { return QSettings().value("drc/live", true).toBool(); }
+void EditorSession::setDrcLive(bool on) { QSettings().setValue("drc/live", on); }
+
+QString EditorSession::sidecarPath(const QString& diagramPath)
+{
+    QString base = diagramPath;
+    if (base.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive))
+        base.chop(5);
+    if (base.endsWith(QStringLiteral(".diagram"), Qt::CaseInsensitive))
+        base.chop(8);
+    return base + QStringLiteral(".chiply.json");
+}
+
+void EditorSession::runDrc(bool full)
+{
+    m_drcTimer.stop();
+    if (full)
+        m_drc.runFull(m_doc);
+    else
+        m_drc.update(m_doc);
+    refreshViolations();
+}
+
+void EditorSession::refreshViolations()
+{
+    m_violations = m_drc.violations();
+    emit drcChanged();
+}
+
+void EditorSession::setCheckEnabled(const std::string& check, bool on)
+{
+    const chiply::drc::CheckInfo* c = chiply::drc::findCheck(check);
+    if (!c || m_drc.enabled(check) == on)
+        return;
+    if (on == c->defaultOn)
+        m_checkOverrides.erase(check);
+    else
+        m_checkOverrides[check] = on;
+    m_drc.setEnabled(check, on);
+    m_sidecarDirty = true;
+    refreshViolations();
+    emit titleChanged();
+}
+
+QString EditorSession::waiverReason(const std::string& key) const
+{
+    auto it = m_waivers.find(key);
+    return it == m_waivers.end() ? QString() : it->second;
+}
+
+void EditorSession::waive(const std::string& key, const QString& reason)
+{
+    m_waivers[key] = reason;
+    m_sidecarDirty = true;
+    emit drcChanged();
+    emit titleChanged();
+}
+
+void EditorSession::unwaive(const std::string& key)
+{
+    if (!m_waivers.erase(key))
+        return;
+    m_sidecarDirty = true;
+    emit drcChanged();
+    emit titleChanged();
+}
+
+int EditorSession::unwaivedCount(chiply::drc::Severity s) const
+{
+    int n = 0;
+    for (const chiply::drc::Violation& v : m_violations)
+        n += v.severity == s && !isWaived(v.key);
+    return n;
+}
+
+void EditorSession::loadSidecar()
+{
+    m_waivers.clear();
+    m_checkOverrides.clear();
+    m_sidecarDirty = false;
+    m_drc.resetChecks();
+    QFile f(sidecarPath(m_path));
+    if (m_path.isEmpty() || !f.open(QIODevice::ReadOnly))
+        return;
+    try {
+        const chiply::Json j = chiply::Json::parse(f.readAll().toStdString());
+        const chiply::Json& d = j.contains("drc") ? j["drc"] : chiply::Json::object();
+        if (d.contains("checks") && d["checks"].is_object())
+            for (const auto& [id, on] : d["checks"].items())
+                if (on.is_boolean() && chiply::drc::findCheck(id)) {
+                    m_checkOverrides[id] = on.get<bool>();
+                    m_drc.setEnabled(id, on.get<bool>());
+                }
+        if (d.contains("waivers") && d["waivers"].is_array())
+            for (const chiply::Json& w : d["waivers"])
+                if (w.is_object() && w.contains("key") && w["key"].is_string())
+                    m_waivers[w["key"].get<std::string>()] = QString::fromStdString(
+                        w.contains("reason") && w["reason"].is_string() ? w["reason"].get<std::string>() : std::string());
+    } catch (const std::exception& e) {
+        m_warnings << tr("Ignoring %1: %2").arg(f.fileName(), QString::fromUtf8(e.what()));
+    }
+}
+
+void EditorSession::saveSidecar()
+{
+    if (m_path.isEmpty())
+        return;
+    const QString path = sidecarPath(m_path);
+    if (m_checkOverrides.empty() && m_waivers.empty() && !QFileInfo::exists(path)) {
+        m_sidecarDirty = false;
+        return; // nothing to keep: no file
+    }
+    chiply::Json checks = chiply::Json::object();
+    for (const auto& [id, on] : m_checkOverrides)
+        checks[id] = on;
+    chiply::Json waivers = chiply::Json::array();
+    for (const auto& [key, reason] : m_waivers)
+        waivers.push_back({{"key", key}, {"reason", reason.toStdString()}});
+    chiply::Json j = {{"chiply", 1}, {"drc", {{"checks", checks}, {"waivers", waivers}}}};
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        throw std::runtime_error(tr("Cannot write %1: %2").arg(path, f.errorString()).toStdString());
+    f.write(QByteArray::fromStdString(j.dump(2) + "\n"));
+    m_sidecarDirty = false;
+}
+
+void EditorSession::showViolation(const chiply::drc::Violation& v)
+{
+    if (m_sim)
+        return;
+    std::vector<std::string> ids;
+    for (const std::string& id : v.parts)
+        if (m_doc.findPart(id))
+            ids.push_back(id);
+    // Wires of a net violation: those with both ends among its pins.
+    std::vector<int> wires;
+    std::set<std::string> pinSet;
+    for (const chiply::PinRef& p : v.pins)
+        pinSet.insert(p.str());
+    if (v.pins.size() > 2)
+        for (std::size_t i = 0; i < m_doc.wires.size(); ++i)
+            if (pinSet.count(m_doc.wires[i].from.str()) && pinSet.count(m_doc.wires[i].to.str()))
+                wires.push_back(int(i));
+    if (v.check == "combinational-loop") {
+        // The wires that close the loop: both ends on cells of the loop.
+        const std::set<std::string> cells(v.parts.begin(), v.parts.end());
+        for (std::size_t i = 0; i < m_doc.wires.size(); ++i)
+            if (cells.count(m_doc.wires[i].from.part) && cells.count(m_doc.wires[i].to.part))
+                wires.push_back(int(i));
+    }
+    selectParts(ids);
+    QRectF box;
+    std::vector<QPointF> pins;
+    const auto& lib = chiply::PartLibrary::builtin();
+    for (const std::string& id : ids)
+        if (const chiply::Part* p = m_doc.findPart(id))
+            if (const chiply::PartDef* def = lib.find(p->type)) {
+                const chiply::Rect r = chiply::partBounds(*p, *def);
+                box = box.united(QRectF(r.x, r.y, r.w, r.h));
+            }
+    for (const chiply::PinRef& pr : v.pins)
+        if (auto pt = chiply::pinPosition(m_doc, lib, pr)) {
+            pins.push_back(QPointF(pt->x, pt->y));
+            box = box.united(QRectF(pt->x - 4, pt->y - 4, 8, 8));
+        }
+    if (box.isEmpty() && !pins.empty())
+        box = QRectF(pins.front() - QPointF(20, 20), QSizeF(40, 40));
+    m_view->showHighlight(box, pins, wires);
+}
+
 // ---- traces ----
 
 namespace {
@@ -951,7 +1141,7 @@ EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anc
     for (std::size_t i = 0; i < newIds.size(); ++i)
         rep.renamed += newIds[i] != f.parts[i].id;
 
-    auto* cmd = new DocumentCommand(this, tr("Paste %n part(s)", nullptr, rep.parts), m_doc, after,
+    auto* cmd = new DocumentCommand(this, tr("Paste %1").arg(countOf(rep.parts, "part", "parts")), m_doc, after,
                                     selectedPartIds(), newIds, selectedWireIndices(), {});
     m_undo.push(cmd);
     // Float the pasted parts with the cursor until a click drops them.

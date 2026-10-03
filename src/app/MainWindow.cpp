@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "Text.h"
 
 #include "EditorSession.h"
 #include "PartPalette.h"
@@ -9,6 +10,7 @@
 #include "SchematicView.h"
 #include "Theme.h"
 #include "WaveformView.h"
+#include "ViolationsPane.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
@@ -59,6 +61,9 @@ MainWindow::MainWindow(QWidget* parent)
             m_inspector->setSession(current());
         if (m_waveforms)
             m_waveforms->setSession(current());
+        if (m_violations)
+            m_violations->setSession(current());
+        updateDrcStatus();
         updateSimControls();
         updateStatus();
     });
@@ -67,6 +72,10 @@ MainWindow::MainWindow(QWidget* parent)
     QFont sf = m_zoomLabel->font();
     sf.setPointSize(14); // readable status line
     m_zoomLabel->setFont(sf);
+    m_drcLabel = new QLabel(this);
+    m_drcLabel->setObjectName("drcStatus");
+    m_drcLabel->setFont(sf);
+    statusBar()->addPermanentWidget(m_drcLabel);
     statusBar()->addPermanentWidget(m_zoomLabel);
 
     buildMenus();
@@ -207,7 +216,7 @@ void MainWindow::buildMenus()
             const QString t = s->copySelection();
             if (!t.isEmpty()) {
                 QApplication::clipboard()->setText(t);
-                statusBar()->showMessage(tr("Copied %n part(s)", nullptr, int(s->selectedPartIds().size())), 3000);
+                statusBar()->showMessage(tr("Copied %1").arg(countOf(int(s->selectedPartIds().size()), "part", "parts")), 3000);
             }
         }
     });
@@ -270,6 +279,35 @@ void MainWindow::buildMenus()
     inspDock->setWidget(m_inspector);
     addDockWidget(Qt::RightDockWidgetArea, inspDock);
     view->addAction(inspDock->toggleViewAction());
+
+    // Violations (PLAN.md 5.2): below the Inspector.
+    m_violDock = new QDockWidget(tr("Violations"), this);
+    m_violDock->setObjectName("violations");
+    m_violations = new ViolationsPane(m_violDock);
+    m_violDock->setWidget(m_violations);
+    addDockWidget(Qt::RightDockWidgetArea, m_violDock);
+    splitDockWidget(inspDock, m_violDock, Qt::Vertical);
+    view->addAction(m_violDock->toggleViewAction());
+    QMenu* check = menuBar()->addMenu(tr("&Check"));
+    QAction* full = check->addAction(tr("Run &Full DRC"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D), this, [this] {
+        if (auto* s = current()) {
+            s->runDrc(true);
+            m_violDock->show();
+        }
+    });
+    full->setObjectName("fullDrcAction");
+    QAction* nextV = check->addAction(tr("&Next Violation"), QKeySequence(Qt::Key_F8), this, [this] {
+        m_violDock->show();
+        m_violations->next();
+    });
+    nextV->setShortcutContext(Qt::ApplicationShortcut);
+    QAction* prevV = check->addAction(tr("&Previous Violation"), QKeySequence(Qt::SHIFT | Qt::Key_F8), this, [this] {
+        m_violDock->show();
+        m_violations->previous();
+    });
+    prevV->setShortcutContext(Qt::ApplicationShortcut);
+    check->addSeparator();
+    check->addAction(m_violDock->toggleViewAction());
     QAction* names = view->addAction(tr("Show Part &Names"));
     names->setCheckable(true);
     names->setChecked(QSettings().value("view/showNames", false).toBool());
@@ -357,6 +395,10 @@ int MainWindow::addSession(EditorSession* s)
     connect(s, &EditorSession::simulationChanged, this, [this, s] {
         if (s == current())
             updateSimControls();
+    });
+    connect(s, &EditorSession::drcChanged, this, [this, s] {
+        if (s == current())
+            updateDrcStatus();
     });
     connect(s, &EditorSession::probesChanged, this, [this, s] {
         // A new probe opens the Waveforms pane.
@@ -505,6 +547,11 @@ void MainWindow::playPause()
             return;
         if (!s->sim()->error().isEmpty())
             statusBar()->showMessage(s->sim()->error(), 8000);
+        // Simulate anyway (Wokwi does), but say so and show where.
+        if (const int errs = s->unwaivedCount(chiply::drc::Severity::Error)) {
+            statusBar()->showMessage(tr("Simulating with %1: see the Violations pane").arg(countOf(errs, "DRC error", "DRC errors")), 8000);
+            m_violDock->show();
+        }
         // A logic analyzer in the design opens the Waveforms pane.
         if (s->trace() && s->trace()->hasAnalyzer() && m_waveDock && !m_waveDock->isVisible())
             m_waveDock->show();
@@ -532,6 +579,21 @@ QString findGtkWave()
     return exe;
 }
 } // namespace
+
+void MainWindow::updateDrcStatus()
+{
+    EditorSession* s = current();
+    if (!m_drcLabel)
+        return;
+    if (!s) {
+        m_drcLabel->clear();
+        return;
+    }
+    const int e = s->unwaivedCount(chiply::drc::Severity::Error);
+    const int w = s->unwaivedCount(chiply::drc::Severity::Warning);
+    m_drcLabel->setText((e + w == 0 ? tr("DRC clean") : QStringLiteral("\u2716 ") + countOf(e, "error", "errors") + QStringLiteral("  \u25B2 ") + countOf(w, "warning", "warnings")) + QStringLiteral("   |"));
+    m_drcLabel->setToolTip(tr("Design rule checks: F8 steps through the violations"));
+}
 
 void MainWindow::updateTraceActions()
 {
@@ -660,13 +722,13 @@ void MainWindow::paste()
         statusBar()->showMessage(rep.error, 5000);
         return;
     }
-    QString msg = tr("Pasted %n part(s)", nullptr, rep.parts);
+    QString msg = tr("Pasted %1").arg(countOf(rep.parts, "part", "parts"));
     if (rep.renamed)
-        msg += tr(", %n renamed", nullptr, rep.renamed);
+        msg += tr(", %1 renamed").arg(rep.renamed);
     if (rep.skippedBlocks)
-        msg += tr(", %n I/O block(s) skipped", nullptr, rep.skippedBlocks);
+        msg += tr(", %1 skipped").arg(countOf(rep.skippedBlocks, "I/O block", "I/O blocks"));
     if (rep.droppedWires)
-        msg += tr(", %n wire(s) dropped", nullptr, rep.droppedWires);
+        msg += tr(", %1 dropped").arg(countOf(rep.droppedWires, "wire", "wires"));
     statusBar()->showMessage(msg + tr(" - click to drop, Esc to cancel"), 8000);
     v->setFocus();
 }
@@ -714,7 +776,7 @@ bool MainWindow::openFile(const QString& path)
     addSession(s);
     s->view()->fitContents();
     if (!s->loadWarnings().isEmpty())
-        statusBar()->showMessage(tr("%n warning(s) while loading: %1", nullptr, int(s->loadWarnings().size()))
+        statusBar()->showMessage(tr("%1 while loading: %2").arg(countOf(int(s->loadWarnings().size()), "warning", "warnings"))
                                      .arg(s->loadWarnings().first()), 10000);
     return true;
 }

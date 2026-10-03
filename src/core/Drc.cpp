@@ -179,6 +179,15 @@ void Engine::clear()
     m_nl = Netlist();
 }
 
+void Engine::resetChecks()
+{
+    clear();
+    m_enabled.clear();
+    for (const CheckInfo& c : kChecks)
+        if (c.defaultOn)
+            m_enabled.insert(c.id);
+}
+
 void Engine::add(Violation v, std::vector<std::string> owners)
 {
     if (!on(v.check.c_str()))

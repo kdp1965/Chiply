@@ -2,6 +2,7 @@
 // One open file (PLAN.md 4.10): its document, scene, view and undo stack.
 // Tabs never share any of these; only the clipboard and preferences are global.
 #include "core/Document.h"
+#include "core/Drc.h"
 #include "core/WirePath.h"
 #include "sim/Trace.h"
 
@@ -13,6 +14,7 @@
 #include <QGraphicsScene>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QUndoStack>
 
 class SchematicView;
@@ -31,7 +33,8 @@ public:
     const chiply::Document& document() const { return m_doc; }
     QString filePath() const { return m_path; }
     QString displayName() const;
-    bool isModified() const { return !m_undo.isClean(); }
+    // Edits, or DRC settings/waivers for the sidecar file, not yet saved.
+    bool isModified() const { return !m_undo.isClean() || m_sidecarDirty; }
     QStringList loadWarnings() const { return m_warnings; }
 
     SchematicView* view() const { return m_view; }
@@ -159,7 +162,31 @@ public:
     void applyWirePath(int wireIndex, const chiply::WirePath& path);
     std::vector<int> selectedWireIndices() const;
 
+    // ---- design rule checks (PLAN.md 5.2) ----
+    // Live: every edit re-checks what it touched (debounced); otherwise only
+    // runDrc(true) checks. A global preference.
+    static bool drcLive();
+    static void setDrcLive(bool on);
+    void runDrc(bool full);
+    const chiply::drc::Engine& drc() const { return m_drc; }
+    const chiply::drc::Stats& drcStats() const { return m_drc.lastStats(); }
+    // Current violations of the enabled checks (waived ones included).
+    const std::vector<chiply::drc::Violation>& violations() const { return m_violations; }
+    // Per document, saved in <file>.chiply.json next to the diagram.
+    void setCheckEnabled(const std::string& check, bool on);
+    bool isWaived(const std::string& key) const { return m_waivers.count(key) > 0; }
+    QString waiverReason(const std::string& key) const;
+    void waive(const std::string& key, const QString& reason);
+    void unwaive(const std::string& key);
+    // Counts that exclude waived violations.
+    int unwaivedCount(chiply::drc::Severity s) const;
+    // Centres and zooms the canvas on a violation, selects its parts and
+    // highlights them (and its pins / net) with a short pulse.
+    void showViolation(const chiply::drc::Violation& v);
+    static QString sidecarPath(const QString& diagramPath);
+
 signals:
+    void drcChanged();
     void titleChanged();
     void selectionChanged();
     void documentChanged(); // any edit, including undo/redo
@@ -185,6 +212,15 @@ private:
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
     QGraphicsItem* m_ghost = nullptr;
     class SimRunner* m_sim = nullptr;
+    chiply::drc::Engine m_drc;
+    std::vector<chiply::drc::Violation> m_violations;
+    QTimer m_drcTimer;
+    std::map<std::string, QString> m_waivers;      // key -> reason
+    std::map<std::string, bool> m_checkOverrides;  // check id -> on, where it differs from the default
+    bool m_sidecarDirty = false;
+    void loadSidecar();
+    void saveSidecar();
+    void refreshViolations();
     QStringList m_probes;
     std::shared_ptr<chiply::sim::Trace> m_trace;
     chiply::sim::Time m_traceEnd = 0;

@@ -63,6 +63,10 @@ private:
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;
     class WaveformView* m_waveforms = nullptr;
+    class ViolationsPane* m_violations = nullptr;
+    class QDockWidget* m_violDock = nullptr;
+    class QLabel* m_drcLabel = nullptr;
+    void updateDrcStatus();
     class QDockWidget* m_waveDock = nullptr;
     QAction* m_saveTraceAction = nullptr;
     QAction* m_gtkwaveAction = nullptr;

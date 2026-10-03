@@ -28,6 +28,8 @@ SchematicView::SchematicView(QGraphicsScene* scene, QWidget* parent)
 {
     setRenderHint(QPainter::Antialiasing);
     setDragMode(QGraphicsView::NoDrag); // marquee is implemented here
+    // A DRC highlight lasts until the user changes the selection.
+    connect(this, &SchematicView::selectionEdited, this, &SchematicView::clearHighlight);
     setMouseTracking(true);
     m_autoScroll.setInterval(16);
     connect(&m_autoScroll, &QTimer::timeout, this, &SchematicView::autoScrollTick);
@@ -94,6 +96,45 @@ void SchematicView::zoomBy(double factor, QPoint anchorViewPos)
 
 void SchematicView::zoomIn() { zoomBy(1.25, viewport()->rect().center()); }
 void SchematicView::zoomOut() { zoomBy(0.8, viewport()->rect().center()); }
+
+void SchematicView::showHighlight(const QRectF& box, const std::vector<QPointF>& pins, const std::vector<int>& wires)
+{
+    m_hlActive = true;
+    m_hlBox = box;
+    m_hlPins = pins;
+    m_hlWires = wires;
+    // Zoom so the box fills the view with a margin, between 100 % and 400 %.
+    const QRectF r = box.adjusted(-40, -40, 40, 40);
+    const QSize vs = viewport()->size();
+    double z = std::min(vs.width() / std::max(1.0, r.width()), vs.height() / std::max(1.0, r.height()));
+    z = std::clamp(z, 1.0, 4.0);
+    setTransform(QTransform::fromScale(z, z));
+    centerOn(box.center());
+    emit zoomChanged(zoom());
+    emit visibleRectChanged(visibleSceneRect());
+    m_hlClock.restart();
+    if (!m_hlPulse.isActive()) {
+        m_hlPulse.setInterval(40);
+        connect(&m_hlPulse, &QTimer::timeout, this, [this] {
+            if (m_hlClock.elapsed() > 1200)
+                m_hlPulse.stop();
+            viewport()->update();
+        }, Qt::UniqueConnection);
+        m_hlPulse.start();
+    }
+    viewport()->update();
+}
+
+void SchematicView::clearHighlight()
+{
+    if (!m_hlActive)
+        return;
+    m_hlActive = false;
+    m_hlPins.clear();
+    m_hlWires.clear();
+    m_hlPulse.stop();
+    viewport()->update();
+}
 
 void SchematicView::fitContents()
 {
@@ -911,6 +952,41 @@ void SchematicView::drawForeground(QPainter* painter, const QRectF&)
         painter->setPen(pen);
         painter->setBrush(fill);
         painter->drawRect(r);
+    }
+    if (m_hlActive) {
+        // DRC highlight: wires of the net, rings on the pins; pulses for a
+        // second, then stays.
+        const double t = m_hlClock.elapsed() / 1000.0;
+        const double pulse = t < 1.2 ? 0.5 + 0.5 * std::cos(t * 2 * 3.14159265358979 * 2.5) : 1.0;
+        QColor ring(0xff, 0x6d, 0x00); // orange: stands out from every wire colour
+        QColor halo = ring;
+        halo.setAlphaF(0.35 + 0.4 * pulse);
+        for (QGraphicsItem* it : scene()->items())
+            if (it->type() == WireItem::Type) {
+                auto* w = static_cast<WireItem*>(it);
+                if (std::find(m_hlWires.begin(), m_hlWires.end(), w->index()) == m_hlWires.end())
+                    continue;
+                QPolygonF poly;
+                for (const chiply::Point& p : w->route())
+                    poly << mapFromScene(QPointF(p.x, p.y));
+                painter->setPen(QPen(halo, 9, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawPolyline(poly);
+            }
+        const double rr = 9 + 5 * pulse;
+        painter->setBrush(Qt::NoBrush);
+        for (const QPointF& p : m_hlPins) {
+            const QPointF vp = mapFromScene(p);
+            painter->setPen(QPen(Qt::black, 5));
+            painter->drawEllipse(vp, rr, rr);
+            painter->setPen(QPen(ring, 3));
+            painter->drawEllipse(vp, rr, rr);
+        }
+        if (m_hlPins.empty()) {
+            const QRectF vb = QRectF(mapFromScene(m_hlBox).boundingRect()).adjusted(-8 - 4 * pulse, -8 - 4 * pulse, 8 + 4 * pulse, 8 + 4 * pulse);
+            painter->setPen(QPen(ring, 3, Qt::DashLine));
+            painter->drawRoundedRect(vb, 6, 6);
+        }
     }
     // Group box and count for multi-selections.
     const QList<QGraphicsItem*> sel = scene()->selectedItems();

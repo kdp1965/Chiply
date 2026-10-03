@@ -17,6 +17,7 @@
 #include "core/WirePath.h"
 
 #include <QGraphicsView>
+#include <QElapsedTimer>
 #include <QTimer>
 
 #include <functional>
@@ -55,6 +56,12 @@ public:
     bool drawingWire() const { return m_drawing; }
     void cancelWire();
     void setWireColorProvider(std::function<QString(const QString& pinRef)> f) { m_colorFor = std::move(f); }
+    // DRC: centre and zoom on `sceneBox` (100 %..400 %), ring `pins` and
+    // outline `wires` (indices), pulsing for about a second; the highlight
+    // stays until the selection changes.
+    void showHighlight(const QRectF& sceneBox, const std::vector<QPointF>& pins, const std::vector<int>& wires);
+    void clearHighlight();
+    bool hasHighlight() const { return m_hlActive; }
     // Part + pin under a viewport position (pin hit region), if any.
     std::pair<PartItem*, const chiply::PinDef*> pinAt(QPoint viewPos) const;
 
@@ -151,7 +158,13 @@ private:
     chiply::Point snapped(QPointF scene, Qt::KeyboardModifiers mods) const;
     std::vector<chiply::Point> legTo(chiply::Point target) const; // L-bend from the last point
     bool m_drawing = false;
-    bool m_eatContextMenu = false; // the right press already cancelled something
+    bool m_eatContextMenu = false;
+    bool m_hlActive = false;
+    QRectF m_hlBox;
+    std::vector<QPointF> m_hlPins;
+    std::vector<int> m_hlWires;
+    QElapsedTimer m_hlClock;
+    QTimer m_hlPulse; // the right press already cancelled something
     QString m_drawFrom;              // "part:PIN"
     QString m_drawColor;
     std::vector<chiply::Point> m_drawPts; // committed points, first = source pin

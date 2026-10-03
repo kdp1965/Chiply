@@ -72,6 +72,8 @@ public:
     // Incremental; the first call (or after clear()) is a full pass.
     const Stats& update(const Document& doc);
     void clear();
+    // Every check back to its default on/off state (and clear()).
+    void resetChecks();
     const Stats& lastStats() const { return m_stats; }
 
     // Current results of the enabled checks, errors first, then by check and

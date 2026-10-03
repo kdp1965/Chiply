@@ -124,3 +124,13 @@ if(CHIPLY_BUILD_GUI)
   add_test(NAME gui_sim COMMAND chiply_gui_sim_tests)
   set_tests_properties(gui_sim PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+if(CHIPLY_BUILD_GUI)
+  add_executable(chiply_gui_drc_tests test_gui_drc.cpp)
+  set_target_properties(chiply_gui_drc_tests PROPERTIES AUTOMOC ON)
+  target_link_libraries(chiply_gui_drc_tests PRIVATE chiply_ui Qt6::Test)
+  target_compile_definitions(chiply_gui_drc_tests PRIVATE
+    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+  add_test(NAME gui_drc COMMAND chiply_gui_drc_tests)
+  set_tests_properties(gui_drc PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
