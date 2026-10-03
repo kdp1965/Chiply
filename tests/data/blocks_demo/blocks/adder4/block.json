@@ -1,0 +1,13 @@
+{
+  "name": "adder4",
+  "label": "4-bit adder",
+  "prefix": "add",
+  "module": "adder4",
+  "verilog": ["adder4.v"],
+  "ports": [
+    { "name": "a", "dir": "in", "width": 4 },
+    { "name": "b", "dir": "in", "width": 4 },
+    { "name": "sum", "dir": "out", "width": 5 }
+  ],
+  "params": { "OFFSET": 0 }
+}

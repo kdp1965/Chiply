@@ -1,6 +1,9 @@
 #include "core/Verilog.h"
 
+#include "core/Blocks.h"
+
 #include <cctype>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -37,6 +40,74 @@ std::string attrString(const Part& p, const char* key)
     if (v.is_number_integer())
         return std::to_string(v.get<long long>());
     return {};
+}
+
+// A custom block instance: vectors joined MSB first; an unconnected input
+// bit is 1'b0, an unconnected output bit gets a wire of its own; parameters
+// from the part's attrs (defaults from block.json).
+std::string blockInstance(const Part& part, const BlockInfo& b, const std::function<std::string(const std::string&)>& netOf)
+{
+    std::ostringstream o;
+    std::vector<std::string> extraWires;
+    std::vector<std::pair<std::string, std::string>> conns;
+    for (const BlockPort& port : b.ports) {
+        std::vector<std::string> bits(size_t(port.width));
+        bool any = false;
+        for (int bit = 0; bit < port.width; ++bit) {
+            bits[size_t(bit)] = netOf(BlockInfo::pinName(port, bit));
+            any |= !bits[size_t(bit)].empty();
+        }
+        if (!any) {
+            conns.push_back({port.name, ""});
+            continue;
+        }
+        if (port.width == 1) {
+            conns.push_back({port.name, bits[0]});
+            continue;
+        }
+        std::string v = "{";
+        for (int bit = port.width - 1; bit >= 0; --bit) {
+            std::string n = bits[size_t(bit)];
+            if (n.empty()) {
+                if (port.dir == PinDir::In) {
+                    n = "1'b0";
+                } else {
+                    n = part.id + "__" + port.name + std::to_string(bit);
+                    extraWires.push_back(n);
+                }
+            }
+            v += n + (bit ? ", " : "");
+        }
+        conns.push_back({port.name, v + "}"});
+    }
+    for (const std::string& w : extraWires)
+        o << "  wire " << w << ";\n";
+    o << "  " << b.module;
+    if (!b.params.empty()) {
+        static const std::regex number(R"(^\s*(-?[0-9]+|[0-9]*'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ_]+)\s*$)");
+        o << " #(\n";
+        bool first = true;
+        for (const auto& [k, def] : b.params.items()) {
+            std::string v = def.is_string() ? def.get<std::string>() : def.dump();
+            if (part.attrs.is_object() && part.attrs.contains(k) && part.attrs[k].is_string())
+                v = part.attrs[k].get<std::string>();
+            const bool quote = def.is_string() || !std::regex_match(v, number);
+            if (quote) {
+                std::string q = "\"";
+                for (char c : v)
+                    q += (c == '"' || c == '\\') ? std::string("\\") + c : std::string(1, c);
+                v = q + "\"";
+            }
+            o << (first ? "" : ",\n") << "    ." << k << " (" << v << ")";
+            first = false;
+        }
+        o << "\n  )";
+    }
+    o << " " << part.id << " (\n";
+    for (std::size_t i = 0; i < conns.size(); ++i)
+        o << "    ." << conns[i].first << " (" << conns[i].second << ")" << (i + 1 < conns.size() ? ",\n" : "\n");
+    o << "  );\n";
+    return o.str();
 }
 
 } // namespace
@@ -122,7 +193,7 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
             num(net);
             if (net >= 0 && init[size_t(net)].empty())
                 init[size_t(net)] = def->verilog["constant"].get<std::string>();
-        } else if (def->verilog.contains("cell")) {
+        } else if (def->verilog.contains("cell") || def->block) {
             for (const PinDef& pin : def->pins) {
                 const int net = pinNet(p, pin.name);
                 if (connected(net))
@@ -183,6 +254,10 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
     o << "\n";
     for (const Part& p : doc.parts) {
         const PartDef* def = lib.find(p.type);
+        if (def && def->block) {
+            o << blockInstance(p, *def->block, [&](const std::string& pin) { return name(pinNet(p, pin)); });
+            continue;
+        }
         if (!def || !def->verilog.is_object() || !def->verilog.contains("cell"))
             continue;
         const Json& ports = def->verilog["ports"];
@@ -298,6 +373,12 @@ std::vector<std::string> exportTtProject(const Document& doc, const PartLibrary&
                                          const VerilogOptions& opt)
 {
     namespace fs = std::filesystem;
+    auto readText = [](const fs::path& p) {
+        std::ifstream f(p, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    };
     const std::string verilog = writeVerilog(doc, lib, opt); // throws before anything is written
     std::vector<std::string> done;
     const fs::path root(dir);
@@ -319,12 +400,13 @@ std::vector<std::string> exportTtProject(const Document& doc, const PartLibrary&
         write(root / "src" / "chiply_cells.v", chiplyCellsV());
         sources.push_back("chiply_cells.v");
     }
-    auto readText = [](const fs::path& p) {
-        std::ifstream f(p, std::ios::binary);
-        std::stringstream ss;
-        ss << f.rdbuf();
-        return ss.str();
-    };
+    for (const std::string& f : blockSources(doc, lib)) {
+        const std::string fileName = fs::path(f).filename().string();
+        if (std::find(sources.begin(), sources.end(), fileName) != sources.end())
+            throw std::runtime_error("two Verilog sources are both named " + fileName);
+        write(root / "src" / fileName, readText(f));
+        sources.push_back(fileName);
+    }
     const fs::path info = root / "info.yaml";
     if (fs::exists(info)) {
         const std::string before = readText(info);

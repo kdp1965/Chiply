@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "author": "Chiply tests",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-tt-block-input",
+      "id": "ttin",
+      "top": 0,
+      "left": -250,
+      "attrs": {
+        "verilogRole": "input"
+      }
+    },
+    {
+      "type": "board-tt-block-output",
+      "id": "ttout",
+      "top": 0,
+      "left": 350,
+      "attrs": {
+        "verilogRole": "output"
+      }
+    },
+    {
+      "type": "chiply-block-adder4",
+      "id": "add1",
+      "top": 0,
+      "left": 0,
+      "attrs": {
+        "OFFSET": "0"
+      }
+    },
+    {
+      "type": "chiply-block-counter4",
+      "id": "counter4_1",
+      "top": 200,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-vcc",
+      "id": "vcc1",
+      "top": 200,
+      "left": -80,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "ttin:IN0",
+      "add1:a0",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN1",
+      "add1:a1",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN2",
+      "add1:a2",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN3",
+      "add1:a3",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN4",
+      "add1:b0",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN5",
+      "add1:b1",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN6",
+      "add1:b2",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN7",
+      "add1:b3",
+      "green",
+      []
+    ],
+    [
+      "add1:sum0",
+      "ttout:OUT0",
+      "green",
+      []
+    ],
+    [
+      "add1:sum1",
+      "ttout:OUT1",
+      "green",
+      []
+    ],
+    [
+      "add1:sum2",
+      "ttout:OUT2",
+      "green",
+      []
+    ],
+    [
+      "add1:sum3",
+      "ttout:OUT3",
+      "green",
+      []
+    ],
+    [
+      "add1:sum4",
+      "ttout:OUT4",
+      "green",
+      []
+    ],
+    [
+      "ttin:CLK",
+      "counter4_1:clk",
+      "blue",
+      []
+    ],
+    [
+      "ttin:RST_N",
+      "counter4_1:rst_n",
+      "orange",
+      []
+    ],
+    [
+      "vcc1:VCC",
+      "counter4_1:en",
+      "red",
+      []
+    ],
+    [
+      "counter4_1:q0",
+      "ttout:OUT5",
+      "green",
+      []
+    ],
+    [
+      "counter4_1:q1",
+      "ttout:OUT6",
+      "green",
+      []
+    ],
+    [
+      "counter4_1:q2",
+      "ttout:OUT7",
+      "green",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

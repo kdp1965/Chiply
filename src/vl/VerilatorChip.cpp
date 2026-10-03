@@ -1,5 +1,6 @@
 #include "vl/VerilatorChip.h"
 
+#include "core/Blocks.h"
 #include "core/PartLibrary.h"
 #include "core/Verilog.h"
 #include "sim/Simulator.h"
@@ -306,7 +307,16 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
     const std::string flagKey = joinArgs(arch) + joinArgs(cflags) + tools.cxx;
 
     const fs::path cache = opt.cacheDir.empty() ? fs::path(defaultCacheDir()) : fs::path(opt.cacheDir);
-    const std::string key = hex(fnv(verilog + wrapper + chiplyCellsV() + tools.version + tools.root + flagKey + std::to_string(kAbi)));
+    // Custom blocks: their Verilog goes in too (and into the cache key).
+    const std::vector<std::string> blockFiles = blockSources(doc);
+    std::string blockText;
+    for (const std::string& f : blockFiles) {
+        std::ifstream bf(f, std::ios::binary);
+        std::stringstream bs;
+        bs << bf.rdbuf();
+        blockText += f + "\n" + bs.str();
+    }
+    const std::string key = hex(fnv(verilog + wrapper + chiplyCellsV() + blockText + tools.version + tools.root + flagKey + std::to_string(kAbi)));
     const fs::path dir = cache / key;
     const fs::path lib = dir / (std::string("libchip") + kLibExt);
     const std::string name = "Verilator " + tools.version;
@@ -338,11 +348,13 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
         status("Verilating the chip");
         checkCancel();
         std::string log;
-        const std::string vcmd = quote(tools.verilator) + " --cc --top-module " + kModule
+        std::string vcmd = quote(tools.verilator) + " --cc --top-module " + kModule
             + " --prefix Vchip -Wno-fatal -Wno-lint -Wno-style --public-flat-rw --x-assign unique --x-initial unique"
               " -O3 --Mdir "
             + quote((work / "obj").string()) + " " + quote((work / "chip.v").string()) + " "
             + quote((work / "cells.v").string()) + " " + quote((work / "chiply_cells.v").string());
+        for (const std::string& f : blockFiles)
+            vcmd += " " + quote(f) + " -I" + quote(fs::path(f).parent_path().string());
         if (run(vcmd, &log) != 0) {
             BuildError e("Verilator failed");
             e.log = log;

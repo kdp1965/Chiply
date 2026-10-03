@@ -86,14 +86,28 @@ const PartDef* PartLibrary::find(const std::string& type) const
     return it == m_index.end() ? nullptr : &m_parts[it->second];
 }
 
-const PartLibrary& PartLibrary::builtin()
+const PartDef& PartLibrary::addOrReplace(PartDef def)
 {
-    static const PartLibrary lib = [] {
+    auto it = m_index.find(def.type);
+    if (it != m_index.end()) {
+        m_parts[it->second] = std::move(def);
+        return m_parts[it->second];
+    }
+    m_index[def.type] = m_parts.size();
+    m_parts.push_back(std::move(def));
+    return m_parts.back();
+}
+
+PartLibrary& PartLibrary::global()
+{
+    static PartLibrary lib = [] {
         PartLibrary l;
         l.loadJson(kBuiltinPartsJson);
         return l;
     }();
     return lib;
 }
+
+const PartLibrary& PartLibrary::builtin() { return global(); }
 
 } // namespace chiply

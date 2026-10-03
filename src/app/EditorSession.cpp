@@ -6,6 +6,7 @@
 #include "MiniToolbar.h"
 #include "SimRunner.h"
 #include "SchematicItems.h"
+#include "core/Blocks.h"
 #include "core/Edit.h"
 #include "core/IdGen.h"
 #include "core/Geometry.h"
@@ -168,7 +169,11 @@ EditorSession::EditorSession(QObject* parent)
 
 void EditorSession::load(const QString& path)
 {
+    // Custom blocks first, so their parts have definitions (PLAN.md 7.2).
+    const chiply::BlockScan scan = chiply::scanBlocks(chiply::blockRoots(path.toStdString()));
     chiply::LoadResult r = chiply::loadWokwiFile(path.toStdString());
+    for (const std::string& w : scan.warnings)
+        r.warnings.push_back(w);
     m_doc = std::move(r.doc);
     m_warnings.clear();
     for (const std::string& w : r.warnings)
@@ -221,6 +226,8 @@ void EditorSession::save(const QString& path)
 {
     const QString target = path.isEmpty() ? m_path : path;
     chiply::saveWokwiFile(m_doc, target.toStdString());
+    if (QFileInfo(target).absolutePath() != QFileInfo(m_path).absolutePath())
+        chiply::scanBlocks(chiply::blockRoots(target.toStdString())); // a new folder: its blocks
     m_path = target;
     saveSidecar();
     saveProbes(); // a Save As keeps the probes under the new name
@@ -803,6 +810,23 @@ void EditorSession::stopSimulation()
 
 bool EditorSession::extensionsEnabled() { return QSettings().value("extensions/enabled", false).toBool(); }
 void EditorSession::setExtensionsEnabled(bool on) { QSettings().setValue("extensions/enabled", on); }
+
+void EditorSession::refreshParts()
+{
+    if (m_sim)
+        return;
+    rebuildScene();
+    m_drc.clear();
+    runDrc(true);
+}
+
+bool EditorSession::usesBlocks() const
+{
+    for (const chiply::Part& p : m_doc.parts)
+        if (const chiply::PartDef* d = chiply::PartLibrary::builtin().find(p.type); d && d->block)
+            return true;
+    return false;
+}
 
 void EditorSession::setExtensionsAllowed(bool on)
 {

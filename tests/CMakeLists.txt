@@ -20,6 +20,7 @@ add_executable(chiply_tests
   test_verilog.cpp
   test_verilator.cpp
   test_extended.cpp
+  test_blocks.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_vl Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
@@ -77,7 +78,8 @@ if(CHIPLY_BUILD_GUI)
   set_target_properties(chiply_gui_window_tests PROPERTIES AUTOMOC ON)
   target_link_libraries(chiply_gui_window_tests PRIVATE chiply_ui Qt6::Test)
   target_compile_definitions(chiply_gui_window_tests PRIVATE
-    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference"
+    CHIPLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
   add_test(NAME gui_window COMMAND chiply_gui_window_tests)
   set_tests_properties(gui_window PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

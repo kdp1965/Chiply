@@ -180,6 +180,35 @@ private slots:
         QSettings().remove("extensions/enabled");
     }
 
+    void customBlocksFromTheDesignFolder()
+    {
+        MainWindow w;
+        w.show();
+        QVERIFY(w.openFile(QStringLiteral(CHIPLY_TEST_DATA_DIR "/blocks_demo/design.json")));
+        auto* s = qobject_cast<EditorSession*>(w.findChild<QTabWidget*>()->currentWidget()->property("session").value<QObject*>());
+        QVERIFY(s->usesBlocks());
+        PartItem* add = nullptr;
+        for (QGraphicsItem* it : s->view()->scene()->items())
+            if (it->type() == PartItem::Type && static_cast<PartItem*>(it)->partId() == "add1")
+                add = static_cast<PartItem*>(it);
+        QVERIFY(add && add->def() && add->def()->block);
+        QCOMPARE(add->def()->block->module, std::string("adder4"));
+        QVERIFY(s->violations().size() == 2); // Wokwi mode: two extension parts
+        QSettings().setValue("extensions/enabled", true);
+        {
+            PartPalette pal;
+            auto* list = pal.findChild<QListWidget*>();
+            QStringList types;
+            for (int i = 0; i < list->count(); ++i)
+                types << list->item(i)->data(Qt::UserRole).toString();
+            QVERIFY(types.contains("chiply-block-adder4"));
+            QVERIFY(types.contains("chiply-block-counter4"));
+        }
+        QSettings().remove("extensions/enabled");
+        w.findChild<QAction*>("reloadBlocksAction")->trigger(); // rebuilds every tab
+        QVERIFY(s->usesBlocks());
+    }
+
     void selectionDoesNotShiftCanvas()
     {
         MainWindow w;

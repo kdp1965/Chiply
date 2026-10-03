@@ -1,0 +1,11 @@
+{
+  "name": "counter4",
+  "module": "counter4",
+  "verilog": ["counter4.v"],
+  "ports": [
+    { "name": "clk", "dir": "in", "clock": true },
+    { "name": "rst_n", "dir": "in" },
+    { "name": "en", "dir": "in" },
+    { "name": "q", "dir": "out", "width": 4 }
+  ]
+}

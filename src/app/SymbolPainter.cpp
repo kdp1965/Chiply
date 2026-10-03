@@ -288,6 +288,40 @@ void aoi(const Ctx& k, const std::string& kind)
         k.p->drawLine(l);
 }
 
+// Custom block (PLAN.md 7.2), drawn in px: a box with the block's name at
+// the top, inputs on the left, outputs on the right, pin names inside and a
+// clock wedge on clock pins.
+void customBlock(const Ctx& k)
+{
+    constexpr double g = 9.6;
+    const double w = k.def.width, h = k.def.height;
+    QPainterPath box;
+    box.addRoundedRect(QRectF(2 * g, 0.5 * g, w - 4 * g, h - g), 2.5, 2.5);
+    k.p->setPen(QPen(k.c.partStroke, kStroke * kMm, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    k.p->setBrush(Qt::NoBrush);
+    k.p->drawPath(box);
+    k.text(w / 2, 1.25 * g, QString::fromStdString(k.def.label), 0.85 * g);
+    k.p->setPen(QPen(k.c.lead, kStroke * kMm, Qt::SolidLine, Qt::FlatCap));
+    for (const chiply::PinDef& pin : k.def.pins) {
+        const bool left = pin.x < w / 2;
+        const double edge = left ? 2 * g : w - 2 * g;
+        k.p->setPen(QPen(k.c.lead, kStroke * kMm, Qt::SolidLine, Qt::FlatCap));
+        k.line(pin.x, pin.y, edge, pin.y);
+        double tx = left ? edge + 0.35 * g : edge - 0.35 * g;
+        if (pin.clock) {
+            QPainterPath wedge;
+            const double d = left ? 1 : -1;
+            wedge.moveTo(edge, pin.y - 0.45 * g);
+            wedge.lineTo(edge + d * 0.6 * g, pin.y);
+            wedge.lineTo(edge, pin.y + 0.45 * g);
+            k.p->setPen(QPen(k.c.partStroke, kStroke * kMm));
+            k.p->drawPath(wedge);
+            tx += d * 0.55 * g;
+        }
+        k.text(tx, pin.y, QString::fromStdString(pin.name), 0.62 * g, left ? Qt::AlignLeft : Qt::AlignRight);
+    }
+}
+
 void inverter(const Ctx& k, bool bubble)
 {
     QPainterPath t;
@@ -700,6 +734,8 @@ void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors
         gateN(k, s.substr(0, s.size() - 1), s.back() - '0');
     else if (s == "maj3")
         maj3(k);
+    else if (s == "block")
+        customBlock(k);
     else if (s == "mux4")
         mux4(k);
     else if (s == "a21oi" || s == "a21o" || s == "o21ai" || s == "o21a" || s == "a22oi" || s == "o22ai")

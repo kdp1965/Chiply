@@ -50,7 +50,7 @@ bool isTtBlock(const std::string& type) { return type.rfind("board-tt-block", 0)
 // the Tiny Tapeout blocks.
 bool chipPin(const Device& d, std::size_t pin)
 {
-    if (isLogicCell(d.def))
+    if (isLogicCell(d.def) || (d.def && d.def->block))
         return true;
     if (d.type == "wokwi-vcc" || d.type == "wokwi-gnd")
         return true;

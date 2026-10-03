@@ -4,7 +4,9 @@
 // resources/parts.json, which is compiled into the core library.
 #include "core/Json.h"
 
+#include <deque>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -25,6 +27,30 @@ struct PinDef {
     std::string signal; // "vcc" / "gnd" for power pins (default wire color)
 };
 
+// A custom block (PLAN.md 7.2): a Verilog module behind a symbol, loaded
+// from <folder>/block.json.
+struct BlockPort {
+    std::string name;
+    PinDir dir = PinDir::In;
+    int width = 1;   // >1: one pin per bit, name0..name<width-1>
+    bool clock = false;
+};
+struct BlockInfo {
+    std::string name;     // part type "chiply-block-<name>"
+    std::string module;   // Verilog module
+    std::string label;    // palette / Inspector name (default: name)
+    std::string prefix;   // id prefix for new parts (default: name + "_")
+    std::string folder;   // absolute
+    std::vector<std::string> verilog; // absolute paths
+    std::vector<BlockPort> ports;
+    Json params = Json::object(); // name -> default (number or string)
+    // Pin name of bit `bit` of a port (the port name itself when 1 bit wide).
+    static std::string pinName(const BlockPort& p, int bit)
+    {
+        return p.width == 1 ? p.name : p.name + std::to_string(bit);
+    }
+};
+
 struct PartDef {
     std::string type;
     std::string label;
@@ -37,6 +63,7 @@ struct PartDef {
     Json verilog = Json::object(); // {cell, ports{PIN: port}} or {constant}
     Json attrs = Json::object();   // defaults for new parts
     std::string source;
+    std::shared_ptr<const BlockInfo> block; // custom blocks only
 
     const PinDef* findPin(const std::string& name) const;
 };
@@ -51,15 +78,22 @@ public:
     void loadJson(const std::string& text);
 
     const PartDef* find(const std::string& type) const;
-    const std::vector<PartDef>& parts() const { return m_parts; }
+    // A deque, so definitions never move: PartDef pointers held by netlists
+    // and scene items stay valid when blocks are added.
+    const std::deque<PartDef>& parts() const { return m_parts; }
+    // Adds a part type, or replaces the definition of one with the same
+    // type in place (custom blocks being reloaded).
+    const PartDef& addOrReplace(PartDef def);
 
-    // The library compiled into Chiply (resources/parts.json).
+    // The library compiled into Chiply (resources/parts.json), plus the
+    // custom blocks found so far (core/Blocks).
     static const PartLibrary& builtin();
+    static PartLibrary& global();
 
     static constexpr double kPxPerMm = 96.0 / 25.4;
 
 private:
-    std::vector<PartDef> m_parts;
+    std::deque<PartDef> m_parts;
     std::map<std::string, std::size_t> m_index;
 };
 

@@ -10,6 +10,7 @@
 //   chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]
 //   chiply-cli truthtable <diagram.json> <truthtable.md> [options]
 //                                                check a Tiny Tapeout truth table
+#include "core/Blocks.h"
 #include "core/Drc.h"
 #include "core/Netlist.h"
 #include "core/Verilog.h"
@@ -346,6 +347,12 @@ int main(int argc, char** argv)
     const std::string cmd = argv[1];
     const std::string path = argv[2];
     try {
+        // Custom blocks: the design's blocks folder, then the user library.
+        if (path != "--list") {
+            const BlockScan scan = scanBlocks(blockRoots(path));
+            for (const std::string& w : scan.warnings)
+                std::cerr << "warning: " << w << "\n";
+        }
         if (cmd == "info") {
             LoadResult r = loadWokwiFile(path);
             std::map<std::string, int> byType;
@@ -463,10 +470,19 @@ int main(int argc, char** argv)
                 if (!f)
                     throw std::runtime_error("cannot write " + out);
                 f << v;
+                const std::string outDir = out.substr(0, out.find_last_of('/') + 1);
                 if (usesChiplyCells(r.doc)) {
-                    const std::string cells = out.substr(0, out.find_last_of('/') + 1) + "chiply_cells.v";
+                    const std::string cells = outDir + "chiply_cells.v";
                     std::ofstream(cells, std::ios::binary) << chiplyCellsV();
                     std::cerr << "wrote " << cells << " (Chiply extended cells used by the design)\n";
+                }
+                for (const std::string& f : blockSources(r.doc)) {
+                    const std::string dest = outDir + f.substr(f.find_last_of('/') + 1);
+                    if (dest != f) {
+                        std::ifstream src(f, std::ios::binary);
+                        std::ofstream(dest, std::ios::binary) << src.rdbuf();
+                        std::cerr << "wrote " << dest << " (custom block source)\n";
+                    }
                 }
             }
             return 0;

@@ -22,7 +22,8 @@ Status: early development. The design and milestones are in
 | M8 Incremental DRC with Violations pane, Verilog and Tiny Tapeout project export | done |
 | M9 Optional Verilator engine for the chip (Simulation > Engine), built and cached at run time | done |
 | M10a Wokwi / Extended mode; extended cells (3/4-input gates, XOR3, MAJ3, MUX4, AOI/OAI) | done |
-| M10b-d Custom blocks, RAM/ROM, sub-sheets | next |
+| M10b Custom blocks: Verilog modules behind auto symbols (`blocks/` folder and user library) | done |
+| M10c-d RAM/ROM, sub-sheets | next |
 
 ## Building
 

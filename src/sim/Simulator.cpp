@@ -183,6 +183,11 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             c.half = std::max<Time>(1, Time(std::llround(1e12 / (2 * c.hz))));
             c.slot = addSlot(pinNet("CLK"));
             m_clocks.push_back(c);
+        } else if (d.def && d.def->block) {
+            // Custom blocks are Verilog: the Verilator engine runs them.
+            if (!m_opt.chip)
+                m_warnings.push_back("not simulated by the built-in engine: " + d.partId + " (custom block "
+                                     + d.def->block->name + "; use the Verilator engine)");
         } else if (!kInert.count(d.type)) {
             m_warnings.push_back("not simulated: " + d.partId + " (" + d.type + ")");
         }

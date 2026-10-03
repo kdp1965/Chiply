@@ -11,11 +11,14 @@
 #include "Theme.h"
 #include "WaveformView.h"
 #include "ViolationsPane.h"
+#include "core/Blocks.h"
 #include "core/Verilog.h"
 #include "vl/VerilatorChip.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QUrl>
+#include <QDesktopServices>
 #include <atomic>
 #include <mutex>
 #include <thread>
@@ -91,6 +94,7 @@ MainWindow::MainWindow(QWidget* parent)
     statusBar()->addPermanentWidget(m_drcLabel);
     statusBar()->addPermanentWidget(m_zoomLabel);
 
+    chiply::scanBlocks({chiply::defaultUserBlocksDir()}); // the user's block library
     buildMenus();
     resize(1400, 900);
     restoreLayout();
@@ -264,6 +268,33 @@ void MainWindow::buildMenus()
     m_extensionsAction->setToolTip(tr("Offer Chiply's own parts (3/4-input gates, MUX4, AOI/OAI cells...). "
                                       "Designs that use them no longer load in Wokwi."));
     connect(m_extensionsAction, &QAction::toggled, this, &MainWindow::setExtensions);
+    // Custom blocks (PLAN.md 7.2): <design>/blocks and the user library.
+    QAction* reloadBlocks = edit->addAction(tr("Reload Custom &Blocks"), this, [this] {
+        QStringList warnings;
+        QStringList names;
+        auto add = [&](const chiply::BlockScan& scan) {
+            for (const std::string& w : scan.warnings)
+                warnings << QString::fromStdString(w);
+            for (const std::string& n : scan.loaded)
+                if (!names.contains(QString::fromStdString(n)))
+                    names << QString::fromStdString(n);
+        };
+        add(chiply::scanBlocks({chiply::defaultUserBlocksDir()}));
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            EditorSession* s = sessionAt(i);
+            add(chiply::scanBlocks(chiply::blockRoots(s->filePath().toStdString())));
+            s->refreshParts();
+        }
+        if (!warnings.isEmpty())
+            QMessageBox::warning(this, tr("Custom Blocks"), warnings.join(QStringLiteral("\n\n")));
+        statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks found") : tr("Custom blocks: %1").arg(names.join(QStringLiteral(", "))), 6000);
+    });
+    reloadBlocks->setObjectName("reloadBlocksAction");
+    edit->addAction(tr("Open Block &Library Folder"), this, [] {
+        const QString dir = QString::fromStdString(chiply::defaultUserBlocksDir());
+        QDir().mkpath(dir);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Zoom &In  (+)"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
@@ -589,6 +620,19 @@ void MainWindow::playPause()
         return;
     if (!s->sim()) {
         std::shared_ptr<chiply::sim::ChipBackend> chip;
+        if (s->usesBlocks() && m_engineVerilator && !m_engineVerilator->isChecked()) {
+            const auto answer = QMessageBox::question(
+                this, tr("Custom Blocks"),
+                tr("This design has custom blocks, which only the Verilator engine can simulate. "
+                   "Simulate with Verilator?\n\nNo: simulate with the built-in engine (the blocks' outputs stay floating)."),
+                QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
+            if (answer == QMessageBox::Cancel)
+                return;
+            if (answer == QMessageBox::Yes) {
+                m_engineVerilator->setChecked(true);
+                QSettings().setValue("sim/engine", "verilator");
+            }
+        }
         if (m_engineVerilator && m_engineVerilator->isChecked()) {
             bool fallBack = false;
             chip = buildVerilatorChip(s, &fallBack);
@@ -789,6 +833,19 @@ void MainWindow::exportVerilog()
                 throw std::runtime_error(tr("Cannot write %1: %2").arg(cells, cf.errorString()).toStdString());
             needs = tr("needs cells.v; chiply_cells.v written beside it");
         }
+        QStringList copied;
+        for (const std::string& f : chiply::blockSources(s->document())) {
+            const QString src = QString::fromStdString(f);
+            const QString dest = QFileInfo(path).dir().filePath(QFileInfo(src).fileName());
+            if (QFileInfo(dest).absoluteFilePath() == QFileInfo(src).absoluteFilePath())
+                continue;
+            QFile::remove(dest);
+            if (!QFile::copy(src, dest))
+                throw std::runtime_error(tr("Cannot copy %1 to %2").arg(src, dest).toStdString());
+            copied << QFileInfo(src).fileName();
+        }
+        if (!copied.isEmpty())
+            needs += tr("; block sources copied: %1").arg(copied.join(QStringLiteral(", ")));
         statusBar()->showMessage(tr("Exported module %1 to %2 (%3)").arg(QString::fromStdString(o.moduleName), path, needs), 8000);
     } catch (const std::exception& e) {
         QMessageBox::critical(this, tr("Export Verilog"), QString::fromUtf8(e.what()));
