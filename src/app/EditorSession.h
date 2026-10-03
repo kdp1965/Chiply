@@ -70,6 +70,12 @@ public:
     QString renamePart(const std::string& from, const std::string& to);
     void setPartAttr(const std::string& id, const std::string& key, const std::string& value);
     void setWireColor(int wireIndex, const std::string& color);
+    // Adds a wire along an orthogonal polyline from `from` to `to` (undoable).
+    void addWire(const chiply::PinRef& from, const chiply::PinRef& to, const std::string& color,
+                 const std::vector<chiply::Point>& route);
+    // Default color for a wire starting at this pin (Wokwi: GND black,
+    // VCC red, otherwise green).
+    std::string defaultWireColor(const chiply::PinRef& from) const;
 
     // Adding parts: a translucent preview follows the cursor until placed.
     void startPlacing(const std::string& type);
@@ -93,7 +99,8 @@ public:
                                          std::vector<WireChange>* before) const;
     // Replaces the document wholesale and rebuilds, selecting `select`
     // (used by structural commands).
-    void replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select);
+    void replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select,
+                         const std::vector<int>& selectWires = {});
     const chiply::Document& doc() const { return m_doc; }
 
     // Replaces a wire's path (undoable through the session's undo stack).
@@ -111,7 +118,7 @@ private:
     void rebuildScene();
     void updateSelectionState();
     void refreshWiresOf(const std::string& partId);
-    void selectParts(const std::vector<std::string>& ids);
+    void selectParts(const std::vector<std::string>& ids, const std::vector<int>& wires = {});
     Placement placementOf(const std::string& id) const;
 
     chiply::Document m_doc;

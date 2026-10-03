@@ -70,3 +70,13 @@ if(CHIPLY_BUILD_GUI)
   add_test(NAME gui_window COMMAND chiply_gui_window_tests)
   set_tests_properties(gui_window PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+if(CHIPLY_BUILD_GUI)
+  add_executable(chiply_gui_wiredraw_tests test_gui_wires.cpp)
+  set_target_properties(chiply_gui_wiredraw_tests PROPERTIES AUTOMOC ON)
+  target_link_libraries(chiply_gui_wiredraw_tests PRIVATE chiply_ui Qt6::Test)
+  target_compile_definitions(chiply_gui_wiredraw_tests PRIVATE
+    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+  add_test(NAME gui_wire_draw COMMAND chiply_gui_wiredraw_tests)
+  set_tests_properties(gui_wire_draw PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

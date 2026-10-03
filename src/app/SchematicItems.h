@@ -26,6 +26,11 @@ public:
     QPainterPath shape() const override;
     // The part's outline in scene coordinates (rotated bounds).
     QRectF outlineSceneRect() const;
+    // Pin within the hit radius of a scene point, or null.
+    const chiply::PinDef* pinAtScene(QPointF scenePos) const { return pinAt(mapFromScene(scenePos)); }
+    // Scene position of one of this part's pins.
+    QPointF pinScenePos(const chiply::PinDef& pin) const { return mapToScene(QPointF(pin.x, pin.y)); }
+    const chiply::PartDef* def() const { return m_def; }
     static void setShowNames(bool on);
     static bool showNames();
     // Follows a placement change (left/top/rotate) of the document part.

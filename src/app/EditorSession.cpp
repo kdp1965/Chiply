@@ -53,6 +53,17 @@ EditorSession::EditorSession(QObject* parent)
     connect(m_view, &SchematicView::placeMoved, this, &EditorSession::placingMoved);
     connect(m_view, &SchematicView::placeClicked, this, &EditorSession::placeAt);
     connect(m_view, &SchematicView::placeCancelled, this, &EditorSession::cancelPlacing);
+    connect(m_view, &SchematicView::wireDrawn, this,
+            [this](const QString& from, const QString& to, const QString& color, const std::vector<chiply::Point>& pts) {
+                auto a = chiply::PinRef::parse(from.toStdString());
+                auto b = chiply::PinRef::parse(to.toStdString());
+                if (a && b)
+                    addWire(*a, *b, color.toStdString(), pts);
+            });
+    m_view->setWireColorProvider([this](const QString& ref) {
+        auto r = chiply::PinRef::parse(ref.toStdString());
+        return r ? QString::fromStdString(defaultWireColor(*r)) : QStringLiteral("green");
+    });
     connect(m_view, &SchematicView::nudgeRequested, this, &EditorSession::nudgeSelection);
     connect(m_view, &SchematicView::rotateRequested, this, &EditorSession::rotateSelection);
     connect(m_view, &SchematicView::deleteRequested, this, &EditorSession::deleteSelection);
@@ -216,22 +227,26 @@ private:
 class DocumentCommand : public QUndoCommand {
 public:
     DocumentCommand(EditorSession* s, const QString& text, chiply::Document before, chiply::Document after,
-                    std::vector<std::string> selBefore, std::vector<std::string> selAfter)
+                    std::vector<std::string> selBefore, std::vector<std::string> selAfter,
+                    std::vector<int> wiresBefore = {}, std::vector<int> wiresAfter = {})
         : QUndoCommand(text)
         , m_s(s)
         , m_before(std::move(before))
         , m_after(std::move(after))
         , m_selBefore(std::move(selBefore))
         , m_selAfter(std::move(selAfter))
+        , m_wBefore(std::move(wiresBefore))
+        , m_wAfter(std::move(wiresAfter))
     {
     }
-    void undo() override { m_s->replaceDocument(m_before, m_selBefore); }
-    void redo() override { m_s->replaceDocument(m_after, m_selAfter); }
+    void undo() override { m_s->replaceDocument(m_before, m_selBefore, m_wBefore); }
+    void redo() override { m_s->replaceDocument(m_after, m_selAfter, m_wAfter); }
 
 private:
     EditorSession* m_s;
     chiply::Document m_before, m_after;
     std::vector<std::string> m_selBefore, m_selAfter;
+    std::vector<int> m_wBefore, m_wAfter;
 };
 
 EditorSession::Placement EditorSession::placementOf(const std::string& id) const
@@ -553,6 +568,35 @@ void EditorSession::setWireColor(int wireIndex, const std::string& color)
     updateSelectionState();
 }
 
+std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const
+{
+    if (const chiply::Part* p = m_doc.findPart(from.part))
+        if (const chiply::PartDef* d = chiply::PartLibrary::builtin().find(p->type))
+            if (const chiply::PinDef* pin = d->findPin(from.pin)) {
+                if (pin->signal == "gnd")
+                    return "black";
+                if (pin->signal == "vcc")
+                    return "red";
+            }
+    return "green";
+}
+
+void EditorSession::addWire(const chiply::PinRef& from, const chiply::PinRef& to, const std::string& color,
+                            const std::vector<chiply::Point>& route)
+{
+    chiply::Wire w;
+    w.from = from;
+    w.to = to;
+    w.color = color;
+    w.path = chiply::pathFromPolyline(route);
+    w.hasPathElement = true;
+    chiply::Document after = m_doc;
+    after.wires.push_back(w);
+    m_undo.push(new DocumentCommand(this, tr("Wire %1 to %2").arg(QString::fromStdString(from.str()), QString::fromStdString(to.str())),
+                                    m_doc, after, selectedPartIds(), {}, selectedWireIndices(),
+                                    {int(after.wires.size()) - 1}));
+}
+
 void EditorSession::startPlacing(const std::string& type)
 {
     cancelPlacing();
@@ -606,7 +650,8 @@ void EditorSession::cancelPlacing()
     m_view->setPlacing(false);
 }
 
-void EditorSession::replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select)
+void EditorSession::replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select,
+                                    const std::vector<int>& selectWires)
 {
     m_doc = doc;
     {
@@ -614,11 +659,11 @@ void EditorSession::replaceDocument(const chiply::Document& doc, const std::vect
         m_scene.clearSelection();
     }
     rebuildScene();
-    selectParts(select);
+    selectParts(select, selectWires);
     emit documentChanged();
 }
 
-void EditorSession::selectParts(const std::vector<std::string>& ids)
+void EditorSession::selectParts(const std::vector<std::string>& ids, const std::vector<int>& wires)
 {
     {
         const QSignalBlocker block(&m_scene);
@@ -627,6 +672,12 @@ void EditorSession::selectParts(const std::vector<std::string>& ids)
             auto it = m_partItems.find(id);
             if (it != m_partItems.end())
                 it->second->setSelected(true);
+        }
+        if (!wires.empty()) {
+            const std::set<int> ws(wires.begin(), wires.end());
+            for (QGraphicsItem* it : m_scene.items())
+                if (it->type() == WireItem::Type && ws.count(static_cast<WireItem*>(it)->index()))
+                    it->setSelected(true);
         }
     }
     updateSelectionState();

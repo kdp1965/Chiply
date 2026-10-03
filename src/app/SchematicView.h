@@ -13,12 +13,22 @@
 // Ctrl/Cmd+click toggles, click on empty canvas or Esc clears, Ctrl/Cmd+A
 // selects all. Marquee selects items fully inside; Alt = anything touched;
 // Ctrl/Cmd = add to the current selection. Auto-scrolls at the edges.
+#include "core/PartLibrary.h"
 #include "core/WirePath.h"
 
 #include <QGraphicsView>
 #include <QTimer>
 
+#include <functional>
+
+class PartItem;
+class QGraphicsPathItem;
 class WireItem;
+
+// Wokwi's wire color keys: 0 black, 1 brown, 2 red, 3 orange, 4 gold,
+// 5 green, 6 blue, 7 violet, 8 gray, 9 white, C cyan, L limegreen,
+// M magenta, P purple, Y yellow. Empty for any other key.
+QString wokwiColorForKey(int key);
 
 class SchematicView : public QGraphicsView {
     Q_OBJECT
@@ -36,6 +46,11 @@ public:
     void applyTheme();
 
     void setPlacing(bool on);
+    bool drawingWire() const { return m_drawing; }
+    void cancelWire();
+    void setWireColorProvider(std::function<QString(const QString& pinRef)> f) { m_colorFor = std::move(f); }
+    // Part + pin under a viewport position (pin hit region), if any.
+    std::pair<PartItem*, const chiply::PinDef*> pinAt(QPoint viewPos) const;
 
     // Selection operations (each emits selectionEdited once).
     void clearSelection();
@@ -62,6 +77,8 @@ signals:
     void placeCancelled();
     void addPartRequested();
     void editPartRequested(); // F2 or double-click on a part
+    // A new wire was drawn from pin to pin along `route` (scene points).
+    void wireDrawn(QString fromRef, QString toRef, QString color, std::vector<chiply::Point> route);
     // Keyboard edits on the selection.
     void nudgeRequested(int gridX, int gridY, bool autoRepeat);
     void rotateRequested();
@@ -98,6 +115,22 @@ private:
     enum class Press { None, Item, Empty, Marquee, Handle, Moving };
     QGraphicsItem* m_pressItem = nullptr;
     bool m_placing = false;
+
+    // Wire drawing (PLAN.md 4.6).
+    void startWire(PartItem* part, const chiply::PinDef* pin);
+    void updateWirePreview(QPoint viewPos, Qt::KeyboardModifiers mods);
+    void addWirePoint(QPoint viewPos, Qt::KeyboardModifiers mods);
+    bool finishWireAt(QPoint viewPos); // true if it ended on a pin
+    chiply::Point snapped(QPointF scene, Qt::KeyboardModifiers mods) const;
+    std::vector<chiply::Point> legTo(chiply::Point target) const; // L-bend from the last point
+    bool m_drawing = false;
+    QString m_drawFrom;              // "part:PIN"
+    QString m_drawColor;
+    std::vector<chiply::Point> m_drawPts; // committed points, first = source pin
+    chiply::Point m_drawCursor;
+    QGraphicsPathItem* m_drawPreview = nullptr;
+    bool m_drawPressMoved = false;   // press-drag-release from the source pin
+    std::function<QString(const QString&)> m_colorFor;
     bool hasSelectedParts() const;
     WireItem* m_dragWire = nullptr;
     std::size_t m_dragSegment = 0;

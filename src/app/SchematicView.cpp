@@ -4,6 +4,8 @@
 #include "Theme.h"
 #include "core/JsonFormat.h"
 
+#include <QCursor>
+#include <QGraphicsPathItem>
 #include <QKeyEvent>
 #include <QSignalBlocker>
 #include <QPainter>
@@ -143,6 +145,143 @@ QGraphicsItem* SchematicView::selectableAt(QPoint viewPos) const
     return nullptr;
 }
 
+QString wokwiColorForKey(int key)
+{
+    switch (key) {
+    case Qt::Key_0: return "black";
+    case Qt::Key_1: return "brown";
+    case Qt::Key_2: return "red";
+    case Qt::Key_3: return "orange";
+    case Qt::Key_4: return "gold";
+    case Qt::Key_5: return "green";
+    case Qt::Key_6: return "blue";
+    case Qt::Key_7: return "violet";
+    case Qt::Key_8: return "gray";
+    case Qt::Key_9: return "white";
+    case Qt::Key_C: return "cyan";
+    case Qt::Key_L: return "limegreen";
+    case Qt::Key_M: return "magenta";
+    case Qt::Key_P: return "purple";
+    case Qt::Key_Y: return "yellow";
+    default: return {};
+    }
+}
+
+std::pair<PartItem*, const chiply::PinDef*> SchematicView::pinAt(QPoint viewPos) const
+{
+    const QPointF sp = mapToScene(viewPos);
+    for (QGraphicsItem* it : items(viewPos)) {
+        if (it->type() != PartItem::Type)
+            continue;
+        auto* p = static_cast<PartItem*>(it);
+        if (const chiply::PinDef* pin = p->pinAtScene(sp))
+            return {p, pin};
+    }
+    return {nullptr, nullptr};
+}
+
+chiply::Point SchematicView::snapped(QPointF sp, Qt::KeyboardModifiers mods) const
+{
+    if (mods & Qt::ControlModifier)
+        return {chiply::round2(sp.x()), chiply::round2(sp.y())};
+    const double g = (mods & Qt::AltModifier) ? kGrid / 2 : kGrid;
+    return {chiply::round2(std::round(sp.x() / g) * g), chiply::round2(std::round(sp.y() / g) * g)};
+}
+
+std::vector<chiply::Point> SchematicView::legTo(chiply::Point t) const
+{
+    // L-bend from the last committed point; horizontal first when the
+    // target is more to the side than above/below (flips at the diagonal).
+    const chiply::Point l = m_drawPts.back();
+    if (std::fabs(t.x - l.x) < 0.005 || std::fabs(t.y - l.y) < 0.005)
+        return {t};
+    if (std::fabs(t.x - l.x) >= std::fabs(t.y - l.y))
+        return {{t.x, l.y}, t};
+    return {{l.x, t.y}, t};
+}
+
+void SchematicView::startWire(PartItem* part, const chiply::PinDef* pin)
+{
+    cancelWire();
+    const QPointF p = part->pinScenePos(*pin);
+    m_drawing = true;
+    m_drawFrom = QString::fromStdString(part->partId() + ":" + pin->name);
+    m_drawColor = m_colorFor ? m_colorFor(m_drawFrom) : QStringLiteral("green");
+    m_drawPts = {{chiply::round2(p.x()), chiply::round2(p.y())}};
+    m_drawCursor = m_drawPts.back();
+    m_drawPreview = new QGraphicsPathItem;
+    m_drawPreview->setZValue(30);
+    scene()->addItem(m_drawPreview);
+    viewport()->setCursor(Qt::CrossCursor);
+    if (!scene()->selectedItems().isEmpty())
+        clearSelection();
+}
+
+void SchematicView::cancelWire()
+{
+    if (m_drawPreview) {
+        scene()->removeItem(m_drawPreview);
+        delete m_drawPreview;
+        m_drawPreview = nullptr;
+    }
+    m_drawing = false;
+    m_drawPts.clear();
+    viewport()->setCursor(Qt::ArrowCursor);
+}
+
+void SchematicView::updateWirePreview(QPoint viewPos, Qt::KeyboardModifiers mods)
+{
+    if (!m_drawing)
+        return;
+    // Snap to a pin under the cursor, else to the grid.
+    auto [part, pin] = pinAt(viewPos);
+    if (part && pin) {
+        const QPointF pp = part->pinScenePos(*pin);
+        m_drawCursor = {chiply::round2(pp.x()), chiply::round2(pp.y())};
+    } else {
+        m_drawCursor = snapped(mapToScene(viewPos), mods);
+    }
+    std::vector<chiply::Point> pts = m_drawPts;
+    for (const chiply::Point& q : legTo(m_drawCursor))
+        pts.push_back(q);
+    QPainterPath path;
+    path.moveTo(pts[0].x, pts[0].y);
+    for (std::size_t i = 1; i < pts.size(); ++i)
+        path.lineTo(pts[i].x, pts[i].y);
+    m_drawPreview->setPath(path);
+    QColor c(m_drawColor);
+    m_drawPreview->setPen(QPen(Theme::instance().canvas().displayWireColor(c.isValid() ? c : QColor("green")), 2.0,
+                               Qt::DashLine, Qt::RoundCap, Qt::RoundJoin));
+}
+
+void SchematicView::addWirePoint(QPoint viewPos, Qt::KeyboardModifiers mods)
+{
+    updateWirePreview(viewPos, mods);
+    for (const chiply::Point& q : legTo(m_drawCursor))
+        m_drawPts.push_back(q);
+    m_drawPts = chiply::simplifyPolyline(m_drawPts);
+    updateWirePreview(viewPos, mods);
+}
+
+bool SchematicView::finishWireAt(QPoint viewPos)
+{
+    auto [part, pin] = pinAt(viewPos);
+    if (!part || !pin)
+        return false;
+    const QString to = QString::fromStdString(part->partId() + ":" + pin->name);
+    if (to == m_drawFrom)
+        return true; // clicked the start pin again: keep drawing
+    const QPointF pp = part->pinScenePos(*pin);
+    const chiply::Point end{chiply::round2(pp.x()), chiply::round2(pp.y())};
+    std::vector<chiply::Point> pts = m_drawPts;
+    for (const chiply::Point& q : legTo(end))
+        pts.push_back(q);
+    const QString from = m_drawFrom, color = m_drawColor;
+    cancelWire();
+    emit wireDrawn(from, to, color, chiply::simplifyPolyline(pts));
+    return true;
+}
+
 void SchematicView::setPlacing(bool on)
 {
     m_placing = on;
@@ -152,6 +291,32 @@ void SchematicView::setPlacing(bool on)
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_drawing) {
+        if (event->button() == Qt::RightButton) {
+            cancelWire();
+        } else if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier) && !m_spaceHeld) {
+            if (!finishWireAt(pos))
+                addWirePoint(pos, event->modifiers());
+        } else {
+            goto notDrawing; // Shift/Space/middle: pan while drawing
+        }
+        event->accept();
+        return;
+    }
+notDrawing:
+    if (event->button() == Qt::LeftButton && !m_placing && !m_spaceHeld
+        && !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
+        // A press in a pin's hit region starts a wire; it never selects the part.
+        auto [part, pin] = pinAt(pos);
+        if (part && pin) {
+            startWire(part, pin);
+            m_pressPos = pos;
+            m_drawPressMoved = false;
+            updateWirePreview(pos, event->modifiers());
+            event->accept();
+            return;
+        }
+    }
     if (m_placing) {
         if (event->button() == Qt::LeftButton)
             emit placeClicked(mapToScene(pos));
@@ -208,6 +373,14 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_drawing && !m_panning && !m_shiftPending) {
+        if ((pos - m_pressPos).manhattanLength() > 6)
+            m_drawPressMoved = true;
+        updateWirePreview(pos, event->modifiers());
+        QGraphicsView::mouseMoveEvent(event); // pin hover markers
+        event->accept();
+        return;
+    }
     if (m_placing && !m_panning) {
         emit placeMoved(mapToScene(pos));
         if (!m_shiftPending) {
@@ -275,6 +448,14 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
 void SchematicView::mouseReleaseEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_drawing && event->button() == Qt::LeftButton && !m_panning && !m_shiftPending) {
+        // Press on a pin, drag, release on another pin: finish there too.
+        if (m_drawPressMoved && m_drawPts.size() == 1)
+            finishWireAt(pos);
+        m_drawPressMoved = false;
+        event->accept();
+        return;
+    }
     if (m_shiftPending && event->button() == Qt::LeftButton) {
         m_shiftPending = false;
         clickAt(m_pressPos, event->modifiers());
@@ -522,6 +703,27 @@ bool SchematicView::hasSelectedParts() const
 
 void SchematicView::keyPressEvent(QKeyEvent* event)
 {
+    if (m_drawing) {
+        const QString c = wokwiColorForKey(event->key());
+        if (!c.isEmpty() && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
+            m_drawColor = c;
+            updateWirePreview(viewport()->mapFromGlobal(QCursor::pos()), event->modifiers());
+            return;
+        }
+        if (event->key() == Qt::Key_Escape) {
+            cancelWire();
+            return;
+        }
+        if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Delete) {
+            if (m_drawPts.size() > 1)
+                m_drawPts.pop_back();
+            else
+                cancelWire();
+            if (m_drawing)
+                updateWirePreview(viewport()->mapFromGlobal(QCursor::pos()), event->modifiers());
+            return;
+        }
+    }
     // Editing keys act on the selected parts.
     const bool editMods = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
     if (hasSelectedParts() && editMods && m_press != Press::Moving) {
