@@ -7,12 +7,46 @@
 #include <QGraphicsScene>
 #include "core/Geometry.h"
 
+#include <QDockWidget>
+#include <QSettings>
 #include <QTabWidget>
 #include <QTest>
 
 class WindowTest : public QObject {
     Q_OBJECT
 private slots:
+    void initTestCase()
+    {
+        // Keep the tests away from the user's real preferences.
+        QCoreApplication::setOrganizationName("ChiplyTest");
+        QCoreApplication::setApplicationName("ChiplyWindowTest");
+        QSettings().clear();
+    }
+
+    void layoutIsRestored()
+    {
+        {
+            MainWindow w;
+            w.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&w));
+            auto* insp = w.findChild<QDockWidget*>("inspector");
+            QVERIFY(insp);
+            QCOMPARE(w.dockWidgetArea(insp), Qt::RightDockWidgetArea);
+            w.addDockWidget(Qt::LeftDockWidgetArea, insp);
+            w.resize(700, 590); // fits the 800x800 offscreen test screen
+            QApplication::processEvents();
+            QVERIFY(w.close());
+        }
+        MainWindow w2;
+        w2.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w2));
+        auto* insp2 = w2.findChild<QDockWidget*>("inspector");
+        QCOMPARE(w2.dockWidgetArea(insp2), Qt::LeftDockWidgetArea);
+        QCOMPARE(w2.size(), QSize(700, 590));
+        w2.close();
+        QSettings().clear();
+    }
+
     void selectionDoesNotShiftCanvas()
     {
         MainWindow w;

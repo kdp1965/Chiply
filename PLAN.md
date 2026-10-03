@@ -402,6 +402,10 @@ Selectable objects are parts (gates, flops, TT blocks, switches, displays, power
 
 Multi-level, unlimited undo and redo per tab (done): every model change is a `QUndoCommand`; a drag is one step, a held arrow key's repeats merge into one step. Ctrl+Z / Ctrl+Y / Cmd+Shift+Z. View → Undo History lists every step of the active tab; clicking an entry jumps back or forward to that point.
 
+### 4.8b Window layout
+
+The window's size and position, the toolbar and every dock (Inspector, Undo History; later Violations) are saved with their position, size and visibility, and restored on the next launch (done). Saved on quit and shortly after any change, so a crash does not lose it.
+
 ### 4.9 Keyboard map
 
 Pure Wokwi keys (decided): everything in 2.3 as is, including `R`, `D`, `A`, `F`, `G` and the color keys. The only additions are the ones decided above: arrow keys pan, Ctrl/Cmd+arrows nudge, Ctrl/Cmd+click adds a wire vertex, F8 steps through violations, Ctrl+Tab switches tabs. No alternate preset.

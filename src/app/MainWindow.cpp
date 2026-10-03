@@ -24,6 +24,7 @@
 #include <QToolBar>
 #include <QDockWidget>
 #include <QUndoView>
+#include <QTimer>
 #include <QSettings>
 #include <QGraphicsScene>
 #include <QUndoGroup>
@@ -54,6 +55,16 @@ MainWindow::MainWindow(QWidget* parent)
 
     buildMenus();
     resize(1400, 900);
+    restoreLayout();
+    // Save the layout shortly after any change too, not only on quit.
+    m_saveLayout.setSingleShot(true);
+    m_saveLayout.setInterval(800);
+    connect(&m_saveLayout, &QTimer::timeout, this, &MainWindow::saveLayout);
+    for (QDockWidget* d : findChildren<QDockWidget*>()) {
+        connect(d, &QDockWidget::dockLocationChanged, &m_saveLayout, qOverload<>(&QTimer::start));
+        connect(d, &QDockWidget::topLevelChanged, &m_saveLayout, qOverload<>(&QTimer::start));
+        connect(d, &QDockWidget::visibilityChanged, &m_saveLayout, qOverload<>(&QTimer::start));
+    }
     newFile();
 }
 
@@ -333,6 +344,32 @@ bool MainWindow::closeTab(int index)
     return true;
 }
 
+void MainWindow::saveLayout()
+{
+    QSettings s;
+    s.setValue("window/geometry", saveGeometry());
+    s.setValue("window/state", saveState(kLayoutVersion));
+}
+
+void MainWindow::restoreLayout()
+{
+    QSettings s;
+    restoreGeometry(s.value("window/geometry").toByteArray());
+    restoreState(s.value("window/state").toByteArray(), kLayoutVersion);
+}
+
+void MainWindow::moveEvent(QMoveEvent* event)
+{
+    QMainWindow::moveEvent(event);
+    m_saveLayout.start();
+}
+
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+    m_saveLayout.start();
+}
+
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     while (m_tabs->count() > 0) {
@@ -341,6 +378,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
             return;
         }
     }
+    saveLayout();
     event->accept();
 }
 

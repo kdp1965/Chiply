@@ -321,18 +321,24 @@ void slideSwitch(const Ctx& k)
 
 void dipSwitch(const Ctx& k)
 {
+    // Layout and colors follow wokwi-elements: red board, brown slots, a
+    // white knob at the bottom of each slot when off (left when the part is
+    // rotated 90 degrees), white "ON" and numbers.
     pins(k, 8, true);
-    k.p->setPen(QPen(QColor(0x99, 0x00, 0x00), 1));
-    k.p->setBrush(QColor(0xd0, 0x1c, 0x1c));
-    k.p->drawRect(QRectF(0, 9, 82.87, 37.4));
+    k.p->setPen(Qt::NoPen);
+    k.p->setBrush(QColor(0xd7, 0x2c, 0x2c));
+    k.p->drawRect(QRectF(0, 8.5, 82.87, 38.08));
+    const QColor white(0xff, 0xfe, 0xf4);
+    k.text(6.3, 15.5, "ON", 7.0, Qt::AlignLeft, &white);
+    std::string values = k.part.attrs.value("values", std::string());
     for (int i = 0; i < 8; ++i) {
         const double x = 8.1 + 9.6 * i;
-        k.p->setBrush(QColor(0xee, 0xee, 0xee));
-        k.p->setPen(Qt::NoPen);
-        k.p->drawRect(QRectF(x - 2.9, 16, 5.8, 22));
-        k.p->setBrush(QColor(0x55, 0x55, 0x55));
-        k.p->drawRect(QRectF(x - 2.9, 27, 5.8, 11));
-        k.text(x, 42.5, QString::number(i + 1), 6, Qt::AlignCenter, &k.c.background);
+        k.p->setBrush(QColor(0x91, 0x7c, 0x6f));
+        k.p->drawRect(QRectF(x - 2.9, 21.2, 5.8, 13));
+        const bool on = i < int(values.size()) && values[size_t(i)] == '1';
+        k.p->setBrush(white);
+        k.p->drawRoundedRect(QRectF(x - 2.6, on ? 21.6 : 28.6, 5.2, 5.3), 0.7, 0.7);
+        k.text(x - 0.6, 40.5, QString::number(i + 1), 7.0, Qt::AlignCenter, &white);
     }
 }
 

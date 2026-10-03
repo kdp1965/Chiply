@@ -1,5 +1,6 @@
 #pragma once
 #include <QMainWindow>
+#include <QTimer>
 
 class EditorSession;
 class QLabel;
@@ -15,8 +16,15 @@ public:
     // Fits every tab's view to its contents (used after the window is sized).
     void refitAll();
 
+    // Window size/position, toolbar and dock layout (QSettings).
+    void saveLayout();
+    void restoreLayout();
+    static constexpr int kLayoutVersion = 1;
+
 protected:
     void closeEvent(QCloseEvent* event) override;
+    void moveEvent(QMoveEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void buildMenus();
@@ -33,6 +41,7 @@ private:
     void openDialog();
 
     QTabWidget* m_tabs = nullptr;
+    QTimer m_saveLayout;
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;
     QLabel* m_zoomLabel = nullptr;
