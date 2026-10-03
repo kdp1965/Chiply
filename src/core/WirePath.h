@@ -46,8 +46,10 @@ WirePath normalized(const WirePath& path);
 //    (horizontal when there are no moves), then the other axis;
 //  - with "*": target moves are walked from `to` (last item first); if both
 //    axes still differ, one leg on the axis of the first move after "*" is
-//    added, then a straight line to the target-side point.
-// Consecutive duplicate points are removed.
+//    added, then a straight line to the target-side point;
+//  - consecutive moves on the same axis are merged (summed), so a recorded
+//    overshoot and the step back collapse into a single move.
+// Verified against every wire of the reference design as rendered by Wokwi.
 std::vector<Point> routePolyline(Point from, Point to, const WirePath& path);
 
 // Where the source-side moves end (the start of the auto-completed tail when

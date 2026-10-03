@@ -89,9 +89,9 @@ TEST_CASE("rotation is about the outline center, clockwise")
     p.type = g->type;
     p.left = 100;
     p.top = 200;
-    // OUT is at (96, 19.2) locally; the outline center is (48, 18.8976),
-    // so OUT sits 0.3024 px below the center line.
-    const double cy = 5 * PartLibrary::kPxPerMm, off = 19.2 - cy;
+    // OUT is at (96, 19.2) locally; the pivot is the center of the 96 x 38
+    // layout box (37.8 rounded up), so OUT sits 0.2 px below the center line.
+    const double cy = 19.0, off = 19.2 - cy;
     auto out0 = pinPosition(p, *g, "OUT");
     CHECK(out0->x == Approx(196));
     CHECK(out0->y == Approx(219.2));
@@ -153,4 +153,50 @@ TEST_CASE("reference wiring is consistent with the calibrated pins")
     }
     INFO(onGrid << " of " << checked << " leftover gaps on the 4.8 px grid");
     CHECK(onGrid >= checked * 0.9);
+}
+
+TEST_CASE("every reference wire routes exactly as wokwi.com renders it")
+{
+    // Fixture: corners of the SVG paths wokwi.com drew for this project.
+    std::ifstream in(std::string(CHIPLY_REFERENCE_DIR) + "/wokwi_414123795172381697.rendered_wires.json");
+    REQUIRE(in);
+    Json fixture = Json::parse(in);
+    const PartLibrary& lib = PartLibrary::builtin();
+    Document d = loadRef("wokwi_414123795172381697.diagram.json");
+    REQUIRE(fixture["wires"].size() == d.wires.size());
+    int mismatches = 0;
+    for (std::size_t i = 0; i < d.wires.size(); ++i) {
+        const Wire& w = d.wires[i];
+        const Json& f = fixture["wires"][i];
+        REQUIRE(f["from"] == w.from.str());
+        auto route = routePolyline(*pinPosition(d, lib, w.from), *pinPosition(d, lib, w.to), w.path);
+        // Sub-pixel jogs are invisible: Wokwi's rounded-corner renderer
+        // swallows them, and its DOM-measured pins carry ~0.2 px noise on a
+        // few rotated parts. Drop interior points closer than 0.5 px to a
+        // neighbour before comparing.
+        auto close = [](const Point& a, const Point& b) {
+            return std::fabs(a.x - b.x) < 0.5 && std::fabs(a.y - b.y) < 0.5;
+        };
+        for (std::size_t k = 1; k + 1 < route.size();) {
+            if (close(route[k], route[k - 1]) || close(route[k], route[k + 1]))
+                route.erase(route.begin() + static_cast<long>(k));
+            else
+                ++k;
+        }
+        std::vector<Point> want;
+        for (const Json& pt : f["points"]) {
+            Point q{pt[0].get<double>(), pt[1].get<double>()};
+            if (want.empty() || !(want.back() == q)) // zero-length wires repeat the point
+                want.push_back(q);
+        }
+        bool ok = route.size() == want.size();
+        for (std::size_t k = 0; ok && k < route.size(); ++k)
+            ok = std::fabs(route[k].x - want[k].x) < 0.45 && std::fabs(route[k].y - want[k].y) < 0.45;
+        if (!ok) {
+            ++mismatches;
+            UNSCOPED_INFO(w.from.str() << " -> " << w.to.str() << ": " << route.size() << " corners vs "
+                                       << f["points"].size() << " " << f["points"].dump());
+        }
+    }
+    CHECK(mismatches == 0);
 }

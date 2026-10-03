@@ -7,9 +7,12 @@
 #include <QPainterPath>
 #include <QPen>
 
+#include <algorithm>
+
 namespace {
 constexpr double kUnknownSize = 38.4;
-constexpr double kWireWidth = 2.0; // scene px
+constexpr double kWireWidth = 2.0; // scene px, Wokwi's stroke width
+constexpr double kCornerRadius = 4.0;
 }
 
 PartItem::PartItem(const chiply::Part& part, const chiply::PartDef* def)
@@ -43,11 +46,27 @@ void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
 
 WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route)
 {
+    // Corners rounded with a 4 px radius, as Wokwi draws them; a corner on a
+    // short segment uses at most half of that segment.
     QPainterPath path;
     if (!route.empty()) {
-        path.moveTo(route[0].x, route[0].y);
-        for (std::size_t i = 1; i < route.size(); ++i)
-            path.lineTo(route[i].x, route[i].y);
+        auto P = [&](std::size_t i) { return QPointF(route[i].x, route[i].y); };
+        path.moveTo(P(0));
+        for (std::size_t i = 1; i + 1 < route.size(); ++i) {
+            const QPointF a = P(i - 1), c = P(i), b = P(i + 1);
+            const QLineF in(c, a), out(c, b);
+            const double r = std::min({kCornerRadius, in.length() / 2, out.length() / 2});
+            if (r < 0.05) {
+                path.lineTo(c);
+                continue;
+            }
+            const QPointF p1 = c + (a - c) * (r / in.length());
+            const QPointF p2 = c + (b - c) * (r / out.length());
+            path.lineTo(p1);
+            path.quadTo(c, p2);
+        }
+        if (route.size() > 1)
+            path.lineTo(P(route.size() - 1));
     }
     setPath(path);
     m_fileColor = QColor(QString::fromStdString(wire.color));

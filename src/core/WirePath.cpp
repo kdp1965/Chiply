@@ -102,47 +102,77 @@ Point sourceRouteEnd(Point from, const WirePath& path)
 
 std::vector<Point> routePolyline(Point from, Point to, const WirePath& path)
 {
+    // Mirrors the routing function in Wokwi's diagram editor: build a list of
+    // relative h/v moves plus absolute points for the target side, close the
+    // gap, then merge consecutive moves on the same axis (so an overshoot
+    // followed by a step back collapses into one move), then walk the list.
     from = {round2(from.x), round2(from.y)};
     to = {round2(to.x), round2(to.y)};
     auto same = [](double a, double b) { return std::fabs(a - b) < 0.005; };
 
-    std::vector<Point> pts{from};
+    struct Cmd {
+        char kind; // 'h', 'v' (relative) or 'L' (absolute point)
+        double a = 0, b = 0;
+    };
+    std::vector<Cmd> cmds;
+
     Point p = from;
     bool lastH = true;
     for (const Seg& s : path.source) {
         lastH = s.axis == Axis::H;
+        cmds.push_back({lastH ? 'h' : 'v', s.len});
         p = step(p, s);
-        pts.push_back(p);
+    }
+    const std::size_t split = cmds.size();
+
+    Point q = to;
+    for (auto it = path.target.rbegin(); it != path.target.rend(); ++it) {
+        lastH = it->axis == Axis::H;
+        q = step(q, *it);
+        cmds.insert(cmds.begin() + static_cast<long>(split), Cmd{'L', q.x, q.y});
     }
 
     if (!path.hasStar) {
-        if (lastH && !same(p.x, to.x))
-            pts.push_back(p = {to.x, p.y});
-        if (!same(p.y, to.y))
-            pts.push_back(p = {p.x, to.y});
-        if (!lastH && !same(p.x, to.x))
-            pts.push_back(p = {to.x, p.y});
-    } else {
-        // Walk target moves from the target pin, last item first.
-        std::vector<Point> tail{to};
-        Point q = to;
-        for (auto it = path.target.rbegin(); it != path.target.rend(); ++it) {
-            lastH = it->axis == Axis::H;
-            q = step(q, *it);
-            tail.push_back(q);
-        }
-        if (!same(p.x, q.x) && !same(p.y, q.y))
-            pts.push_back(lastH ? Point{q.x, p.y} : Point{p.x, q.y});
-        pts.insert(pts.end(), tail.rbegin(), tail.rend());
+        if (lastH && !same(p.x, q.x))
+            cmds.push_back({'h', q.x - p.x});
+        if (!same(p.y, q.y))
+            cmds.push_back({'v', q.y - p.y});
+        if (!lastH && !same(p.x, q.x))
+            cmds.push_back({'h', q.x - p.x});
+    } else if (!same(p.x, q.x) && !same(p.y, q.y)) {
+        cmds.insert(cmds.begin() + static_cast<long>(split),
+                    lastH ? Cmd{'h', q.x - p.x} : Cmd{'v', q.y - p.y});
+        cmds.push_back({'L', to.x, to.y});
+    } else if (path.hasStar) {
+        // Wokwi stops at the last target-side point here; Chiply also draws
+        // the final step into the pin so the wire visibly connects.
+        cmds.push_back({'L', to.x, to.y});
     }
-    if (!(pts.back() == to))
-        pts.push_back(to);
 
-    std::vector<Point> out;
-    for (const Point& pt : pts)
-        if (out.empty() || !(out.back() == pt))
-            out.push_back(pt);
-    return out;
+    for (std::size_t i = 1; i < cmds.size(); ++i) {
+        if (cmds[i].kind != 'L' && cmds[i].kind == cmds[i - 1].kind) {
+            cmds[i - 1].a = round2(cmds[i - 1].a + cmds[i].a);
+            cmds.erase(cmds.begin() + static_cast<long>(i));
+            --i;
+        }
+    }
+
+    std::vector<Point> pts{from};
+    Point c = from;
+    for (const Cmd& k : cmds) {
+        Point n = c;
+        if (k.kind == 'h')
+            n.x += k.a;
+        else if (k.kind == 'v')
+            n.y += k.a;
+        else
+            n = {k.a, k.b};
+        if (!(n == c)) {
+            pts.push_back(n);
+            c = n;
+        }
+    }
+    return pts;
 }
 
 } // namespace chiply

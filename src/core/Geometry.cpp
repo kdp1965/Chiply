@@ -8,7 +8,10 @@ namespace chiply {
 
 Point partToDiagram(const Part& part, const PartDef& def, Point local)
 {
-    const double cx = def.width / 2, cy = def.height / 2;
+    // Wokwi rotates about the center of the element's layout box, whose size
+    // the browser reports in whole pixels (offsetWidth/offsetHeight). Using
+    // the rounded size reproduces Wokwi's pin positions to the 0.01 px.
+    const double cx = std::round(def.width) / 2, cy = std::round(def.height) / 2;
     double dx = local.x - cx, dy = local.y - cy;
     int quarter = ((part.rotate % 360) + 360) % 360;
     if (quarter % 90 == 0) {

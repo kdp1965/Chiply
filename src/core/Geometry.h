@@ -1,7 +1,8 @@
 #pragma once
 // Placement geometry, matching Wokwi: a part's `left`/`top` is its unrotated
 // top-left corner, and `rotate` (degrees, clockwise) turns it about the
-// center of its outline (CSS transform-origin: center).
+// center of its layout box (CSS transform-origin: center), i.e. the outline
+// size rounded to whole pixels.
 #include "core/Document.h"
 #include "core/PartLibrary.h"
 #include "core/WirePath.h"

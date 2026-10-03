@@ -53,12 +53,15 @@ TEST_CASE("gap continues on the last move's axis, then turns")
 {
     auto h = parseWirePath({"h10"});
     REQUIRE(h);
-    CHECK(routePolyline({0, 0}, {50, 40}, *h)
-          == std::vector<Point>{{0, 0}, {10, 0}, {50, 0}, {50, 40}});
+    // h10 and the closing h40 merge into one move.
+    CHECK(routePolyline({0, 0}, {50, 40}, *h) == std::vector<Point>{{0, 0}, {50, 0}, {50, 40}});
     auto v = parseWirePath({"v10"});
     REQUIRE(v);
-    CHECK(routePolyline({0, 0}, {50, 40}, *v)
-          == std::vector<Point>{{0, 0}, {0, 10}, {0, 40}, {50, 40}});
+    CHECK(routePolyline({0, 0}, {50, 40}, *v) == std::vector<Point>{{0, 0}, {0, 40}, {50, 40}});
+    auto hv = parseWirePath({"h10", "v10"});
+    REQUIRE(hv);
+    CHECK(routePolyline({0, 0}, {50, 40}, *hv)
+          == std::vector<Point>{{0, 0}, {10, 0}, {10, 40}, {50, 40}});
 }
 
 TEST_CASE("empty path goes horizontal first")
@@ -88,4 +91,14 @@ TEST_CASE("endpoints are rounded to 2 decimals")
 {
     auto pts = routePolyline({0.004, 0}, {10.006, 0}, WirePath{});
     CHECK(pts == std::vector<Point>{{0, 0}, {10.01, 0}});
+}
+
+TEST_CASE("an overshoot followed by the closing step merges into one move")
+{
+    // or211:OUT -> or218:A in the reference design: h57.6 overshoots the
+    // target column by 28.8; Wokwi merges it with the closing h-28.8.
+    auto p = parseWirePath({"v0", "h57.6"});
+    REQUIRE(p);
+    CHECK(routePolyline({-2524.8, -67.2}, {-2496, 240}, *p)
+          == std::vector<Point>{{-2524.8, -67.2}, {-2496, -67.2}, {-2496, 240}});
 }
