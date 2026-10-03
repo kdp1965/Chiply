@@ -9,6 +9,7 @@ add_library(chiply_core STATIC
   Edit.cpp
   Geometry.cpp
   IdGen.cpp
+  Netlist.cpp
   PartLibrary.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp
   JsonFormat.cpp

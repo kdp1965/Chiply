@@ -11,6 +11,7 @@ add_executable(chiply_tests
   test_wokwi_json.cpp
   test_part_library.cpp
   test_edit.cpp
+  test_netlist.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_core Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE

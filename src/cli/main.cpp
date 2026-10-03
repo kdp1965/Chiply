@@ -3,7 +3,11 @@
 //   chiply-cli info   <diagram.json>            summary of parts and wires
 //   chiply-cli format <diagram.json> [out.json] load and save (round trip)
 //   chiply-cli check-roundtrip <diagram.json>   exit 0 if save == input bytes
+//   chiply-cli netlist <diagram.json> [--nets]  connectivity summary (or every net)
+#include "core/Netlist.h"
 #include "core/WokwiJson.h"
+
+#include <chrono>
 
 #include <fstream>
 #include <iostream>
@@ -19,7 +23,8 @@ int usage()
     std::cerr << "usage:\n"
                  "  chiply-cli info <diagram.json>\n"
                  "  chiply-cli format <diagram.json> [out.json]\n"
-                 "  chiply-cli check-roundtrip <diagram.json>\n";
+                 "  chiply-cli check-roundtrip <diagram.json>\n"
+                 "  chiply-cli netlist <diagram.json> [--nets]\n";
     return 2;
 }
 
@@ -61,6 +66,36 @@ int main(int argc, char** argv)
                 saveWokwiFile(r.doc, argv[3]);
             else
                 std::cout << saveWokwi(r.doc);
+            return 0;
+        }
+        if (cmd == "netlist") {
+            LoadResult r = loadWokwiFile(path);
+            const auto t0 = std::chrono::steady_clock::now();
+            Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
+            const auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
+            std::size_t multi = 0, undriven = 0;
+            for (const Net& n : nl.nets) {
+                multi += n.drivers.size() > 1;
+                undriven += n.drivers.empty() && !n.loads.empty();
+            }
+            std::cout << path << ": " << nl.devices.size() << " devices, " << nl.nets.size() << " nets ("
+                      << nl.connectedNetCount() << " connected), built in " << us / 1000.0 << " ms\n"
+                      << "  nets with several drivers: " << multi << "\n"
+                      << "  nets with loads but no driver: " << undriven
+                      << " (inputs fed by switches/buttons count here until simulation)\n";
+            for (const std::string& w : nl.warnings)
+                std::cout << "warning: " << w << "\n";
+            if (argc > 3 && std::string(argv[3]) == "--nets") {
+                for (const Net& n : nl.nets) {
+                    if (n.pins.size() < 2)
+                        continue;
+                    std::cout << n.name << ":";
+                    for (const NetPin& np : n.pins)
+                        std::cout << " " << nl.devices[size_t(np.device)].partId << ":"
+                                  << nl.devices[size_t(np.device)].pinNames[size_t(np.pin)];
+                    std::cout << "\n";
+                }
+            }
             return 0;
         }
         if (cmd == "check-roundtrip") {
