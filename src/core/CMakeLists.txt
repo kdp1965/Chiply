@@ -6,6 +6,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_
 
 add_library(chiply_core STATIC
   Document.cpp
+  Edit.cpp
   Geometry.cpp
   IdGen.cpp
   PartLibrary.cpp
