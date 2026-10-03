@@ -78,6 +78,8 @@ signals:
     void addPartRequested();
     void editPartRequested(); // F2 or double-click on a part
     void wireColorRequested(QString color);   // color key with wires selected
+    // A wire end was dropped on another pin; `route` ends there.
+    void wireReanchored(int wireIndex, bool atStart, QString pinRef, std::vector<chiply::Point> route);
     void deleteWireRequested(int wireIndex);  // double-click on a wire
     // A new wire was drawn from pin to pin along `route` (scene points).
     void wireDrawn(QString fromRef, QString toRef, QString color, std::vector<chiply::Point> route);
@@ -114,7 +116,8 @@ private:
 
     void updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods);
 
-    enum class Press { None, Item, Empty, Marquee, Handle, Moving, Corner, Split };
+    enum class Press { None, Item, Empty, Marquee, Handle, Moving, Corner, Split, End };
+    bool m_dragAtStart = true;
     std::size_t m_dragCorner = 0;
     QGraphicsItem* m_pressItem = nullptr;
     bool m_placing = false;

@@ -291,42 +291,21 @@ void SchematicView::setPlacing(bool on)
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
-    if (m_drawing) {
-        if (event->button() == Qt::RightButton) {
-            cancelWire();
-        } else if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier) && !m_spaceHeld) {
-            if (!finishWireAt(pos))
-                addWirePoint(pos, event->modifiers());
-        } else {
-            goto notDrawing; // Shift/Space/middle: pan while drawing
-        }
-        event->accept();
-        return;
-    }
-notDrawing:
-    if (event->button() == Qt::LeftButton && !m_placing && !m_spaceHeld
-        && !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
-        // A press in a pin's hit region starts a wire; it never selects the part.
-        auto [part, pin] = pinAt(pos);
-        if (part && pin) {
-            startWire(part, pin);
-            m_pressPos = pos;
-            m_drawPressMoved = false;
-            updateWirePreview(pos, event->modifiers());
-            event->accept();
-            return;
-        }
-    }
-    if (m_placing) {
-        if (event->button() == Qt::LeftButton)
-            emit placeClicked(mapToScene(pos));
-        else if (event->button() == Qt::RightButton)
-            emit placeCancelled();
-        event->accept();
-        return;
-    }
+    // Handles on a selected wire win over everything under them (pins).
     if (event->button() == Qt::LeftButton && !m_spaceHeld && !m_drawing) {
         for (QGraphicsItem* it : items(pos)) {
+            if (it->type() == EndHandle::Type) {
+                auto* h = static_cast<EndHandle*>(it);
+                m_dragWire = static_cast<WireItem*>(h->parentItem());
+                m_dragAtStart = h->atStart();
+                m_dragRoute = chiply::simplifyPolyline(m_dragWire->route());
+                m_dragResult = m_dragRoute;
+                m_press = Press::End;
+                m_pressPos = pos;
+                viewport()->setCursor(Qt::CrossCursor);
+                event->accept();
+                return;
+            }
             if (it->type() == CornerHandle::Type) {
                 auto* h = static_cast<CornerHandle*>(it);
                 m_dragWire = static_cast<WireItem*>(h->parentItem());
@@ -365,6 +344,40 @@ notDrawing:
         m_panning = true;
         m_lastPanPos = pos;
         viewport()->setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    if (m_drawing) {
+        if (event->button() == Qt::RightButton) {
+            cancelWire();
+        } else if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier) && !m_spaceHeld) {
+            if (!finishWireAt(pos))
+                addWirePoint(pos, event->modifiers());
+        } else {
+            goto notDrawing; // Shift/Space/middle: pan while drawing
+        }
+        event->accept();
+        return;
+    }
+notDrawing:
+    if (event->button() == Qt::LeftButton && !m_placing && !m_spaceHeld
+        && !(event->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
+        // A press in a pin's hit region starts a wire; it never selects the part.
+        auto [part, pin] = pinAt(pos);
+        if (part && pin) {
+            startWire(part, pin);
+            m_pressPos = pos;
+            m_drawPressMoved = false;
+            updateWirePreview(pos, event->modifiers());
+            event->accept();
+            return;
+        }
+    }
+    if (m_placing) {
+        if (event->button() == Qt::LeftButton)
+            emit placeClicked(mapToScene(pos));
+        else if (event->button() == Qt::RightButton)
+            emit placeCancelled();
         event->accept();
         return;
     }
@@ -419,6 +432,21 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
     }
     if (m_press == Press::Handle) {
         updateHandleDrag(pos, event->modifiers());
+        event->accept();
+        return;
+    }
+    if (m_press == Press::End && m_dragWire) {
+        auto [part, pin] = pinAt(pos);
+        chiply::Point q;
+        if (part && pin) {
+            const QPointF pp = part->pinScenePos(*pin);
+            q = {chiply::round2(pp.x()), chiply::round2(pp.y())};
+        } else {
+            q = snapped(mapToScene(pos), event->modifiers());
+        }
+        m_dragResult = chiply::stretchEnd(m_dragRoute, m_dragAtStart, q);
+        m_dragWire->showPreview(m_dragResult);
+        QGraphicsView::mouseMoveEvent(event); // pin hover markers
         event->accept();
         return;
     }
@@ -509,6 +537,24 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
     if (m_panning && (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
         m_panning = false;
         viewport()->setCursor(m_spaceHeld ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton && m_press == Press::End) {
+        m_press = Press::None;
+        viewport()->setCursor(Qt::ArrowCursor);
+        WireItem* w = m_dragWire;
+        m_dragWire = nullptr;
+        auto [part, pin] = pinAt(pos);
+        if (w && part && pin) {
+            const QString ref = QString::fromStdString(part->partId() + ":" + pin->name);
+            const QPointF pp = part->pinScenePos(*pin);
+            const chiply::Point q{chiply::round2(pp.x()), chiply::round2(pp.y())};
+            const auto r = chiply::stretchEnd(m_dragRoute, m_dragAtStart, q);
+            emit wireReanchored(w->index(), m_dragAtStart, ref, r);
+        } else if (w) {
+            w->showPreview(w->route()); // dropped on nothing: back to where it was
+        }
         event->accept();
         return;
     }
@@ -858,7 +904,8 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
             m_pressItem = nullptr;
             viewport()->setCursor(Qt::ArrowCursor);
             emit moveEnded(false);
-        } else if (m_press == Press::Handle || m_press == Press::Corner || m_press == Press::Split) {
+        } else if (m_press == Press::Handle || m_press == Press::Corner || m_press == Press::Split
+                   || m_press == Press::End) {
             if (m_dragWire)
                 m_dragWire->showPreview(m_dragWire->route());
             m_dragWire = nullptr;

@@ -77,6 +77,18 @@ private:
     std::size_t m_corner;
 };
 
+// Round handle on a selected wire's end: drag onto another pin to reconnect.
+class EndHandle : public QGraphicsEllipseItem {
+public:
+    EndHandle(QGraphicsItem* parent, bool atStart);
+    static constexpr int Type = UserType + 6;
+    int type() const override { return Type; }
+    bool atStart() const { return m_atStart; }
+
+private:
+    bool m_atStart;
+};
+
 class WireItem : public QGraphicsPathItem {
 public:
     // Implicit: not selected itself, but both ends are on selected parts, so

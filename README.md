@@ -16,7 +16,8 @@ Status: early development. The design and milestones are in
 | M2 Part library: exact Wokwi geometry, pin directions, symbols, wires | done |
 | M3 Viewer and selection: hover, click/marquee selection, implicit wires | done |
 | M4 Part editing: move, nudge, rotate, delete, duplicate, add parts, Inspector, rename, undo | done |
-| M5 Wire editing: draw wires from pins, vertex handles, colors | next (segment handles already done) |
+| M5 Wire editing: draw from pins, segment/corner/end handles, split, colors, delete | done |
+| M6 Copy/paste across tabs with id renumbering | next |
 
 ## Building
 

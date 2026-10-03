@@ -174,6 +174,45 @@ private slots:
         QCOMPARE(docRoute(), before);
     }
 
+    void dragEndOntoAnotherPinReconnects()
+    {
+        // Select the wire, drag its target end (flop238:D) to flop238:CLK.
+        v->clearSelection();
+        Point a = *pinPosition(s->document(), PartLibrary::builtin(), s->document().wires[size_t(idx)].from);
+        v->centerOn(QPointF(a.x, a.y));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(a.x + 12, a.y)));
+        QVERIFY(item()->isSelected());
+        const std::vector<Point> before = docRoute();
+        const Point d = before.back();
+        const Point clk = *pinPosition(s->document(), PartLibrary::builtin(), *PinRef::parse("flop238:CLK"));
+        v->centerOn(QPointF(d.x, d.y));
+        const QPointF from(d.x, d.y), to(clk.x, clk.y);
+        const std::size_t wireCount = s->document().wires.size();
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(from));
+        for (int i = 1; i <= 5; ++i)
+            QTest::mouseMove(v->viewport(), v->mapFromScene(from + (to - from) * i / 5.0));
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(to));
+        QCOMPARE(s->document().wires.size(), wireCount); // reconnected, not a new wire
+        const Wire& w = s->document().wires[size_t(idx)];
+        QCOMPARE(w.to.str(), std::string("flop238:CLK"));
+        QCOMPARE(w.from.str(), std::string("ttin:IN1"));
+        const std::vector<Point> after = docRoute();
+        QVERIFY(std::fabs(after.back().x - round2(clk.x)) < 0.02 && std::fabs(after.back().y - round2(clk.y)) < 0.02);
+        QCOMPARE(after.front(), before.front());
+        s->undoStack()->undo();
+        QCOMPARE(s->document().wires[size_t(idx)].to.str(), std::string("flop238:D"));
+        QCOMPARE(docRoute(), before);
+
+        // Dropping on empty canvas changes nothing.
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(a.x + 12, a.y)));
+        const int steps = s->undoStack()->index();
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(from));
+        QTest::mouseMove(v->viewport(), v->mapFromScene(from + QPointF(-60, 70)));
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(from + QPointF(-60, 70)));
+        QCOMPARE(s->undoStack()->index(), steps);
+        QCOMPARE(docRoute(), before);
+    }
+
     void savedFileRoundTrips()
     {
         QTemporaryDir dir;

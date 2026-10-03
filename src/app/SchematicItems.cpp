@@ -79,6 +79,17 @@ CornerHandle::CornerHandle(QGraphicsItem* parent, std::size_t corner)
     setCursor(Qt::SizeAllCursor);
 }
 
+EndHandle::EndHandle(QGraphicsItem* parent, bool atStart)
+    : QGraphicsEllipseItem(QRectF(-kHandleRadius, -kHandleRadius, 2 * kHandleRadius, 2 * kHandleRadius), parent)
+    , m_atStart(atStart)
+{
+    setFlag(QGraphicsItem::ItemIgnoresTransformations);
+    setBrush(QColor(0x00, 0xe5, 0xff)); // cyan: the wire's ends
+    setPen(QPen(QColor(0x30, 0x30, 0x30), 1.5));
+    setZValue(12);
+    setCursor(Qt::PointingHandCursor);
+}
+
 void WireItem::setRoute(const std::vector<chiply::Point>& route)
 {
     m_route = route;
@@ -113,6 +124,14 @@ void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
         auto* h = new SegmentHandle(this, i, horizontal);
         h->setPos((r[i].x + r[i + 1].x) / 2, (r[i].y + r[i + 1].y) / 2);
         m_handles.push_back(h);
+    }
+    if (r.size() >= 2) {
+        for (bool start : {true, false}) {
+            auto* h = new EndHandle(this, start);
+            const chiply::Point& e = start ? r.front() : r.back();
+            h->setPos(e.x, e.y);
+            m_handles.push_back(h);
+        }
     }
     for (std::size_t i = 1; i + 1 < r.size(); ++i) {
         auto* h = new CornerHandle(this, i);

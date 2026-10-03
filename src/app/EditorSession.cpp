@@ -63,6 +63,11 @@ EditorSession::EditorSession(QObject* parent)
     connect(m_view, &SchematicView::wireColorRequested, this,
             [this](const QString& c) { setSelectedWiresColor(c.toStdString()); });
     connect(m_view, &SchematicView::deleteWireRequested, this, &EditorSession::deleteWire);
+    connect(m_view, &SchematicView::wireReanchored, this,
+            [this](int idx, bool atStart, const QString& ref, const std::vector<chiply::Point>& route) {
+                if (auto r = chiply::PinRef::parse(ref.toStdString()))
+                    reanchorWire(idx, atStart, *r, route);
+            });
     m_view->setWireColorProvider([this](const QString& ref) {
         auto r = chiply::PinRef::parse(ref.toStdString());
         return r ? QString::fromStdString(defaultWireColor(*r)) : QStringLiteral("green");
@@ -588,6 +593,24 @@ void EditorSession::deleteWire(int wireIndex)
     chiply::Document after = m_doc;
     chiply::removeItems(after, {}, {std::size_t(wireIndex)});
     m_undo.push(new DocumentCommand(this, tr("Delete wire"), m_doc, after, selectedPartIds(), {}, {wireIndex}, {}));
+}
+
+void EditorSession::reanchorWire(int wireIndex, bool atStart, const chiply::PinRef& pin,
+                                 const std::vector<chiply::Point>& route)
+{
+    if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
+        return;
+    const chiply::Wire& cur = m_doc.wires[size_t(wireIndex)];
+    if ((atStart ? cur.from : cur.to) == pin)
+        return; // dropped back on its own pin
+    chiply::Document after = m_doc;
+    chiply::Wire& w = after.wires[size_t(wireIndex)];
+    (atStart ? w.from : w.to) = pin;
+    w.path = chiply::pathFromPolyline(route);
+    w.rawPath.reset();
+    w.hasPathElement = true;
+    m_undo.push(new DocumentCommand(this, tr("Reconnect wire to %1").arg(QString::fromStdString(pin.str())), m_doc,
+                                    after, selectedPartIds(), {}, selectedWireIndices(), {wireIndex}));
 }
 
 std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const

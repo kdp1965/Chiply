@@ -72,6 +72,8 @@ public:
     void setWireColor(int wireIndex, const std::string& color);
     void setSelectedWiresColor(const std::string& color);
     void deleteWire(int wireIndex);
+    // Moves one end of a wire to another pin, with the given route.
+    void reanchorWire(int wireIndex, bool atStart, const chiply::PinRef& pin, const std::vector<chiply::Point>& route);
     // Adds a wire along an orthogonal polyline from `from` to `to` (undoable).
     void addWire(const chiply::PinRef& from, const chiply::PinRef& to, const std::string& color,
                  const std::vector<chiply::Point>& route);
