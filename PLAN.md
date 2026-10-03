@@ -451,6 +451,7 @@ Each check has an id, a default severity and an on/off switch. Switches live in 
 | `invalid-id` | on | error | id is not a legal Verilog identifier, is a keyword, or is duplicated |
 | `unknown-part` | on | error | part type with no library definition (blocks export) |
 | `tt-bidir-bit` | on | error | bidirectional block with a missing or duplicated `verilogBit` |
+| `stacked-parts` | on | warning | two parts of the same type at the same position (an invisible duplicate, typically from copy/paste). Found in the reference design: `ttio5` and `ttio8` are both bit 5 at (2126.4, 3332.22); only `ttio8` is wired, and Wokwi's export happened to use it |
 
 Running: DRC runs live by default, incrementally on the nets touched by each edit (debounced ~100 ms), so violations appear and disappear as you wire. A "Run DRC" button does a full pass, and live checking can be switched off for very large edits. Export and simulation always run a full pass first and refuse to proceed on errors (warnings only ask).
 
