@@ -319,4 +319,79 @@ std::vector<Point> stretchEnd(const std::vector<Point>& in, bool atStart, Point 
     return pts;
 }
 
+std::vector<Point> moveCorner(std::vector<Point> pts, std::size_t i, Point to)
+{
+    if (i == 0 || i + 1 >= pts.size())
+        return pts;
+    const Point old = pts[i];
+    if (i == 1) { // keep the source pin, adjust a copy of it
+        pts.insert(pts.begin(), pts.front());
+        ++i;
+    }
+    if (i + 2 == pts.size())
+        pts.push_back(pts.back());
+    for (std::size_t j : {i - 1, i + 1}) {
+        if (std::fabs(pts[j].y - old.y) < 0.005 && std::fabs(pts[j].x - old.x) >= 0.005)
+            pts[j].y = to.y; // horizontal neighbour segment
+        else
+            pts[j].x = to.x; // vertical (or degenerate) neighbour segment
+    }
+    pts[i] = to;
+    return simplifyPolyline(pts);
+}
+
+std::pair<std::size_t, double> nearestSegment(const std::vector<Point>& pts, Point p)
+{
+    std::size_t best = 0;
+    double bestD = 1e300;
+    for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
+        const Point a = pts[i], b = pts[i + 1];
+        const double dx = b.x - a.x, dy = b.y - a.y;
+        const double len2 = dx * dx + dy * dy;
+        double t = len2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+        t = std::clamp(t, 0.0, 1.0);
+        const double qx = a.x + t * dx - p.x, qy = a.y + t * dy - p.y;
+        const double d = std::sqrt(qx * qx + qy * qy);
+        if (d < bestD) {
+            bestD = d;
+            best = i;
+        }
+    }
+    return {best, bestD};
+}
+
+std::vector<Point> splitSegment(const std::vector<Point>& in, std::size_t seg, Point to)
+{
+    std::vector<Point> pts = simplifyPolyline(in);
+    if (seg + 1 >= pts.size())
+        return pts;
+    const Point a = pts[seg], b = pts[seg + 1];
+    const bool horizontal = std::fabs(a.y - b.y) < 0.005;
+    // Split point: slides along the segment with the cursor, kept inside it.
+    Point s = a;
+    if (horizontal)
+        s.x = std::clamp(to.x, std::min(a.x, b.x), std::max(a.x, b.x));
+    else
+        s.y = std::clamp(to.y, std::min(a.y, b.y), std::max(a.y, b.y));
+    // a .. s, s .. b with a zero-length step at s, then move s..b sideways.
+    std::vector<Point> out(pts.begin(), pts.begin() + static_cast<long>(seg) + 1);
+    out.push_back(s);
+    out.push_back(s);
+    out.insert(out.end(), pts.begin() + static_cast<long>(seg) + 1, pts.end());
+    const std::size_t farSeg = seg + 2; // from the second copy of s to b
+    // moveSegment simplifies, which would drop the zero-length step first,
+    // so shift the far half by hand.
+    const double coord = horizontal ? to.y : to.x;
+    std::size_t k = farSeg;
+    if (k + 2 == out.size())
+        out.push_back(out.back()); // keep the target pin
+    for (std::size_t j : {k, k + 1}) {
+        if (horizontal)
+            out[j].y = coord;
+        else
+            out[j].x = coord;
+    }
+    return simplifyPolyline(out);
+}
+
 } // namespace chiply

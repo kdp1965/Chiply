@@ -8,6 +8,7 @@
 #include <QGraphicsSceneHoverEvent>
 #include <QPainterPathStroker>
 #include <QPen>
+#include <QGraphicsRectItem>
 #include <QStyleOptionGraphicsItem>
 #include <QToolTip>
 
@@ -20,6 +21,7 @@ constexpr double kWireWidth = 2.0; // scene px, Wokwi's stroke width
 constexpr double kCornerRadius = 4.0;
 constexpr double kPinHitRadius = 4.5; // px around a pin that counts as "on the pin"
 constexpr double kHandleRadius = 6.0; // screen px; large for easy grabbing
+constexpr double kCornerHandle = 5.0; // half-size of corner squares, screen px
 }
 
 namespace {
@@ -66,6 +68,17 @@ SegmentHandle::SegmentHandle(QGraphicsItem* parent, std::size_t segment, bool ho
     setToolTip(QString());
 }
 
+CornerHandle::CornerHandle(QGraphicsItem* parent, std::size_t corner)
+    : QGraphicsRectItem(QRectF(-kCornerHandle, -kCornerHandle, 2 * kCornerHandle, 2 * kCornerHandle), parent)
+    , m_corner(corner)
+{
+    setFlag(QGraphicsItem::ItemIgnoresTransformations);
+    setBrush(QColor(0xff, 0x8f, 0x00)); // orange: distinct from segment handles
+    setPen(QPen(QColor(0x30, 0x30, 0x30), 1.5));
+    setZValue(11);
+    setCursor(Qt::SizeAllCursor);
+}
+
 void WireItem::setRoute(const std::vector<chiply::Point>& route)
 {
     m_route = route;
@@ -89,7 +102,7 @@ void WireItem::setHandlesVisible(bool on)
 
 void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
 {
-    for (SegmentHandle* h : m_handles)
+    for (QGraphicsItem* h : m_handles)
         delete h;
     m_handles.clear();
     if (!m_handlesOn)
@@ -99,6 +112,11 @@ void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
         const bool horizontal = std::fabs(r[i].y - r[i + 1].y) < 0.005;
         auto* h = new SegmentHandle(this, i, horizontal);
         h->setPos((r[i].x + r[i + 1].x) / 2, (r[i].y + r[i + 1].y) / 2);
+        m_handles.push_back(h);
+    }
+    for (std::size_t i = 1; i + 1 < r.size(); ++i) {
+        auto* h = new CornerHandle(this, i);
+        h->setPos(r[i].x, r[i].y);
         m_handles.push_back(h);
     }
 }

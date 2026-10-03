@@ -62,6 +62,20 @@ std::vector<Point> simplifyPolyline(const std::vector<Point>& pts);
 // touches an endpoint gets a new connecting segment so the ends stay put.
 std::vector<Point> moveSegment(std::vector<Point> pts, std::size_t seg, double coord);
 
+// Moves interior corner `i` of an orthogonal polyline to `to`; the two
+// segments meeting there follow so everything stays orthogonal. A neighbour
+// that is an endpoint (pin) stays put and gets a connecting segment.
+std::vector<Point> moveCorner(std::vector<Point> pts, std::size_t i, Point to);
+
+// Splits segment `seg` at the point of it nearest `at` and drags the far
+// half sideways: the split slides along the segment to `to`'s along-axis
+// coordinate, and the part from the split onwards moves perpendicular to
+// `to`'s other coordinate, leaving a step. Returns the simplified result.
+std::vector<Point> splitSegment(const std::vector<Point>& pts, std::size_t seg, Point to);
+
+// Index of the segment of `pts` nearest `p`, and that distance.
+std::pair<std::size_t, double> nearestSegment(const std::vector<Point>& pts, Point p);
+
 // Elastic end move: the endpoint at the start (atStart) or end of an
 // orthogonal polyline moves to `newEnd`; the rest of the route stays where it
 // is in the diagram. For the horizontal part of the move, the first

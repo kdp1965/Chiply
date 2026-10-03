@@ -65,6 +65,18 @@ private:
     bool m_horizontal;
 };
 
+// Square handle on an interior corner of a selected wire.
+class CornerHandle : public QGraphicsRectItem {
+public:
+    CornerHandle(QGraphicsItem* parent, std::size_t corner);
+    static constexpr int Type = UserType + 5;
+    int type() const override { return Type; }
+    std::size_t corner() const { return m_corner; }
+
+private:
+    std::size_t m_corner;
+};
+
 class WireItem : public QGraphicsPathItem {
 public:
     // Implicit: not selected itself, but both ends are on selected parts, so
@@ -98,7 +110,7 @@ private:
 
     QColor m_fileColor;
     std::vector<chiply::Point> m_route;
-    std::vector<SegmentHandle*> m_handles;
+    std::vector<QGraphicsItem*> m_handles;
     bool m_handlesOn = false;
     int m_index;
     std::string m_fromPart, m_toPart;

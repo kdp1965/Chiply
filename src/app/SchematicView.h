@@ -114,7 +114,8 @@ private:
 
     void updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods);
 
-    enum class Press { None, Item, Empty, Marquee, Handle, Moving };
+    enum class Press { None, Item, Empty, Marquee, Handle, Moving, Corner, Split };
+    std::size_t m_dragCorner = 0;
     QGraphicsItem* m_pressItem = nullptr;
     bool m_placing = false;
 

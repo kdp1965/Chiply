@@ -10,6 +10,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <algorithm>
+
 using namespace chiply;
 
 class WireEditTest : public QObject {
@@ -103,6 +105,73 @@ private slots:
         QVERIFY(!s->isModified());
         s->undoStack()->redo();
         QCOMPARE(docRoute(), after);
+    }
+
+    void cornerHandleMovesCorner()
+    {
+        v->clearSelection();
+        Point a = *pinPosition(s->document(), PartLibrary::builtin(), s->document().wires[size_t(idx)].from);
+        v->centerOn(QPointF(a.x, a.y));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(a.x + 12, a.y)));
+        CornerHandle* corner = nullptr;
+        for (QGraphicsItem* c : item()->childItems())
+            if (c->type() == CornerHandle::Type && !corner)
+                corner = static_cast<CornerHandle*>(c);
+        QVERIFY(corner);
+        const std::vector<Point> before = docRoute();
+        const QPointF cp = corner->scenePos();
+        const QPointF target = cp + QPointF(2 * 9.6, 9.6);
+        v->centerOn(cp);
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(cp));
+        for (int i = 1; i <= 5; ++i)
+            QTest::mouseMove(v->viewport(), v->mapFromScene(cp + (target - cp) * i / 5.0));
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(target));
+        const std::vector<Point> after = docRoute();
+        QVERIFY(after != before);
+        const double tx = round2(std::round(target.x() / 9.6) * 9.6), ty = round2(std::round(target.y() / 9.6) * 9.6);
+        QVERIFY(std::any_of(after.begin(), after.end(),
+                            [&](const Point& p) { return std::fabs(p.x - tx) < 0.02 && std::fabs(p.y - ty) < 0.02; }));
+        QCOMPARE(after.front(), before.front()); // pins untouched
+        QCOMPARE(after.back(), before.back());
+        s->undoStack()->undo();
+        QCOMPARE(docRoute(), before);
+    }
+
+    void ctrlDragSplitsSegment()
+    {
+        const std::vector<Point> before = docRoute();
+        // Longest segment.
+        std::size_t seg = 0;
+        double best = 0;
+        for (std::size_t i = 0; i + 1 < before.size(); ++i) {
+            const double l = std::fabs(before[i + 1].x - before[i].x) + std::fabs(before[i + 1].y - before[i].y);
+            if (l > best) {
+                best = l;
+                seg = i;
+            }
+        }
+        // A quarter of the way along (the middle is the segment handle).
+        v->clearSelection();
+        const QPointF mid(before[seg].x + (before[seg + 1].x - before[seg].x) / 4,
+                          before[seg].y + (before[seg + 1].y - before[seg].y) / 4);
+        const bool horiz = std::fabs(before[seg].y - before[seg + 1].y) < 0.01;
+        const QPointF target = mid + (horiz ? QPointF(0, 3 * 9.6) : QPointF(3 * 9.6, 0));
+        v->centerOn(mid);
+        QTest::mousePress(v->viewport(), Qt::LeftButton, Qt::ControlModifier, v->mapFromScene(mid));
+        for (int i = 1; i <= 5; ++i)
+            QTest::mouseMove(v->viewport(), v->mapFromScene(mid + (target - mid) * i / 5.0));
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, Qt::ControlModifier, v->mapFromScene(target));
+        const std::vector<Point> after = docRoute();
+        QCOMPARE(after.size(), before.size() + 2); // one step: two new corners
+        QCOMPARE(after.front(), before.front());
+        QCOMPARE(after.back(), before.back());
+        s->undoStack()->undo();
+        QCOMPARE(docRoute(), before);
+        // Ctrl/Cmd+click without dragging only toggles selection.
+        const bool sel = item()->isSelected();
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, Qt::ControlModifier, v->mapFromScene(mid));
+        QCOMPARE(item()->isSelected(), !sel);
+        QCOMPARE(docRoute(), before);
     }
 
     void savedFileRoundTrips()

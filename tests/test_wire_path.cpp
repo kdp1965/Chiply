@@ -192,3 +192,35 @@ TEST_CASE("elastic result is a valid Wokwi path")
         CHECK(simplifyPolyline(routePolyline(moved.front(), moved.back(), p)) == moved);
     }
 }
+
+TEST_CASE("moving a corner keeps both segments orthogonal")
+{
+    std::vector<Point> pts{{0, 0}, {50, 0}, {50, 50}, {100, 50}, {100, 100}};
+    // Corner (50,50) to (60,40): the vertical at x=50 moves to 60, the
+    // horizontal at y=50 moves to 40.
+    CHECK(moveCorner(pts, 2, {60, 40})
+          == std::vector<Point>{{0, 0}, {60, 0}, {60, 40}, {100, 40}, {100, 100}});
+}
+
+TEST_CASE("moving the corner next to a pin adds a jog at the pin")
+{
+    std::vector<Point> pts{{0, 0}, {50, 0}, {50, 50}};
+    // Corner (50,0) to (40,10): the pin (0,0) stays, so a step appears.
+    CHECK(moveCorner(pts, 1, {40, 10}) == std::vector<Point>{{0, 0}, {0, 10}, {40, 10}, {40, 50}, {50, 50}});
+}
+
+TEST_CASE("splitting a segment makes a step")
+{
+    std::vector<Point> pts{{0, 0}, {100, 0}};
+    // Split at x=40 and drag the far half down to y=19.2.
+    CHECK(splitSegment(pts, 0, {40, 19.2}) == std::vector<Point>{{0, 0}, {40, 0}, {40, 19.2}, {100, 19.2}, {100, 0}});
+    // No sideways drag: nothing changes.
+    CHECK(splitSegment(pts, 0, {40, 0}) == pts);
+}
+
+TEST_CASE("nearest segment")
+{
+    std::vector<Point> pts{{0, 0}, {100, 0}, {100, 50}};
+    CHECK(nearestSegment(pts, {50, 3}).first == 0);
+    CHECK(nearestSegment(pts, {98, 30}).first == 1);
+}

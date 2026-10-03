@@ -325,8 +325,19 @@ notDrawing:
         event->accept();
         return;
     }
-    if (event->button() == Qt::LeftButton && !m_spaceHeld) {
+    if (event->button() == Qt::LeftButton && !m_spaceHeld && !m_drawing) {
         for (QGraphicsItem* it : items(pos)) {
+            if (it->type() == CornerHandle::Type) {
+                auto* h = static_cast<CornerHandle*>(it);
+                m_dragWire = static_cast<WireItem*>(h->parentItem());
+                m_dragCorner = h->corner();
+                m_dragRoute = chiply::simplifyPolyline(m_dragWire->route());
+                m_dragResult = m_dragRoute;
+                m_press = Press::Corner;
+                m_pressPos = pos;
+                event->accept();
+                return;
+            }
             if (it->type() != SegmentHandle::Type)
                 continue;
             auto* h = static_cast<SegmentHandle*>(it);
@@ -356,6 +367,24 @@ notDrawing:
         viewport()->setCursor(Qt::ClosedHandCursor);
         event->accept();
         return;
+    }
+    if (event->button() == Qt::LeftButton && (event->modifiers() & Qt::ControlModifier) && !m_drawing) {
+        // Ctrl/Cmd+drag on a wire splits the segment there; a plain
+        // Ctrl/Cmd+click (no drag) still toggles selection on release.
+        QGraphicsItem* it = selectableAt(pos);
+        if (it && it->type() == WireItem::Type) {
+            m_dragWire = static_cast<WireItem*>(it);
+            m_dragRoute = chiply::simplifyPolyline(m_dragWire->route());
+            const QPointF sp = mapToScene(pos);
+            m_dragSegment = chiply::nearestSegment(m_dragRoute, {sp.x(), sp.y()}).first;
+            m_dragResult = m_dragRoute;
+            m_press = Press::Split;
+            m_pressPos = pos;
+            m_pressItem = it;
+            m_lastMods = event->modifiers();
+            event->accept();
+            return;
+        }
     }
     if (event->button() == Qt::LeftButton) {
         m_pressPos = pos;
@@ -390,6 +419,21 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
     }
     if (m_press == Press::Handle) {
         updateHandleDrag(pos, event->modifiers());
+        event->accept();
+        return;
+    }
+    if ((m_press == Press::Corner || m_press == Press::Split) && m_dragWire) {
+        if (m_press == Press::Split && (pos - m_pressPos).manhattanLength() <= 4) {
+            event->accept();
+            return;
+        }
+        // Snap like everything else; Ctrl/Cmd is the split modifier here,
+        // so only Alt changes the step.
+        auto mods = event->modifiers() & ~Qt::KeyboardModifiers(Qt::ControlModifier);
+        const chiply::Point q = snapped(mapToScene(pos), mods);
+        m_dragResult = (m_press == Press::Corner) ? chiply::moveCorner(m_dragRoute, m_dragCorner, q)
+                                                  : chiply::splitSegment(m_dragRoute, m_dragSegment, q);
+        m_dragWire->showPreview(m_dragResult);
         event->accept();
         return;
     }
@@ -465,6 +509,21 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
     if (m_panning && (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
         m_panning = false;
         viewport()->setCursor(m_spaceHeld ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton && (m_press == Press::Corner || m_press == Press::Split)) {
+        const Press p = m_press;
+        m_press = Press::None;
+        WireItem* w = m_dragWire;
+        m_dragWire = nullptr;
+        if (w && m_dragResult != m_dragRoute) {
+            emit wireRouteEdited(w->index(), m_dragResult);
+        } else if (w) {
+            w->showPreview(w->route());
+            if (p == Press::Split)
+                toggleSelected(w); // it was just a Ctrl/Cmd+click
+        }
         event->accept();
         return;
     }
@@ -799,7 +858,7 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
             m_pressItem = nullptr;
             viewport()->setCursor(Qt::ArrowCursor);
             emit moveEnded(false);
-        } else if (m_press == Press::Handle) {
+        } else if (m_press == Press::Handle || m_press == Press::Corner || m_press == Press::Split) {
             if (m_dragWire)
                 m_dragWire->showPreview(m_dragWire->route());
             m_dragWire = nullptr;
