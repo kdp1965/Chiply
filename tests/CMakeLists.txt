@@ -14,6 +14,7 @@ add_executable(chiply_tests
   test_netlist.cpp
   test_sim.cpp
   test_sim_cosim.cpp
+  test_sim_board.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
@@ -98,3 +99,6 @@ endif()
 add_test(NAME cli_sim_template
   COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
           ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template.sim)
+add_test(NAME cli_sim_template_board
+  COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
+          ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_board.sim)

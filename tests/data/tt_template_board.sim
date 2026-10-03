@@ -1,0 +1,14 @@
+# Tiny Tapeout template on its board: DIP switches -> chip -> 7-segment.
+segments sevseg1 0f        # all switches off: A..D lit (inverted zeros)
+switch sw1 0 1             # switch 1 on: segment A goes dark
+segments sevseg1 0e
+switch sw1 4 1             # switch 5 on: segment E lights
+segments sevseg1 1e
+press btn2                 # RESET pulls RST_N low
+expect ttin:RST_N 0
+release btn2
+expect ttin:RST_N 1
+press btn1                 # Step button raises CLK (slide switch on Step)
+expect ttin:CLK 1
+release btn1
+expect ttin:CLK 0

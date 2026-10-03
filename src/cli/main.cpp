@@ -35,6 +35,8 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
     for (const std::string& l : lines)
         if (l.rfind("option x-start", 0) == 0)
             opt.flopsStartUnknown = true;
+        else if (l.rfind("option chip-only", 0) == 0)
+            opt.board = false;
     Simulator sim(nl, opt);
     for (const std::string& w : sim.warnings())
         std::cerr << "warning: " << w << "\n";
@@ -89,6 +91,24 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
                 ++failures;
                 std::cout << where << "expected " << a << " = " << toChar(v) << ", got " << toChar(got) << "\n";
             }
+        } else if ((cmd == "press" || cmd == "release") && in >> a) {
+            if (!sim.setPressed(a, cmd == "press"))
+                throw std::runtime_error(where + "no pushbutton \"" + a + "\"");
+        } else if (cmd == "switch" && in >> a >> b) {
+            std::string on;
+            in >> on;
+            if (!sim.setSwitch(a, std::stoi(b), on == "1"))
+                throw std::runtime_error(where + "no switch \"" + a + "\" index " + b);
+        } else if (cmd == "segments" && in >> a >> b) {
+            auto got = sim.segments(a);
+            if (!got)
+                throw std::runtime_error(where + "no 7-segment display \"" + a + "\"");
+            const unsigned want = unsigned(std::stoul(b, nullptr, 16));
+            if (*got != want) {
+                ++failures;
+                std::cout << where << "expected segments of " << a << " = " << std::hex << want << ", got " << *got
+                          << std::dec << "\n";
+            }
         } else if (cmd == "print") {
             while (in >> a)
                 std::cout << a << " = " << toChar(sim.value(pin(a))) << "  ";
@@ -113,10 +133,14 @@ int usage()
                  "\n"
                  "sim script, one command per line (# comments):\n"
                  "  option x-start        flip-flops start unknown (default: 0, like Wokwi)\n"
+                 "  option chip-only      Tiny Tapeout blocks passive: drive IN*/CLK/RST_N directly\n"
                  "  set <part:PIN> <0|1|x|z>\n"
                  "  clock <part:PIN> [n]  n rising edges (default 1), 0-1-0 each\n"
                  "  run <ps>              advance simulated time\n"
                  "  expect <part:PIN> <0|1|x|z>\n"
+                 "  press <button> / release <button>\n"
+                 "  switch <part> <index> <0|1>   DIP switch index 0..7; slide switch index 0\n"
+                 "  segments <7seg> <hex>          expect lit segments (bit 0 = A .. bit 7 = DP)\n"
                  "  print <part:PIN>...\n";
     return 2;
 }

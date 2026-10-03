@@ -101,6 +101,7 @@ TEST_CASE("built-in simulator matches Icarus on Wokwi's Verilog export")
     const Netlist nl = Netlist::build(doc, PartLibrary::builtin());
     Options opt;
     opt.flopsStartUnknown = true;
+    opt.board = false; // drive the chip's pins directly, like the Verilog testbench
     Simulator sim(nl, opt);
 
     std::map<std::string, std::string> uio; // bit -> part (last wins, like the export)

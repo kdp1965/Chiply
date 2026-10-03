@@ -1,18 +1,14 @@
 #include "sim/Simulator.h"
 
+#include <cctype>
+#include <cmath>
 #include <map>
+#include <numeric>
 #include <set>
 
 namespace chiply::sim {
 
 namespace {
-
-// Parts the kernel does not simulate itself (board and display parts are
-// handled by the board layer, M7c); no warning for these.
-const std::set<std::string> kPassiveTypes = {
-    "wokwi-text", "wokwi-junction", "board-tt-block-input", "board-tt-block-input-8", "board-tt-block-output",
-    "board-tt-block-bidirectional-io", "wokwi-clock-generator", "wokwi-pushbutton", "wokwi-slide-switch",
-    "wokwi-dip-switch-8", "wokwi-resistor", "wokwi-led", "wokwi-7segment", "wokwi-logic-analyzer", "wokwi-pi-pico"};
 
 bool isFlop(int k)
 {
@@ -26,7 +22,36 @@ bool rising(V prev, V cur)
     return (prev == V::L && cur != V::L) || (prev == V::X && cur == V::H);
 }
 
+// Parts with no simulation behaviour at all (no warning).
+const std::set<std::string> kInert = {"wokwi-text", "wokwi-junction", "wokwi-led", "wokwi-7segment",
+                                      "wokwi-logic-analyzer", "wokwi-pi-pico"};
+
 } // namespace
+
+std::optional<double> parseFrequency(const std::string& s)
+{
+    std::size_t i = 0;
+    while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) || s[i] == '.'))
+        ++i;
+    if (i == 0)
+        return std::nullopt;
+    double v;
+    try {
+        v = std::stod(s.substr(0, i));
+    } catch (...) {
+        return std::nullopt;
+    }
+    std::string unit = s.substr(i);
+    while (!unit.empty() && unit.front() == ' ')
+        unit.erase(unit.begin());
+    if (!unit.empty() && (unit.front() == 'k' || unit.front() == 'K'))
+        v *= 1e3;
+    else if (!unit.empty() && unit.front() == 'M')
+        v *= 1e6;
+    else if (!unit.empty() && unit.front() != 'H' && unit.front() != 'h')
+        return std::nullopt;
+    return v > 0 ? std::optional<double>(v) : std::nullopt;
+}
 
 Simulator::Simulator(const Netlist& nl, Options opt)
     : m_nl(nl)
@@ -38,12 +63,9 @@ Simulator::Simulator(const Netlist& nl, Options opt)
     m_groupOf.resize(nets);
     m_groupNets.resize(nets);
     m_groupValue.assign(nets, V::Z);
+    m_groupStrength.assign(nets, Strength::None);
     m_groupDirty.assign(nets, 0);
     m_extSlot.assign(nets, -1);
-    for (std::size_t n = 0; n < nets; ++n) {
-        m_groupOf[n] = int(n);
-        m_groupNets[n] = {int(n)};
-    }
 
     static const std::map<std::string, Kind> kinds = {
         {"wokwi-gate-and-2", Kind::And},   {"wokwi-gate-or-2", Kind::Or},     {"wokwi-gate-xor-2", Kind::Xor},
@@ -52,7 +74,6 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         {"wokwi-flip-flop-d", Kind::Dff},  {"wokwi-flip-flop-dr", Kind::Dffr}, {"wokwi-flip-flop-dsr", Kind::Dffsr},
         {"wokwi-flip-flop-sr", Kind::Srff}, {"wokwi-vcc", Kind::Const},       {"wokwi-gnd", Kind::Const},
     };
-    // Input pin order per kind (see evaluate()).
     static const std::map<Kind, std::vector<const char*>> inputs = {
         {Kind::And, {"A", "B"}},  {Kind::Or, {"A", "B"}},   {Kind::Xor, {"A", "B"}},         {Kind::Nand, {"A", "B"}},
         {Kind::Nor, {"A", "B"}},  {Kind::Xnor, {"A", "B"}}, {Kind::Not, {"IN"}},             {Kind::Buf, {"IN"}},
@@ -61,48 +82,97 @@ Simulator::Simulator(const Netlist& nl, Options opt)
     };
 
     for (const Device& d : nl.devices) {
-        auto k = kinds.find(d.type);
-        if (k == kinds.end()) {
-            if (!kPassiveTypes.count(d.type))
-                m_warnings.push_back("not simulated: " + d.partId + " (" + d.type + ")");
-            continue;
-        }
-        auto pinNet = [&](const char* name) {
+        auto pinNet = [&](const std::string& name) {
             for (std::size_t i = 0; i < d.pinNames.size(); ++i)
                 if (d.pinNames[i] == name)
                     return d.pinNets[i];
             return -1;
         };
-        Prim p;
-        p.kind = k->second;
-        const int idx = int(m_prims.size());
-        const auto& ins = inputs.at(p.kind);
-        for (std::size_t i = 0; i < ins.size(); ++i) {
-            p.in[i] = pinNet(ins[i]);
-            if (p.in[i] >= 0)
-                m_fanout[size_t(p.in[i])].push_back(idx);
+        // A primitive reading `ins` and driving `outs` (strong unless weak).
+        auto addPrim = [&](Kind k, std::vector<int> ins, std::vector<int> outs, bool weak = false) {
+            Prim p;
+            p.kind = k;
+            const int idx = int(m_prims.size());
+            for (std::size_t i = 0; i < ins.size() && i < 4; ++i) {
+                p.in[i] = ins[i];
+                if (ins[i] >= 0)
+                    m_fanout[size_t(ins[i])].push_back(idx);
+            }
+            for (std::size_t i = 0; i < outs.size() && i < 2; ++i)
+                p.out[i] = addSlot(outs[i], weak);
+            m_prims.push_back(p);
+            return idx;
+        };
+        const std::string attr = [&](const char* key) {
+            return (d.attrs && d.attrs->contains(key) && (*d.attrs)[key].is_string()) ? (*d.attrs)[key].get<std::string>()
+                                                                                      : std::string();
+        }("value");
+
+        auto k = kinds.find(d.type);
+        if (k != kinds.end()) {
+            std::vector<int> ins;
+            for (const char* n : inputs.at(k->second))
+                ins.push_back(pinNet(n));
+            if (k->second == Kind::Const) {
+                const bool vcc = d.type == "wokwi-vcc";
+                const int idx = addPrim(Kind::Const, {}, {pinNet(vcc ? "VCC" : "GND")});
+                m_prims[size_t(idx)].q = vcc ? V::H : V::L;
+            } else if (isFlop(int(k->second))) {
+                addPrim(k->second, ins, {pinNet("Q"), pinNet("NOTQ")});
+            } else {
+                const int idx = addPrim(k->second, ins, {pinNet("OUT")});
+                m_prims[size_t(idx)].delay = m_opt.gateDelay;
+            }
+        } else if (!m_opt.board && d.type.rfind("board-tt-block", 0) == 0) {
+            // chip-only mode: the testbench drives the design-side pins
+        } else if (d.type == "board-tt-block-input" || d.type == "board-tt-block-input-8") {
+            for (int b = 0; b < 8; ++b)
+                addPrim(Kind::TtIn, {pinNet("EXTIN" + std::to_string(b))}, {pinNet("IN" + std::to_string(b))});
+            if (d.type == "board-tt-block-input") {
+                addPrim(Kind::TtIn, {pinNet("EXTCLK")}, {pinNet("CLK")});
+                addPrim(Kind::TtIn, {pinNet("EXTRST_N")}, {pinNet("RST_N")});
+            }
+        } else if (d.type == "board-tt-block-output") {
+            for (int b = 0; b < 8; ++b)
+                addPrim(Kind::TtOut, {pinNet("OUT" + std::to_string(b))}, {pinNet("EXTOUT" + std::to_string(b))});
+        } else if (d.type == "board-tt-block-bidirectional-io") {
+            addPrim(Kind::TtTri, {pinNet("OUT"), pinNet("OE")}, {pinNet("UIO")});
+            addPrim(Kind::TtIn, {pinNet("UIO")}, {pinNet("IN")});
+        } else if (d.type == "wokwi-resistor") {
+            addPrim(Kind::Res, {pinNet("1"), pinNet("2")}, {pinNet("1"), pinNet("2")}, true);
+        } else if (d.type == "wokwi-pushbutton") {
+            m_switches.push_back({d.partId, d.type, {{pinNet("1.l"), pinNet("2.l")}}, {}, {false}});
+        } else if (d.type == "wokwi-slide-switch") {
+            // Wokwi: value "1" connects the middle pin to pin 3, else to pin 1.
+            m_switches.push_back({d.partId, d.type, {{pinNet("2"), pinNet("3")}}, {{pinNet("2"), pinNet("1")}}, {attr == "1"}});
+        } else if (d.type == "wokwi-dip-switch-8") {
+            Switch s{d.partId, d.type, {}, {}, std::vector<bool>(8, false)};
+            for (int b = 1; b <= 8; ++b)
+                s.closedWhenOn.push_back({pinNet(std::to_string(b) + "a"), pinNet(std::to_string(b) + "b")});
+            m_switches.push_back(std::move(s));
+        } else if (d.type == "wokwi-clock-generator") {
+            ClockGen c;
+            c.partId = d.partId;
+            std::string f = (d.attrs && d.attrs->contains("frequency") && (*d.attrs)["frequency"].is_string())
+                ? (*d.attrs)["frequency"].get<std::string>()
+                : std::string("10k");
+            c.hz = parseFrequency(f).value_or(10000.0);
+            c.half = std::max<Time>(1, Time(std::llround(1e12 / (2 * c.hz))));
+            c.slot = addSlot(pinNet("CLK"));
+            m_clocks.push_back(c);
+        } else if (!kInert.count(d.type)) {
+            m_warnings.push_back("not simulated: " + d.partId + " (" + d.type + ")");
         }
-        if (p.kind == Kind::Const) {
-            p.q = d.type == "wokwi-vcc" ? V::H : V::L;
-            p.out[0] = addSlot(pinNet(d.type == "wokwi-vcc" ? "VCC" : "GND"));
-        } else if (isFlop(int(p.kind))) {
-            p.out[0] = addSlot(pinNet("Q"));
-            p.out[1] = addSlot(pinNet("NOTQ"));
-        } else {
-            p.out[0] = addSlot(pinNet("OUT"));
-            p.delay = m_opt.gateDelay;
-        }
-        m_prims.push_back(p);
     }
     m_queued.assign(m_prims.size(), 0);
     initialise();
 }
 
-int Simulator::addSlot(int net)
+int Simulator::addSlot(int net, bool weak)
 {
     if (net < 0)
         return -1;
-    m_slots.push_back({net, V::Z});
+    m_slots.push_back({net, V::Z, weak});
     m_netSlots[size_t(net)].push_back(int(m_slots.size()) - 1);
     return int(m_slots.size()) - 1;
 }
@@ -127,31 +197,49 @@ void Simulator::enqueue(int prim)
     }
 }
 
-void Simulator::resolveGroup(int g)
+void Simulator::resolveGroup(int g, bool notify)
 {
-    bool any = false, conflict = false;
-    V v = V::Z;
+    bool strong = false, weak = false, strongConflict = false, weakConflict = false;
+    V sv = V::Z, wv = V::Z;
     for (int net : m_groupNets[size_t(g)]) {
         for (int s : m_netSlots[size_t(net)]) {
-            const V sv = m_slots[size_t(s)].v;
-            if (sv == V::Z)
+            const Slot& slot = m_slots[size_t(s)];
+            if (slot.v == V::Z)
                 continue;
-            if (!any) {
-                v = sv;
-                any = true;
-            } else if (sv != v) {
-                conflict = true;
+            if (slot.weak) {
+                if (!weak) {
+                    wv = slot.v;
+                    weak = true;
+                } else if (slot.v != wv) {
+                    weakConflict = true;
+                }
+            } else {
+                if (!strong) {
+                    sv = slot.v;
+                    strong = true;
+                } else if (slot.v != sv) {
+                    strongConflict = true;
+                }
             }
         }
     }
-    if (conflict)
-        v = V::X;
-    if (v == m_groupValue[size_t(g)])
+    V v = V::Z;
+    Strength st = Strength::None;
+    if (strong) {
+        v = strongConflict ? V::X : sv;
+        st = Strength::Strong;
+    } else if (weak) {
+        v = weakConflict ? V::X : wv;
+        st = Strength::Weak;
+    }
+    if (v == m_groupValue[size_t(g)] && st == m_groupStrength[size_t(g)])
         return;
     m_groupValue[size_t(g)] = v;
-    for (int net : m_groupNets[size_t(g)])
-        for (int p : m_fanout[size_t(net)])
-            enqueue(p);
+    m_groupStrength[size_t(g)] = st;
+    if (notify)
+        for (int net : m_groupNets[size_t(g)])
+            for (int p : m_fanout[size_t(net)])
+                enqueue(p);
 }
 
 void Simulator::flush()
@@ -162,6 +250,65 @@ void Simulator::flush()
         resolveGroup(g);
     }
     m_dirtyGroups.clear();
+}
+
+void Simulator::regroup()
+{
+    // Nets joined by closed switches form one node.
+    const std::size_t nets = m_groupOf.size();
+    std::vector<V> oldV(nets);
+    std::vector<Strength> oldS(nets);
+    for (std::size_t n = 0; n < nets; ++n) {
+        oldV[n] = m_groupValue[size_t(m_groupOf[n])];
+        oldS[n] = m_groupStrength[size_t(m_groupOf[n])];
+    }
+    std::vector<int> parent(nets);
+    std::iota(parent.begin(), parent.end(), 0);
+    auto find = [&](int x) {
+        while (parent[size_t(x)] != x)
+            x = parent[size_t(x)] = parent[size_t(parent[size_t(x)])];
+        return x;
+    };
+    auto join = [&](const std::pair<int, int>& e) {
+        if (e.first >= 0 && e.second >= 0)
+            parent[size_t(find(e.first))] = find(e.second);
+    };
+    for (const Switch& s : m_switches) {
+        for (std::size_t i = 0; i < s.closedWhenOn.size(); ++i)
+            if (s.on[std::min(i, s.on.size() - 1)])
+                join(s.closedWhenOn[i]);
+        for (std::size_t i = 0; i < s.closedWhenOff.size(); ++i)
+            if (!s.on[std::min(i, s.on.size() - 1)])
+                join(s.closedWhenOff[i]);
+    }
+    for (auto& g : m_groupNets)
+        g.clear();
+    for (std::size_t n = 0; n < nets; ++n) {
+        m_groupOf[n] = find(int(n));
+        m_groupNets[size_t(m_groupOf[n])].push_back(int(n));
+    }
+    for (std::size_t g = 0; g < nets; ++g) {
+        m_groupDirty[g] = 0;
+        m_groupValue[g] = V::Z;
+        m_groupStrength[g] = Strength::None;
+        if (!m_groupNets[g].empty())
+            resolveGroup(int(g), false);
+    }
+    m_dirtyGroups.clear();
+    for (std::size_t n = 0; n < nets; ++n) {
+        const int g = m_groupOf[n];
+        if (m_groupValue[size_t(g)] != oldV[n] || m_groupStrength[size_t(g)] != oldS[n])
+            for (int p : m_fanout[n])
+                enqueue(p);
+    }
+}
+
+V Simulator::strongValue(int net) const
+{
+    if (net < 0)
+        return V::Z;
+    const int g = m_groupOf[size_t(net)];
+    return m_groupStrength[size_t(g)] == Strength::Strong ? m_groupValue[size_t(g)] : V::Z;
 }
 
 void Simulator::evaluate(int idx)
@@ -186,12 +333,25 @@ void Simulator::evaluate(int idx)
     case Kind::Buf: out(in(val(0))); return;
     case Kind::Mux: out(vmux(val(0), val(1), val(2))); return;
     case Kind::Const: setSlot(p.out[0], p.q); return;
+    case Kind::TtIn: { // a floating pad reads 0, as on Wokwi
+        const V v = val(0);
+        setSlot(p.out[0], v == V::Z ? V::L : v);
+        return;
+    }
+    case Kind::TtOut: setSlot(p.out[0], val(0)); return;
+    case Kind::TtTri: {
+        const V oe = in(val(1));
+        setSlot(p.out[0], oe == V::H ? in(val(0)) : oe == V::L ? V::Z : V::X);
+        return;
+    }
+    case Kind::Res:
+        setSlot(p.out[0], strongValue(p.in[1]));
+        setSlot(p.out[1], strongValue(p.in[0]));
+        return;
     default: break;
     }
 
-    // Flip-flops: compute the next state now, apply it in the update phase
-    // (like Verilog non-blocking assignments), so clocks that pass through
-    // gates still see the old data.
+    // Flip-flops: compute the next state now, apply it in the update phase.
     const V clk = val(1);
     const bool edge = !m_initialising && rising(p.prevClk, clk);
     p.prevClk = clk;
@@ -201,13 +361,13 @@ void Simulator::evaluate(int idx)
         if (edge)
             next = in(val(0));
         break;
-    case Kind::Dffr: // cells.v dffr_cell: async reset
+    case Kind::Dffr:
         if (in(val(2)) == V::H)
             next = V::L;
         else if (edge)
             next = in(val(0));
         break;
-    case Kind::Dffsr: // cells.v dffsr_cell: async reset wins over set
+    case Kind::Dffsr:
         if (in(val(3)) == V::H)
             next = V::L;
         else if (in(val(2)) == V::H)
@@ -215,7 +375,7 @@ void Simulator::evaluate(int idx)
         else if (edge)
             next = in(val(0));
         break;
-    case Kind::Srff: { // Wokwi flip-flop-sr: clocked set/reset
+    case Kind::Srff:
         if (edge) {
             const V s = in(val(0)), r = in(val(2));
             if (s == V::H && r == V::L)
@@ -228,7 +388,6 @@ void Simulator::evaluate(int idx)
                 next = V::X;
         }
         break;
-    }
     default: break;
     }
     if (m_initialising) {
@@ -258,7 +417,6 @@ bool Simulator::settle()
             return false;
         }
         if (m_active.empty()) {
-            // Update phase: apply flip-flop next states.
             std::vector<int> nba;
             nba.swap(m_nba);
             for (int idx : nba) {
@@ -286,11 +444,25 @@ bool Simulator::advance(Time dt)
 {
     bool ok = settle();
     const Time target = m_now + dt;
-    while (!m_timed.empty() && m_timed.top().t <= target) {
-        m_now = m_timed.top().t;
+    for (;;) {
+        Time next = target + 1;
+        if (!m_timed.empty())
+            next = std::min(next, m_timed.top().t);
+        for (const ClockGen& c : m_clocks)
+            next = std::min(next, c.next);
+        if (next > target)
+            break;
+        m_now = next;
         while (!m_timed.empty() && m_timed.top().t == m_now) {
             setSlot(m_timed.top().slot, m_timed.top().v);
             m_timed.pop();
+        }
+        for (ClockGen& c : m_clocks) {
+            if (c.next == m_now) {
+                c.v = c.v == V::H ? V::L : V::H;
+                setSlot(c.slot, c.v);
+                c.next += c.half;
+            }
         }
         ok = settle() && ok;
     }
@@ -321,15 +493,18 @@ void Simulator::initialise()
             p.pending = false;
         }
     }
+    for (ClockGen& c : m_clocks) {
+        c.v = V::L;
+        c.next = m_now + c.half;
+        setSlot(c.slot, V::L);
+    }
     m_nba.clear();
+    regroup();
     m_initialising = true;
     for (std::size_t i = 0; i < m_prims.size(); ++i)
         enqueue(int(i));
-    // First pass: settle combinational logic with flip-flops held at their
-    // start value and clocks captured without edges.
     settle();
     m_initialising = false;
-    // Second pass: async set/reset that are already active take effect.
     for (std::size_t i = 0; i < m_prims.size(); ++i)
         if (isFlop(int(m_prims[i].kind)))
             enqueue(int(i));
@@ -339,6 +514,86 @@ void Simulator::initialise()
 void Simulator::reset()
 {
     initialise();
+}
+
+bool Simulator::setPressed(const std::string& partId, bool pressed)
+{
+    for (Switch& s : m_switches)
+        if (s.partId == partId && s.type == "wokwi-pushbutton") {
+            if (s.on[0] != pressed) {
+                s.on[0] = pressed;
+                regroup();
+                settle();
+            }
+            return true;
+        }
+    return false;
+}
+
+bool Simulator::setSwitch(const std::string& partId, int index, bool on)
+{
+    for (Switch& s : m_switches) {
+        if (s.partId != partId)
+            continue;
+        const std::size_t i = s.type == "wokwi-dip-switch-8" ? std::size_t(index) : 0;
+        if (i >= s.on.size())
+            return false;
+        if (s.on[i] != on) {
+            s.on[i] = on;
+            regroup();
+            settle();
+        }
+        return true;
+    }
+    return false;
+}
+
+std::optional<bool> Simulator::switchState(const std::string& partId, int index) const
+{
+    for (const Switch& s : m_switches)
+        if (s.partId == partId) {
+            const std::size_t i = s.type == "wokwi-dip-switch-8" ? std::size_t(index) : 0;
+            if (i < s.on.size())
+                return s.on[i];
+        }
+    return std::nullopt;
+}
+
+std::optional<bool> Simulator::ledLit(const std::string& partId) const
+{
+    const int dev = m_nl.deviceOf(partId);
+    if (dev < 0 || m_nl.devices[size_t(dev)].type != "wokwi-led")
+        return std::nullopt;
+    return value(netOf({partId, "A"})) == V::H && value(netOf({partId, "C"})) == V::L;
+}
+
+std::optional<unsigned> Simulator::segments(const std::string& partId) const
+{
+    const int dev = m_nl.deviceOf(partId);
+    if (dev < 0 || m_nl.devices[size_t(dev)].type != "wokwi-7segment")
+        return std::nullopt;
+    const Device& d = m_nl.devices[size_t(dev)];
+    std::string common = "anode"; // wokwi-elements default
+    if (d.attrs && d.attrs->contains("common") && (*d.attrs)["common"].is_string())
+        common = (*d.attrs)["common"].get<std::string>();
+    const V com = value(netOf({partId, "COM.1"}));
+    unsigned bits = 0;
+    static const char* names[] = {"A", "B", "C", "D", "E", "F", "G", "DP"};
+    for (int i = 0; i < 8; ++i) {
+        const V seg = value(netOf({partId, names[i]}));
+        const bool lit = common == "cathode" ? (seg == V::H && com == V::L) : (seg == V::L && com == V::H);
+        if (lit)
+            bits |= 1u << i;
+    }
+    return bits;
+}
+
+std::vector<Simulator::ClockInfo> Simulator::clocks() const
+{
+    std::vector<ClockInfo> out;
+    for (const ClockGen& c : m_clocks)
+        out.push_back({c.partId, c.hz});
+    return out;
 }
 
 } // namespace chiply::sim
