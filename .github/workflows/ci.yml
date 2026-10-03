@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: Linux
+          - os: macos-15
+            name: macOS
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build qt6-base-dev libgl1-mesa-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja qtbase
+
+      - name: Configure
+        run: |
+          PREFIX=""
+          if [ "$RUNNER_OS" = "macOS" ]; then PREFIX="-DCMAKE_PREFIX_PATH=$(brew --prefix qtbase)"; fi
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release $PREFIX
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Round-trip reference diagrams
+        run: |
+          for f in reference/*.diagram.json; do build/src/cli/chiply-cli check-roundtrip "$f"; done

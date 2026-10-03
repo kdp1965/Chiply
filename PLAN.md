@@ -178,7 +178,7 @@ Licensing: Qt open source (LGPLv3, dynamic link), `wokwi-elements` art (MIT, kee
 chiply/
   CMakeLists.txt
   cmake/                    # FindVerilator.cmake, deps.cmake
-  src/core/                 # no GUI dependency (QtCore only)
+  src/core/                 # plain C++20 + nlohmann/json, no Qt at all
     Document.h/.cpp         # parts, wires, metadata, dirty tracking, change signals
     Part.h  Wire.h  PinRef.h
     PartLibrary.h/.cpp      # loads part definitions (JSON) -> PartType registry
@@ -554,8 +554,10 @@ Suggested order of value: M0–M3 first (you can already open and inspect your d
 Found: Verilator 5.050, CMake 4.3.2, Ninja, Apple clang 21, Icarus Verilog, GTKWave (MacPorts), Qt Creator and Qt3DStudio under `~/Qt` but **no Qt 6 kit**, Homebrew at `/usr/local` (Intel). To build Chiply:
 
 ```bash
-brew install qt ninja            # Qt 6.x via Homebrew (decided)
-cmake -S chiply -B chiply/build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+xcode-select --install           # Homebrew needs the Command Line Tools on macOS 26, Xcode alone is not enough
+brew install qtbase qtsvg ninja  # Qt 6 via Homebrew (decided); qtbase/qtsvg instead of the full `qt`,
+                                 # which also builds Qt WebEngine and Rust from source on an Intel Mac
+cmake -S chiply -B chiply/build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix qtbase)"
 cmake --build chiply/build
 ```
 
@@ -584,7 +586,7 @@ nlohmann/json and Catch2 come in through CMake FetchContent, no manual install.
 | 3 | Chiply-only metadata | Sidecar `name.chiply.json`; `diagram.json` stays pure Wokwi | 3.3, 3.6 |
 | 4 | Buses | Single-bit wires only for now, so any design without custom blocks pastes into Wokwi and renders. Bus wires may be added later | 7 |
 | 5 | Extra parts | Add `wokwi-logic-analyzer` (with VCD capture in simulation) and `wokwi-pi-pico` (place and wire only; firmware emulation is a separate project) | 2.4, 6, M2 |
-| 6 | Qt 6 install | `brew install qt` | 10 |
+| 6 | Qt 6 install | Homebrew: `brew install qtbase qtsvg` (the modules of `qt` that Chiply uses) | 10 |
 | 7 | License | BSD 3-Clause | 3.1, M0 |
 | 8 | Keys | Pure Wokwi keys, plus the additions in decisions 1 and 2 | 4.9 |
 
