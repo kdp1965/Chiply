@@ -27,6 +27,10 @@
 #include <QClipboard>
 #include <QCursor>
 #include <QTimer>
+#include <QPainter>
+#include <QPainterPath>
+#include <QToolButton>
+#include <cmath>
 #include <QSettings>
 #include <QGraphicsScene>
 #include <QUndoGroup>
@@ -106,6 +110,20 @@ void MainWindow::buildMenus()
     tb->addAction(tr("Fit"), this, [this] { if (auto* s = current()) s->view()->fitContents(); });
     tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
     tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
+    // Right end: light/dark switch (sun in light mode, moon in dark mode).
+    auto* spacer = new QWidget(tb);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
+    m_themeButton = new QToolButton(tb);
+    m_themeButton->setObjectName("themeButton");
+    m_themeButton->setIconSize(QSize(28, 28));
+    m_themeButton->setAutoRaise(true);
+    connect(m_themeButton, &QToolButton::clicked, this, [] {
+        Theme::instance().setMode(Theme::instance().isDark() ? Theme::Mode::Light : Theme::Mode::Dark);
+    });
+    tb->addWidget(m_themeButton);
+    updateThemeButton();
+    connect(&Theme::instance(), &Theme::changed, this, &MainWindow::updateThemeButton);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
     QAction* undo = m_undoGroup->createUndoAction(this, tr("&Undo"));
@@ -162,6 +180,8 @@ void MainWindow::buildMenus()
         a->setChecked(Theme::instance().mode() == m);
         themeGroup->addAction(a);
         connect(a, &QAction::triggered, this, [m] { Theme::instance().setMode(m); });
+        // Keep the check mark in step with the toolbar switch.
+        connect(&Theme::instance(), &Theme::changed, a, [a, m] { a->setChecked(Theme::instance().mode() == m); });
     }
     QMenu* hoverMenu = view->addMenu(tr("&Hover Text Size"));
     auto* hoverGroup = new QActionGroup(this);
@@ -261,6 +281,52 @@ int MainWindow::addSession(EditorSession* s)
     m_tabs->setCurrentIndex(i);
     updateTitles();
     return i;
+}
+
+namespace {
+// Sun or moon, drawn as shapes (not colour alone) so they read for
+// colour-blind users too.
+QIcon themeIcon(bool dark)
+{
+    const int s = 64;
+    QPixmap pm(s, s);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QPointF c(s / 2.0, s / 2.0);
+    if (dark) {
+        // Crescent moon: a disc with an offset disc cut out.
+        QPainterPath moon;
+        moon.addEllipse(c, 22, 22);
+        QPainterPath bite;
+        bite.addEllipse(c + QPointF(12, -9), 19, 19);
+        // Pale fill with a dark outline: visible on light and dark toolbars.
+        p.setPen(QPen(QColor(0x3a, 0x3a, 0x3a), 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(QColor(0xf5, 0xe6, 0x9a));
+        p.drawPath(moon.subtracted(bite));
+    } else {
+        // Sun: disc with eight rays.
+        p.setPen(QPen(QColor(0xf2, 0x9c, 0x00), 5, Qt::SolidLine, Qt::RoundCap));
+        for (int i = 0; i < 8; ++i) {
+            const double a = i * M_PI / 4;
+            p.drawLine(c + QPointF(std::cos(a) * 20, std::sin(a) * 20), c + QPointF(std::cos(a) * 29, std::sin(a) * 29));
+        }
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0xff, 0xc1, 0x07));
+        p.drawEllipse(c, 14, 14);
+    }
+    return QIcon(pm);
+}
+} // namespace
+
+void MainWindow::updateThemeButton()
+{
+    if (!m_themeButton)
+        return;
+    const bool dark = Theme::instance().isDark();
+    m_themeButton->setIcon(themeIcon(dark));
+    m_themeButton->setProperty("dark", dark);
+    m_themeButton->setToolTip(dark ? tr("Dark mode - click for light mode") : tr("Light mode - click for dark mode"));
 }
 
 void MainWindow::addPart()

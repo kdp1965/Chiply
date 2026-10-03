@@ -7,7 +7,10 @@
 #include <QGraphicsScene>
 #include "core/Geometry.h"
 
+#include "Theme.h"
+
 #include <QDockWidget>
+#include <QToolButton>
 #include <QSettings>
 #include <QTabWidget>
 #include <QTest>
@@ -80,6 +83,25 @@ private slots:
         QCOMPARE(w2.findChild<QDockWidget*>("inspector")->width(), chosen);
         w2.close();
         QSettings().clear();
+    }
+
+    void themeButtonTogglesAndPersists()
+    {
+        Theme::instance().setMode(Theme::Mode::Light);
+        MainWindow w;
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        auto* b = w.findChild<QToolButton*>("themeButton");
+        QVERIFY(b);
+        QCOMPARE(b->property("dark").toBool(), false); // sun
+        b->click();
+        QVERIFY(Theme::instance().isDark());
+        QCOMPARE(b->property("dark").toBool(), true); // moon
+        QCOMPARE(QSettings().value("appearance/theme").toString(), QStringLiteral("dark"));
+        b->click();
+        QVERIFY(!Theme::instance().isDark());
+        QCOMPARE(QSettings().value("appearance/theme").toString(), QStringLiteral("light"));
+        w.close();
     }
 
     void selectionDoesNotShiftCanvas()
