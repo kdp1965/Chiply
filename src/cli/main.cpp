@@ -34,7 +34,11 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
     Options opt;
     for (const std::string& l : lines)
         if (l.rfind("option x-start", 0) == 0)
-            opt.flopsStartUnknown = true;
+            opt.flopStart = FlopStart::Unknown;
+        else if (l.rfind("option zero-start", 0) == 0)
+            opt.flopStart = FlopStart::Zero;
+        else if (l.rfind("option seed ", 0) == 0)
+            opt.seed = std::stoull(l.substr(12));
         else if (l.rfind("option chip-only", 0) == 0)
             opt.board = false;
         else if (l.rfind("option verilog", 0) == 0)
@@ -134,7 +138,9 @@ int usage()
                  "  chiply-cli sim <diagram.json> <script>\n"
                  "\n"
                  "sim script, one command per line (# comments):\n"
-                 "  option x-start        flip-flops start unknown (default: 0, like Wokwi)\n"
+                 "  option x-start        flip-flops start unknown (default: random, like Wokwi)\n"
+                 "  option zero-start     flip-flops start at 0\n"
+                 "  option seed <n>       repeatable random start state\n"
                  "  option chip-only      Tiny Tapeout blocks passive: drive IN*/CLK/RST_N directly\n"
                  "  option verilog        four-state logic (X propagates); default is Wokwi logic\n"
                  "  set <part:PIN> <0|1|x|z>\n"

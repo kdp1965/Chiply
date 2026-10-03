@@ -100,7 +100,7 @@ TEST_CASE("built-in simulator matches Icarus on Wokwi's Verilog export")
     const Document doc = loadWokwi(ss.str()).doc;
     const Netlist nl = Netlist::build(doc, PartLibrary::builtin());
     Options opt;
-    opt.flopsStartUnknown = true;
+    opt.flopStart = FlopStart::Unknown;
     opt.board = false; // drive the chip's pins directly, like the Verilog testbench
     opt.wokwiLogic = false; // Verilog four-state semantics
     Simulator sim(nl, opt);

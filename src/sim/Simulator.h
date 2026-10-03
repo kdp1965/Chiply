@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <optional>
 #include <queue>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -22,8 +23,14 @@ namespace chiply::sim {
 
 using Time = std::int64_t; // picoseconds
 
+// Flip-flop state at start (and on reset()). Wokwi starts each flip-flop at
+// a random value (Math.random() >= 0.5), which is what lets an unseeded
+// LFSR run there; Unknown matches Verilog regs.
+enum class FlopStart { Random, Zero, Unknown };
+
 struct Options {
-    bool flopsStartUnknown = false; // false: flip-flops start at 0, as Wokwi
+    FlopStart flopStart = FlopStart::Random;
+    std::uint64_t seed = 0;         // random start: 0 = new seed each time, else repeatable
     Time gateDelay = 0;             // 0: zero-delay (delta cycles); else unit delay per gate
     int maxDeltas = 10000;          // per time step before "did not settle"
     // false: simulate the chip only. Tiny Tapeout blocks are passive, so a
@@ -172,6 +179,7 @@ private:
     std::uint64_t m_seq = 0;
     Time m_now = 0;
     std::uint64_t m_evals = 0;
+    std::mt19937_64 m_rng;
     bool m_initialising = false;
     std::vector<std::string> m_warnings;
     std::string m_error;

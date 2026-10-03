@@ -24,6 +24,7 @@ struct Bench {
     {
         Options o;
         o.wokwiLogic = false;
+        o.flopStart = FlopStart::Zero; // these tests start from a known state
         return o;
     }
     Bench(const std::string& parts, const std::string& wires, Options opt = verilog())
@@ -117,7 +118,7 @@ TEST_CASE("not, buffer, mux and constants")
 TEST_CASE("D flip-flop samples on the rising edge only")
 {
     Bench b("wokwi-flip-flop-d f1", "");
-    CHECK(b.get("f1:Q") == L); // Wokwi-style start state
+    CHECK(b.get("f1:Q") == L); // start state chosen by the test
     CHECK(b.get("f1:NOTQ") == H);
     b.set("f1:CLK", L);
     b.set("f1:D", H);
@@ -135,7 +136,7 @@ TEST_CASE("D flip-flop samples on the rising edge only")
 TEST_CASE("flip-flops can start unknown")
 {
     Options o = Bench::verilog();
-    o.flopsStartUnknown = true;
+    o.flopStart = FlopStart::Unknown;
     Bench b("wokwi-flip-flop-d f1", "", o);
     CHECK(b.get("f1:Q") == X);
     b.set("f1:CLK", L);
@@ -269,4 +270,37 @@ TEST_CASE("Wokwi logic: a cross-coupled latch starts from definite values")
     wokwi.set("n1:A", H); // set -> n1:OUT = 0, n2:OUT = 1
     CHECK(wokwi.get("n1:OUT") == L);
     CHECK(wokwi.get("n2:OUT") == H);
+}
+
+TEST_CASE("SR flip-flop toggles with S and R both set (Wokwi)")
+{
+    Bench b("wokwi-flip-flop-sr f1", "");
+    b.set("f1:CLK", L);
+    b.set("f1:S", H);
+    b.set("f1:R", H);
+    const V q0 = b.get("f1:Q");
+    b.clock("f1:CLK");
+    CHECK(b.get("f1:Q") == vnot(q0));
+    b.clock("f1:CLK");
+    CHECK(b.get("f1:Q") == q0);
+}
+
+TEST_CASE("flip-flops start random like Wokwi; a seed makes it repeatable")
+{
+    // 64 flip-flops: random start gives both values; the same seed gives
+    // the same state.
+    std::string parts;
+    for (int i = 0; i < 64; ++i)
+        parts += "wokwi-flip-flop-d f" + std::to_string(i) + " ";
+    Options o;
+    o.seed = 42;
+    Bench a(parts, "", o), b(parts, "", o);
+    int ones = 0;
+    for (int i = 0; i < 64; ++i) {
+        const std::string q = "f" + std::to_string(i) + ":Q";
+        ones += a.get(q.c_str()) == H;
+        CHECK(a.get(q.c_str()) == b.get(q.c_str()));
+    }
+    CHECK(ones > 8);
+    CHECK(ones < 56);
 }

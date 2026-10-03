@@ -178,6 +178,7 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             m_slots[size_t(slot)].v = V::L;
     }
     m_queued.assign(m_prims.size(), 0);
+    m_rng.seed(m_opt.seed ? m_opt.seed : std::random_device{}());
     initialise();
 }
 
@@ -392,7 +393,7 @@ void Simulator::evaluate(int idx)
             else if (r == V::H && s == V::L)
                 next = V::L;
             else if (s == V::H && r == V::H)
-                next = V::X;
+                next = vnot(p.q); // Wokwi: both set toggles
             else if (s == V::X || r == V::X)
                 next = V::X;
         }
@@ -532,10 +533,13 @@ V Simulator::value(int net) const
 
 void Simulator::initialise()
 {
-    const V start = m_opt.flopsStartUnknown ? V::X : V::L;
     for (Prim& p : m_prims) {
         if (isFlop(int(p.kind))) {
-            p.q = start;
+            switch (m_opt.flopStart) {
+            case FlopStart::Zero: p.q = V::L; break;
+            case FlopStart::Unknown: p.q = V::X; break;
+            case FlopStart::Random: p.q = (m_rng() & 1) ? V::H : V::L; break;
+            }
             p.pending = false;
         }
     }
