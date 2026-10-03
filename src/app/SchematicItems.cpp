@@ -8,6 +8,7 @@
 #include <QGraphicsSceneHoverEvent>
 #include <QPainterPathStroker>
 #include <QPen>
+#include <QStyleOptionGraphicsItem>
 #include <QToolTip>
 
 #include <algorithm>
@@ -33,7 +34,21 @@ PartItem::PartItem(const chiply::Part& part, const chiply::PartDef* def)
     setCacheMode(QGraphicsItem::DeviceCoordinateCache);
     setToolTip(QString::fromStdString(part.id));
     setAcceptHoverEvents(true);
+    setFlag(QGraphicsItem::ItemIsSelectable);
     setZValue(0);
+}
+
+QPainterPath PartItem::shape() const
+{
+    // The outline plus the pin hit radius, so pins on the edge are hoverable.
+    QPainterPath p;
+    p.addRect(QRectF(0, 0, m_w, m_h).adjusted(-kPinHitRadius, -kPinHitRadius, kPinHitRadius, kPinHitRadius));
+    return p;
+}
+
+QRectF PartItem::outlineSceneRect() const
+{
+    return mapRectToScene(QRectF(0, 0, m_w, m_h));
 }
 
 const chiply::PinDef* PartItem::pinAt(QPointF local) const
@@ -102,7 +117,13 @@ void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
     else
         SymbolPainter::paintUnknown(painter, m_w, m_h, QString::fromStdString(m_part.type), c);
 
-    if (m_hovered) {
+    if (isSelected()) {
+        QPen pen(c.selection, 2);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(QRectF(0, 0, m_w, m_h).adjusted(-2, -2, 2, 2));
+    } else if (m_hovered) {
         // Wokwi's dotted "you are on this part" outline.
         QPen pen(c.partText, 0, Qt::DotLine);
         pen.setCosmetic(true);
@@ -119,8 +140,12 @@ void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
     }
 }
 
-WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route)
+WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route, int index)
+    : m_index(index)
+    , m_fromPart(wire.from.part)
+    , m_toPart(wire.to.part)
 {
+    setFlag(QGraphicsItem::ItemIsSelectable);
     // Corners rounded with a 4 px radius, as Wokwi draws them; a corner on a
     // short segment uses at most half of that segment.
     QPainterPath path;
@@ -173,14 +198,50 @@ QPainterPath WireItem::shape() const
     return hit;
 }
 
+void WireItem::setLink(Link l)
+{
+    if (l == m_link)
+        return;
+    m_link = l;
+    restyle();
+    update();
+}
+
+QRectF WireItem::boundingRect() const
+{
+    return QGraphicsPathItem::boundingRect().adjusted(-4, -4, 4, 4);
+}
+
+void WireItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
+{
+    const CanvasColors& c = Theme::instance().canvas();
+    if (isSelected() || m_link == Link::Implicit) {
+        // Selection halo under the wire; explicit selection is stronger.
+        QColor halo = c.selection;
+        halo.setAlpha(isSelected() ? 170 : 110);
+        painter->setPen(QPen(halo, kWireWidth + 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPath(path());
+    }
+    painter->setPen(pen());
+    painter->setBrush(Qt::NoBrush);
+    painter->drawPath(path());
+}
+
 void WireItem::restyle()
 {
     const CanvasColors& c = Theme::instance().canvas();
-    setPen(QPen(c.displayWireColor(m_fileColor), kWireWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    // A wire that will stretch when the selection moves is drawn dashed.
+    QPen p(c.displayWireColor(m_fileColor), kWireWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    if (m_link == Link::Stretch)
+        p.setDashPattern({3, 2});
+    setPen(p);
 }
 
 TextItem::TextItem(const chiply::Part& part)
+    : m_id(part.id)
 {
+    setFlag(QGraphicsItem::ItemIsSelectable);
     std::string text = part.attrs.value("text", std::string());
     setText(QString::fromStdString(text));
     QFont f("Helvetica");
@@ -192,6 +253,31 @@ TextItem::TextItem(const chiply::Part& part)
     setToolTip(QString::fromStdString(part.id));
     setZValue(0.5);
     restyle();
+}
+
+void TextItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
+{
+    QStyleOptionGraphicsItem o(*option);
+    o.state &= ~QStyle::State_Selected; // draw our own selection outline
+    QGraphicsSimpleTextItem::paint(painter, &o, widget);
+    if (isSelected()) {
+        QPen pen(Theme::instance().canvas().selection, 2);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(boundingRect().adjusted(-2, -2, 2, 2));
+    }
+}
+
+std::string itemPartId(const QGraphicsItem* item)
+{
+    if (!item)
+        return {};
+    if (item->type() == PartItem::Type)
+        return static_cast<const PartItem*>(item)->partId();
+    if (item->type() == TextItem::Type)
+        return static_cast<const TextItem*>(item)->partId();
+    return {};
 }
 
 void TextItem::restyle()

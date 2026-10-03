@@ -7,6 +7,9 @@
 #include "core/WokwiJson.h"
 
 #include <QFileInfo>
+#include <QSignalBlocker>
+
+#include <set>
 
 EditorSession::EditorSession(QObject* parent)
     : QObject(parent)
@@ -15,6 +18,7 @@ EditorSession::EditorSession(QObject* parent)
     m_view = new SchematicView(&m_scene);
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
+    connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
 }
 
 void EditorSession::load(const QString& path)
@@ -54,8 +58,65 @@ QString EditorSession::displayName() const
     return m_path.isEmpty() ? tr("Untitled") : QFileInfo(m_path).fileName();
 }
 
+std::vector<std::string> EditorSession::selectedPartIds() const
+{
+    std::vector<std::string> ids;
+    for (const QGraphicsItem* it : m_scene.selectedItems()) {
+        std::string id = itemPartId(it);
+        if (!id.empty())
+            ids.push_back(std::move(id));
+    }
+    return ids;
+}
+
+std::vector<int> EditorSession::selectedWireIndices() const
+{
+    std::vector<int> out;
+    for (const QGraphicsItem* it : m_scene.selectedItems())
+        if (it->type() == WireItem::Type)
+            out.push_back(static_cast<const WireItem*>(it)->index());
+    return out;
+}
+
+void EditorSession::updateSelectionState()
+{
+    std::set<std::string> parts;
+    SelectionSummary s;
+    for (const QGraphicsItem* it : m_scene.selectedItems()) {
+        std::string id = itemPartId(it);
+        if (!id.empty()) {
+            parts.insert(std::move(id));
+            ++s.parts;
+        } else if (it->type() == WireItem::Type) {
+            ++s.wires;
+        }
+    }
+    for (QGraphicsItem* it : m_scene.items()) {
+        if (it->type() != WireItem::Type)
+            continue;
+        auto* w = static_cast<WireItem*>(it);
+        WireItem::Link link = WireItem::Link::None;
+        if (!w->isSelected()) {
+            const bool a = parts.count(w->fromPart()), b = parts.count(w->toPart());
+            if (a && b) {
+                link = WireItem::Link::Implicit;
+                ++s.implicitWires;
+            } else if (a || b) {
+                link = WireItem::Link::Stretch;
+                ++s.stretchWires;
+            }
+        }
+        w->setLink(link);
+    }
+    m_summary = s;
+    emit selectionChanged();
+}
+
 void EditorSession::rebuildScene()
 {
+    // Keep the selection across rebuilds (theme change, reload of items).
+    const std::vector<std::string> keepParts = selectedPartIds();
+    const std::vector<int> keepWires = selectedWireIndices();
     m_scene.clear();
     const chiply::PartLibrary& lib = chiply::PartLibrary::builtin();
     for (const chiply::Part& p : m_doc.parts) {
@@ -80,7 +141,20 @@ void EditorSession::rebuildScene()
             if (!b)
                 b = origin(w.to);
         }
-        m_scene.addItem(new WireItem(w, chiply::routePolyline(*a, *b, w.path)));
+        const int index = int(&w - m_doc.wires.data());
+        m_scene.addItem(new WireItem(w, chiply::routePolyline(*a, *b, w.path), index));
     }
+    if (!keepParts.empty() || !keepWires.empty()) {
+        const std::set<std::string> ps(keepParts.begin(), keepParts.end());
+        const std::set<int> ws(keepWires.begin(), keepWires.end());
+        const QSignalBlocker block(&m_scene);
+        for (QGraphicsItem* it : m_scene.items()) {
+            const std::string id = itemPartId(it);
+            if ((!id.empty() && ps.count(id))
+                || (it->type() == WireItem::Type && ws.count(static_cast<WireItem*>(it)->index())))
+                it->setSelected(true);
+        }
+    }
+    updateSelectionState();
     m_scene.setSceneRect(m_scene.itemsBoundingRect().adjusted(-2000, -2000, 2000, 2000));
 }

@@ -30,6 +30,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_tabs, &QTabWidget::currentChanged, this, [this] { updateStatus(); });
 
     m_zoomLabel = new QLabel(this);
+    QFont sf = m_zoomLabel->font();
+    sf.setPointSize(14); // readable status line
+    m_zoomLabel->setFont(sf);
     statusBar()->addPermanentWidget(m_zoomLabel);
 
     buildMenus();
@@ -59,6 +62,16 @@ void MainWindow::buildMenus()
     file->addSeparator();
     file->addAction(tr("&Close Tab"), QKeySequence::Close, this, [this] { closeTab(m_tabs->currentIndex()); });
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
+
+    QMenu* edit = menuBar()->addMenu(tr("&Edit"));
+    edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, [this] {
+        if (auto* s = current())
+            s->view()->selectAll();
+    });
+    edit->addAction(tr("&Deselect  (Esc)"), this, [this] {
+        if (auto* s = current())
+            s->view()->clearSelection();
+    });
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Zoom &In  (+)"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
@@ -120,6 +133,10 @@ int MainWindow::addSession(EditorSession* s)
     s->view()->setProperty("session", QVariant::fromValue(s));
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
+    connect(s, &EditorSession::selectionChanged, this, [this, s] {
+        if (s == current())
+            updateStatus();
+    });
     int i = m_tabs->addTab(s->view(), s->displayName());
     m_tabs->setCurrentIndex(i);
     updateTitles();
@@ -248,9 +265,19 @@ void MainWindow::updateStatus()
         m_zoomLabel->clear();
         return;
     }
-    m_zoomLabel->setText(tr("%1 parts, %2 wires   |   %3%")
-                             .arg(s->document().parts.size())
-                             .arg(s->document().wires.size())
-                             .arg(qRound(s->view()->zoom() * 100)));
+    QString sel;
+    const auto sum = s->selectionSummary();
+    if (!sum.empty()) {
+        sel = tr("Selected: %1 parts, %2 wires").arg(sum.parts).arg(sum.wires);
+        if (sum.implicitWires)
+            sel += tr(" (+%1 wires move with them)").arg(sum.implicitWires);
+        if (sum.stretchWires)
+            sel += tr(", %1 stretch").arg(sum.stretchWires);
+        sel += QStringLiteral("   |   ");
+    }
+    m_zoomLabel->setText(sel + tr("%1 parts, %2 wires   |   %3%")
+                                   .arg(s->document().parts.size())
+                                   .arg(s->document().wires.size())
+                                   .arg(qRound(s->view()->zoom() * 100)));
     setWindowTitle(tr("%1 - Chiply").arg(s->displayName()));
 }

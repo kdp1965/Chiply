@@ -1,8 +1,10 @@
 #include "SchematicView.h"
 
+#include "SchematicItems.h"
 #include "Theme.h"
 
 #include <QKeyEvent>
+#include <QSignalBlocker>
 #include <QPainter>
 #include <QScrollBar>
 #include <QWheelEvent>
@@ -19,7 +21,11 @@ SchematicView::SchematicView(QGraphicsScene* scene, QWidget* parent)
     : QGraphicsView(scene, parent)
 {
     setRenderHint(QPainter::Antialiasing);
-    setDragMode(QGraphicsView::RubberBandDrag);
+    setDragMode(QGraphicsView::NoDrag); // marquee is implemented here
+    setMouseTracking(true);
+    m_autoScroll.setInterval(16);
+    connect(&m_autoScroll, &QTimer::timeout, this, &SchematicView::autoScrollTick);
+    connect(this, &SchematicView::selectionEdited, viewport(), qOverload<>(&QWidget::update));
     setTransformationAnchor(QGraphicsView::NoAnchor);
     setResizeAnchor(QGraphicsView::AnchorViewCenter);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
@@ -128,21 +134,39 @@ void SchematicView::wheelEvent(QWheelEvent* event)
     event->accept();
 }
 
+QGraphicsItem* SchematicView::selectableAt(QPoint viewPos) const
+{
+    for (QGraphicsItem* it : items(viewPos))
+        if (it->flags() & QGraphicsItem::ItemIsSelectable)
+            return it;
+    return nullptr;
+}
+
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
+    const QPoint pos = event->position().toPoint();
     if (event->button() == Qt::LeftButton && !m_spaceHeld && (event->modifiers() & Qt::ShiftModifier)) {
         // Shift+drag pans; Shift+click without moving stays a click (Wokwi's
         // add-to-selection). Decide once the mouse moves.
         m_shiftPending = true;
-        m_pressPos = event->position().toPoint();
-        m_lastPanPos = m_pressPos;
+        m_pressPos = pos;
+        m_lastPanPos = pos;
         event->accept();
         return;
     }
     if (event->button() == Qt::MiddleButton || (event->button() == Qt::LeftButton && m_spaceHeld)) {
         m_panning = true;
-        m_lastPanPos = event->position().toPoint();
+        m_lastPanPos = pos;
         viewport()->setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton) {
+        m_pressPos = pos;
+        m_lastMousePos = pos;
+        m_lastMods = event->modifiers();
+        m_press = selectableAt(pos) ? Press::Item : Press::Empty;
+        m_marqueeStart = mapToScene(pos);
         event->accept();
         return;
     }
@@ -151,7 +175,8 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
 
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
-    if (m_shiftPending && (event->position().toPoint() - m_pressPos).manhattanLength() > 4) {
+    const QPoint pos = event->position().toPoint();
+    if (m_shiftPending && (pos - m_pressPos).manhattanLength() > 4) {
         m_shiftPending = false;
         m_panning = true;
         viewport()->setCursor(Qt::ClosedHandCursor);
@@ -161,24 +186,33 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
         return;
     }
     if (m_panning) {
-        const QPoint p = event->position().toPoint();
-        panBy(QPointF(m_lastPanPos - p));
-        m_lastPanPos = p;
+        panBy(QPointF(m_lastPanPos - pos));
+        m_lastPanPos = pos;
         event->accept();
         return;
     }
-    QGraphicsView::mouseMoveEvent(event);
+    if (m_press == Press::Empty && (pos - m_pressPos).manhattanLength() > 3) {
+        m_press = Press::Marquee;
+        m_autoScroll.start();
+    }
+    if (m_press == Press::Marquee) {
+        m_lastMousePos = pos;
+        m_lastMods = event->modifiers();
+        viewport()->update();
+        event->accept();
+        return;
+    }
+    // Item drags become moves in M4; until then a drag on an item does nothing.
+    QGraphicsView::mouseMoveEvent(event); // hover
 }
 
 void SchematicView::mouseReleaseEvent(QMouseEvent* event)
 {
+    const QPoint pos = event->position().toPoint();
     if (m_shiftPending && event->button() == Qt::LeftButton) {
-        // No drag happened: deliver it as an ordinary Shift+click.
         m_shiftPending = false;
-        QMouseEvent press(QEvent::MouseButtonPress, QPointF(m_pressPos), mapToGlobal(m_pressPos),
-                          Qt::LeftButton, Qt::LeftButton, event->modifiers());
-        QGraphicsView::mousePressEvent(&press);
-        QGraphicsView::mouseReleaseEvent(event);
+        clickAt(m_pressPos, event->modifiers());
+        event->accept();
         return;
     }
     if (m_panning && (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
@@ -187,7 +221,176 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         event->accept();
         return;
     }
+    if (event->button() == Qt::LeftButton && m_press != Press::None) {
+        const Press p = m_press;
+        m_press = Press::None;
+        if (p == Press::Marquee) {
+            m_autoScroll.stop();
+            m_lastMousePos = pos;
+            finishMarquee(event->modifiers());
+        } else {
+            clickAt(m_pressPos, event->modifiers());
+        }
+        viewport()->update();
+        event->accept();
+        return;
+    }
     QGraphicsView::mouseReleaseEvent(event);
+}
+
+void SchematicView::clickAt(QPoint viewPos, Qt::KeyboardModifiers mods)
+{
+    QGraphicsItem* item = selectableAt(viewPos);
+    const bool toggle = mods & (Qt::ShiftModifier | Qt::ControlModifier);
+    if (!item) {
+        if (!toggle)
+            clearSelection();
+        return;
+    }
+    if (toggle)
+        toggleSelected(item);
+    else
+        selectOnly(item);
+}
+
+QRectF SchematicView::marqueeSceneRect() const
+{
+    return QRectF(m_marqueeStart, mapToScene(m_lastMousePos)).normalized();
+}
+
+void SchematicView::finishMarquee(Qt::KeyboardModifiers mods)
+{
+    selectInRect(marqueeSceneRect(), mods & Qt::AltModifier, mods & Qt::ControlModifier);
+}
+
+void SchematicView::autoScrollTick()
+{
+    if (m_press != Press::Marquee) {
+        m_autoScroll.stop();
+        return;
+    }
+    // Scroll when the cursor is near or past an edge, faster the further out.
+    const QRect r = viewport()->rect();
+    constexpr int kEdge = 30;
+    auto speed = [](int d) { return d >= kEdge ? 0.0 : std::min(40.0, (kEdge - d) * 0.6); };
+    const QPoint p = m_lastMousePos;
+    QPointF d(0, 0);
+    d.rx() -= speed(p.x() - r.left());
+    d.rx() += speed(r.right() - p.x());
+    d.ry() -= speed(p.y() - r.top());
+    d.ry() += speed(r.bottom() - p.y());
+    if (!d.isNull()) {
+        panBy(d);
+        viewport()->update();
+    }
+}
+
+namespace {
+QRectF selectionRect(const QGraphicsItem* it)
+{
+    if (it->type() == PartItem::Type)
+        return static_cast<const PartItem*>(it)->outlineSceneRect();
+    if (it->type() == WireItem::Type)
+        return static_cast<const WireItem*>(it)->path().boundingRect();
+    return it->sceneBoundingRect();
+}
+} // namespace
+
+void SchematicView::selectInRect(const QRectF& r, bool crossing, bool add)
+{
+    {
+        const QSignalBlocker block(scene());
+        if (!add)
+            scene()->clearSelection();
+        const QList<QGraphicsItem*> hits = scene()->items(r, Qt::IntersectsItemShape);
+        for (QGraphicsItem* it : hits) {
+            if (!(it->flags() & QGraphicsItem::ItemIsSelectable))
+                continue;
+            if (crossing || r.contains(selectionRect(it)))
+                it->setSelected(true);
+        }
+    }
+    emit selectionEdited();
+}
+
+void SchematicView::clearSelection()
+{
+    {
+        const QSignalBlocker block(scene());
+        scene()->clearSelection();
+    }
+    emit selectionEdited();
+}
+
+void SchematicView::selectAll()
+{
+    {
+        const QSignalBlocker block(scene());
+        for (QGraphicsItem* it : scene()->items())
+            if (it->flags() & QGraphicsItem::ItemIsSelectable)
+                it->setSelected(true);
+    }
+    emit selectionEdited();
+}
+
+void SchematicView::selectOnly(QGraphicsItem* item)
+{
+    {
+        const QSignalBlocker block(scene());
+        scene()->clearSelection();
+        item->setSelected(true);
+    }
+    emit selectionEdited();
+}
+
+void SchematicView::toggleSelected(QGraphicsItem* item)
+{
+    {
+        const QSignalBlocker block(scene());
+        item->setSelected(!item->isSelected());
+    }
+    emit selectionEdited();
+}
+
+void SchematicView::drawForeground(QPainter* painter, const QRectF&)
+{
+    const CanvasColors& c = Theme::instance().canvas();
+    painter->save();
+    painter->resetTransform(); // draw in viewport pixels
+    if (m_press == Press::Marquee) {
+        const QRect r = QRect(mapFromScene(m_marqueeStart), m_lastMousePos).normalized();
+        QColor fill = c.selection;
+        fill.setAlpha(40);
+        QPen pen(c.selection, 1, (m_lastMods & Qt::AltModifier) ? Qt::DashLine : Qt::SolidLine);
+        painter->setPen(pen);
+        painter->setBrush(fill);
+        painter->drawRect(r);
+    }
+    // Group box and count for multi-selections.
+    const QList<QGraphicsItem*> sel = scene()->selectedItems();
+    if (sel.size() > 1) {
+        QRectF box;
+        for (const QGraphicsItem* it : sel)
+            box = box.united(selectionRect(it));
+        const QRect vb = mapFromScene(box).boundingRect().adjusted(-6, -6, 6, 6);
+        QPen pen(c.selection, 1, Qt::DotLine);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(vb);
+        QFont f = font();
+        f.setPointSize(Theme::instance().hoverTextSize());
+        painter->setFont(f);
+        const QString label = tr("%1 selected").arg(sel.size());
+        const QRect tr_ = painter->fontMetrics().boundingRect(label).adjusted(-6, -3, 6, 3);
+        QRect lr(vb.left(), vb.top() - tr_.height() - 2, tr_.width(), tr_.height());
+        QColor bg = c.selection;
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(bg);
+        painter->drawRoundedRect(lr, 3, 3);
+        painter->setPen(Qt::white);
+        painter->drawText(lr, Qt::AlignCenter, label);
+    }
+    painter->restore();
 }
 
 void SchematicView::keyPressEvent(QKeyEvent* event)
@@ -208,6 +411,15 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Minus: zoomOut(); return;
     case Qt::Key_F: fitContents(); return;
     case Qt::Key_G: toggleGrid(); return;
+    case Qt::Key_Escape:
+        if (m_press == Press::Marquee) {
+            m_press = Press::None;
+            m_autoScroll.stop();
+            viewport()->update();
+        } else {
+            clearSelection();
+        }
+        return;
     case Qt::Key_Space:
         if (!event->isAutoRepeat()) {
             m_spaceHeld = true;

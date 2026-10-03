@@ -30,11 +30,24 @@ public:
     SchematicView* view() const { return m_view; }
     QUndoStack* undoStack() { return &m_undo; }
 
+    struct SelectionSummary {
+        int parts = 0;      // includes text annotations
+        int wires = 0;      // explicitly selected
+        int implicitWires = 0; // both ends on selected parts
+        int stretchWires = 0;  // one end on a selected part
+        bool empty() const { return parts == 0 && wires == 0; }
+    };
+    SelectionSummary selectionSummary() const { return m_summary; }
+    std::vector<std::string> selectedPartIds() const;
+    std::vector<int> selectedWireIndices() const;
+
 signals:
     void titleChanged();
+    void selectionChanged();
 
 private:
     void rebuildScene();
+    void updateSelectionState();
 
     chiply::Document m_doc;
     QString m_path;
@@ -42,4 +55,5 @@ private:
     QGraphicsScene m_scene;
     SchematicView* m_view = nullptr;
     QUndoStack m_undo;
+    SelectionSummary m_summary;
 };

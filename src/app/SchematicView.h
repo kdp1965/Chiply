@@ -4,7 +4,13 @@
 //   vertical pan, middle-drag, Shift+drag or Space+drag = pan, arrow keys
 //   move the diagram in the arrow's direction,
 //   left-drag on empty canvas = marquee, +/- = zoom, F = fit, G = grid.
+//
+// Selection (PLAN.md 4.3): click selects one item, Shift+click (no drag) or
+// Ctrl/Cmd+click toggles, click on empty canvas or Esc clears, Ctrl/Cmd+A
+// selects all. Marquee selects items fully inside; Alt = anything touched;
+// Ctrl/Cmd = add to the current selection. Auto-scrolls at the edges.
 #include <QGraphicsView>
+#include <QTimer>
 
 class SchematicView : public QGraphicsView {
     Q_OBJECT
@@ -21,8 +27,19 @@ public:
     double zoom() const { return transform().m11(); }
     void applyTheme();
 
+    // Selection operations (each emits selectionEdited once).
+    void clearSelection();
+    void selectAll();
+    void selectOnly(QGraphicsItem* item);
+    void toggleSelected(QGraphicsItem* item);
+    // Selects by marquee rectangle in scene coordinates.
+    void selectInRect(const QRectF& sceneRect, bool crossing, bool add);
+    // Selectable item under a viewport position (parts, text, wires).
+    QGraphicsItem* selectableAt(QPoint viewPos) const;
+
 signals:
     void zoomChanged(double zoom);
+    void selectionEdited();
 
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -32,9 +49,14 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
+    void drawForeground(QPainter* painter, const QRectF& rect) override;
 
 private:
     void panBy(QPointF viewDelta);
+    void clickAt(QPoint viewPos, Qt::KeyboardModifiers mods);
+    void finishMarquee(Qt::KeyboardModifiers mods);
+    void autoScrollTick();
+    QRectF marqueeSceneRect() const;
 
     bool m_showGrid = true;
     bool m_spaceHeld = false;
@@ -42,4 +64,11 @@ private:
     bool m_shiftPending = false; // Shift+press: pan if it moves, click if not
     QPoint m_pressPos;
     QPoint m_lastPanPos;
+
+    enum class Press { None, Item, Empty, Marquee };
+    Press m_press = Press::None;
+    QPointF m_marqueeStart;   // scene
+    QPoint m_lastMousePos;    // viewport
+    Qt::KeyboardModifiers m_lastMods;
+    QTimer m_autoScroll;
 };

@@ -1,6 +1,9 @@
 #pragma once
 // Scene items. They read the document; they never modify it (edits arrive
 // as undo commands in later milestones and rebuild the affected items).
+//
+// Selection uses QGraphicsItem's selected flag; the view decides what gets
+// selected (Wokwi modifiers), the items only draw it.
 #include "core/Document.h"
 #include "core/PartLibrary.h"
 
@@ -20,6 +23,9 @@ public:
     const std::string& partId() const { return m_part.id; }
     static constexpr int Type = UserType + 1;
     int type() const override { return Type; }
+    QPainterPath shape() const override;
+    // The part's outline in scene coordinates (rotated bounds).
+    QRectF outlineSceneRect() const;
 
 protected:
     void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
@@ -38,10 +44,21 @@ private:
 
 class WireItem : public QGraphicsPathItem {
 public:
-    WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route);
+    // Implicit: not selected itself, but both ends are on selected parts, so
+    // it travels with them. Stretch: exactly one end is on a selected part.
+    enum class Link { None, Implicit, Stretch };
+
+    WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route, int index);
     static constexpr int Type = UserType + 2;
     int type() const override { return Type; }
     void restyle();
+    int index() const { return m_index; }
+    const std::string& fromPart() const { return m_fromPart; }
+    const std::string& toPart() const { return m_toPart; }
+    Link link() const { return m_link; }
+    void setLink(Link l);
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
+    QRectF boundingRect() const override;
     // Hit area is the drawn line plus a few pixels, not the area the route
     // encloses (QGraphicsPathItem's default), so wires never steal hover or
     // clicks from the parts they loop around; the pins at both ends are left
@@ -50,6 +67,9 @@ public:
 
 private:
     QColor m_fileColor;
+    int m_index;
+    std::string m_fromPart, m_toPart;
+    Link m_link = Link::None;
 };
 
 class TextItem : public QGraphicsSimpleTextItem {
@@ -58,4 +78,12 @@ public:
     static constexpr int Type = UserType + 3;
     int type() const override { return Type; }
     void restyle();
+    const std::string& partId() const { return m_id; }
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
+
+private:
+    std::string m_id;
 };
+
+// Part id for part and text items, empty for anything else.
+std::string itemPartId(const QGraphicsItem* item);
