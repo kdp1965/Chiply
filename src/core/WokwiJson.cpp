@@ -3,6 +3,7 @@
 #include "core/JsonFormat.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -249,6 +250,13 @@ std::string saveWokwi(const Document& doc)
 
 void saveWokwiFile(const Document& doc, const std::string& path)
 {
+    // Respect read-only files: the atomic rename below would otherwise
+    // replace them silently.
+    std::error_code ec;
+    const auto st = std::filesystem::status(path, ec);
+    if (!ec && std::filesystem::exists(st)
+        && (st.permissions() & std::filesystem::perms::owner_write) == std::filesystem::perms::none)
+        throw std::runtime_error(path + " is read-only; use Save As to save a copy");
     const std::string text = saveWokwi(doc);
     const std::string tmp = path + ".chiply-tmp";
     {

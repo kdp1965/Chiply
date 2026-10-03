@@ -12,8 +12,10 @@ add_executable(chiply_tests
   test_part_library.cpp
   test_edit.cpp
   test_netlist.cpp
+  test_sim.cpp
+  test_sim_cosim.cpp
 )
-target_link_libraries(chiply_tests PRIVATE chiply_core Catch2::Catch2WithMain)
+target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
   CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
 
@@ -91,3 +93,8 @@ if(CHIPLY_BUILD_GUI)
   add_test(NAME gui_clipboard COMMAND chiply_gui_clipboard_tests)
   set_tests_properties(gui_clipboard PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+# CLI simulation script on the Tiny Tapeout template.
+add_test(NAME cli_sim_template
+  COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
+          ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template.sim)

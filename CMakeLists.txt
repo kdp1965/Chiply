@@ -21,6 +21,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 add_subdirectory(src/core)
+add_subdirectory(src/sim)
 add_subdirectory(src/cli)
 
 if(CHIPLY_BUILD_GUI)

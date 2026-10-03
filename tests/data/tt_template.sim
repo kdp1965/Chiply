@@ -1,0 +1,20 @@
+# Tiny Tapeout template: IN0..IN3 go through inverters to OUT0..OUT3,
+# IN4..IN7 are wired straight to OUT4..OUT7.
+set ttin:IN0 1
+set ttin:IN1 0
+set ttin:IN2 1
+set ttin:IN3 0
+set ttin:IN4 1
+set ttin:IN5 0
+set ttin:IN6 1
+set ttin:IN7 0
+expect ttout:OUT0 0
+expect ttout:OUT1 1
+expect ttout:OUT2 0
+expect ttout:OUT3 1
+expect ttout:OUT4 1
+expect ttout:OUT5 0
+expect ttout:OUT6 1
+expect ttout:OUT7 0
+set ttin:IN0 z      # released input floats: the inverter output is unknown
+expect ttout:OUT0 x

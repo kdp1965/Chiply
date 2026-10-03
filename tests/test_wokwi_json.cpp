@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -128,4 +129,17 @@ TEST_CASE("empty document saves as a valid Wokwi file")
     CHECK(r.doc.parts.empty());
     CHECK(r.doc.author() == "Ken Pettit");
     CHECK(saveWokwi(r.doc) == saveWokwi(d));
+}
+
+TEST_CASE("saving over a read-only file is refused")
+{
+    namespace fs = std::filesystem;
+    const fs::path p = fs::temp_directory_path() / "chiply_readonly_test.json";
+    Document d = Document::makeEmpty("t");
+    saveWokwiFile(d, p.string());
+    fs::permissions(p, fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read);
+    CHECK_THROWS(saveWokwiFile(d, p.string()));
+    fs::permissions(p, fs::perms::owner_read | fs::perms::owner_write);
+    CHECK_NOTHROW(saveWokwiFile(d, p.string()));
+    fs::remove(p);
 }

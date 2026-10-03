@@ -10,3 +10,5 @@ not part of Chiply's source and keep their own origins and licenses.
 | `tt_template_354858054593504257.diagram.json` | Tiny Tapeout's official Wokwi template <https://wokwi.com/projects/354858054593504257> | the "New Tiny Tapeout project" starting point |
 | `cells.v` | Tiny Tapeout (`ttsky-wokwi-template`, Apache-2.0) | the Verilog cell library Wokwi designs are mapped to |
 | `wokwi_414123795172381697.rendered_wires.json` | Wire polylines as wokwi.com renders the reference design (captured with headless Chrome) | ground truth for the wire-routing test |
+
+These files are read-only on purpose: tests compare them against Wokwi's own output, so they must stay exactly as Wokwi produced them. Chiply refuses to save over a read-only file; work on a copy elsewhere.
