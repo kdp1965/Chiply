@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QPainterPath>
 
+#include <cmath>
 #include <functional>
 #include <map>
 
@@ -392,23 +393,54 @@ void led(const Ctx& k)
 
 void sevenSegment(const Ctx& k)
 {
-    const double w = k.def.width, h = k.def.height;
+    // Ported from wokwi-elements' 7segment-element (MIT), single digit:
+    // drawn in mm, black body 12.55 x 20.5, segments are polygons in a
+    // skewX(-8deg) translate(3.5, 2.4) scale(0.81) group, each shrunk to 90 %
+    // about its own centre; unlit segments #444; pins are #aaa dots.
+    k.p->save();
+    k.p->scale(kMm, kMm);
     k.p->setPen(Qt::NoPen);
-    k.p->setBrush(QColor(0x22, 0x22, 0x22));
-    k.p->drawRect(QRectF(0, 0, w, h));
-    k.p->setBrush(QColor(0x99, 0x99, 0x99));
-    for (const auto& pin : k.def.pins)
-        k.p->drawRect(QRectF(pin.x - 1, pin.y - 3.8, 2, 7.6));
-    // Segments, unlit.
-    QColor seg = namedColor(k.part, "red");
-    seg.setAlpha(60);
-    k.p->setBrush(seg);
-    const double x0 = 12, x1 = 33, y0 = 14, ym = 41, y1 = 68, t = 3.2;
-    auto hs = [&](double y) { k.p->drawRect(QRectF(x0 + 2, y - t / 2, x1 - x0 - 4, t)); };
-    auto vs = [&](double x, double ya, double yb) { k.p->drawRect(QRectF(x - t / 2, ya + 2, t, yb - ya - 4)); };
-    hs(y0); hs(ym); hs(y1);
-    vs(x0, y0, ym); vs(x1, y0, ym); vs(x0, ym, y1); vs(x1, ym, y1);
-    k.p->drawEllipse(QPointF(39, y1), 2, 2);
+    k.p->setBrush(QColor(0, 0, 0));
+    k.p->drawRect(QRectF(0, 0, 12.55, 20.5));
+
+    const QColor off(0x44, 0x44, 0x44);
+    static const std::vector<std::vector<QPointF>> segments = {
+        {{2, 0}, {8, 0}, {9, 1}, {8, 2}, {2, 2}, {1, 1}},         // A
+        {{10, 2}, {10, 8}, {9, 9}, {8, 8}, {8, 2}, {9, 1}},       // B
+        {{10, 10}, {10, 16}, {9, 17}, {8, 16}, {8, 10}, {9, 9}},  // C
+        {{8, 18}, {2, 18}, {1, 17}, {2, 16}, {8, 16}, {9, 17}},   // D
+        {{0, 16}, {0, 10}, {1, 9}, {2, 10}, {2, 16}, {1, 17}},    // E
+        {{0, 8}, {0, 2}, {1, 1}, {2, 2}, {2, 8}, {1, 9}},         // F
+        {{2, 8}, {8, 8}, {9, 9}, {8, 10}, {2, 10}, {1, 9}},       // G
+    };
+    k.p->save();
+    k.p->setTransform(QTransform().shear(std::tan(-8 * M_PI / 180), 0), true);
+    k.p->translate(3.5, 2.4);
+    k.p->scale(0.81, 0.81);
+    k.p->setBrush(off);
+    for (const auto& seg : segments) {
+        QPolygonF poly;
+        for (const QPointF& pt : seg)
+            poly << pt;
+        const QPointF c = poly.boundingRect().center();
+        QPolygonF shrunk;
+        for (const QPointF& pt : poly)
+            shrunk << c + (pt - c) * 0.9;
+        k.p->drawPolygon(shrunk);
+    }
+    k.p->restore();
+    k.p->setBrush(off);
+    k.p->drawEllipse(QPointF(3.5 + 7.4, 16), 0.89, 0.89); // decimal point
+
+    // Pin dots: 5 per row, top (y 1) and bottom (y 19).
+    k.p->setBrush(QColor(0xaa, 0xaa, 0xaa));
+    const double startX = (12.55 - 5 * 2.54) / 2;
+    for (int i = 0; i < 5; ++i) {
+        const double x = startX + 1.27 + i * 2.54;
+        k.p->drawEllipse(QPointF(x, 1), 0.5, 0.5);
+        k.p->drawEllipse(QPointF(x, 19), 0.5, 0.5);
+    }
+    k.p->restore();
 }
 
 void logicAnalyzer(const Ctx& k)
