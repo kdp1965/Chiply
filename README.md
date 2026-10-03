@@ -18,7 +18,8 @@ Status: early development. The design and milestones are in
 | M4 Part editing: move, nudge, rotate, delete, duplicate, add parts, Inspector, rename, undo | done |
 | M5 Wire editing: draw from pins, segment/corner/end handles, split, colors, delete | done |
 | M6 Copy/paste across tabs with id renumbering, Alt+drag duplicate | done |
-| M7 Netlist, DRC with Violations pane, Verilog export | next |
+| M7 Built-in event-driven simulator (staged M7a-e), no external tools | next |
+| M8 Netlist DRC with Violations pane, Verilog export | planned |
 
 ## Building
 

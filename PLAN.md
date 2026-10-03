@@ -6,7 +6,7 @@ Author: Claude, for Ken Pettit
 Chiply is a native C++ / Qt desktop schematic editor that reads and writes Wokwi
 `diagram.json` files unchanged, reproduces the Wokwi logic-design look and feel
 (the Tiny Tapeout flavor of Wokwi), and adds what Wokwi lacks: naming of gates
-and flops, a real netlist and Verilog export, Verilator simulation, and
+and flops, a real netlist and Verilog export, a built-in simulator, and
 user-defined custom blocks.
 
 Everything in section 2 was verified against your reference design
@@ -32,7 +32,7 @@ Goals, in priority order:
 2. Wokwi-parity editing: add/move/rotate/delete parts, draw and reroute wires on the 0.1 inch grid, wire colors by number keys, zoom and pan, undo/redo.
 3. Beyond Wokwi: name gates and flops, marquee select, copy/paste with wires and routes preserved and ids renumbered to fit the target file, and several files open in tabs so blocks can be developed on their own and pasted into a larger design.
 4. Netlist extraction and Verilog export that matches what Wokwi's exporter produces (same `cells.v` primitives, same port list), so the Tiny Tapeout flow accepts it directly.
-5. Simulation with Verilator, interactive like Wokwi (buttons, switches, clock, LEDs, 7-segment), plus VCD output.
+5. A built-in event-driven logic simulator, interactive like Wokwi (buttons, switches, clock, LEDs, 7-segment), plus VCD output. No PDK, no gate-level/standard-cell simulation and no external tools (Verilator, Icarus) are required to simulate; it works out of the box, as Wokwi does.
 6. Custom blocks: a Verilog module behind a schematic symbol, usable like any gate.
 
 Non-goals: microcontroller firmware simulation (a Raspberry Pi Pico can be placed and wired so files round-trip, but running its firmware is a separate project), Wokwi's custom-chip C API, breadboards, analog parts. Chiply is for digital logic schematics.
@@ -173,7 +173,7 @@ This is the performance target: the editor must stay smooth at this size.
 | Build | CMake ≥ 3.21 + Ninja, dependencies via FetchContent | Already installed here (CMake 4.3.2) |
 | JSON | `nlohmann::ordered_json` | Preserves key order and lets us control number formatting; `QJsonObject` sorts keys alphabetically, which would rewrite every Wokwi file |
 | Tests | Catch2 v3 | |
-| Simulation | Verilator ≥ 5 (5.050 installed), optional built-in gate-level sim later | |
+| Simulation | Built-in event-driven simulator (plain C++, part of Chiply; section 6). Verilator is an optional extra backend later (M9), never required | |
 | Platforms | macOS (your Intel Mac first), Linux; Windows later | |
 
 Licensing: Qt open source (LGPLv3, dynamic link), `wokwi-elements` art (MIT, keep attribution), `cells.v` (Tiny Tapeout, Apache-2.0). Chiply itself is BSD 3-Clause (decided; `LICENSE` is already in the repo). BSD 3-Clause is compatible with the MIT `wokwi-elements` art and the Apache-2.0 `cells.v`, both of which keep their own notices.
@@ -197,8 +197,13 @@ chiply/
     Drc.h/.cpp              # switchable checks over the netlist; produces Violations with locations (5.2)
     VerilogWriter.h/.cpp    # cells.v-style netlist, TT wrapper
   src/sim/
-    SimBackend.h            # co-simulation interface: owned pins, advance(dt), exchange pin states; Verilator is the first backend, an RP2040 emulator a future one
-    VerilatorBackend.cpp    # generate harness, run verilator, dlopen the model
+    Netlist.h/.cpp          # (shared with export) nets, drivers, loads, switch groups
+    Kernel.h/.cpp           # event queue, 4-state values, delta cycles, primitives
+    Board.h/.cpp            # stimulus/display parts: TT blocks, buttons, switches, clock, LED, 7-seg
+    Vcd.h/.cpp              # trace writer (logic analyzer, probes)
+    SimBackend.h            # co-simulation interface: owned pins, advance(dt), exchange pin states;
+                            # the built-in kernel is the first backend, optional Verilator (M9) and a
+                            # future RP2040 emulator plug in the same way
     Stimulus.cpp            # buttons, switches, clock generator -> input nets
   src/ui/
     MainWindow, DocumentTabs (QTabWidget), EditorSession (one open file: Document + SchematicScene + SchematicView + QUndoStack + selection + view state)
@@ -329,7 +334,7 @@ Calibrated numbers replace the placeholders. Physical parts reference an SVG fro
 
 ### 4.1 Window layout
 
-Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/Step (sim); a tab bar with one tab per open file (4.10); the schematic canvas of the active tab in the center; on the right, two stacked docks: the Inspector (id, type, attrs, pin list with directions) that updates with the selection, and the Violations pane (5.2) whose entries navigate the canvas when clicked; a bottom dock for the simulation console and Verilator build log. White canvas, light-gray 0.1 inch dot grid, Wokwi-like.
+Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/Step (sim); a tab bar with one tab per open file (4.10); the schematic canvas of the active tab in the center; on the right, two stacked docks: the Inspector (id, type, attrs, pin list with directions) that updates with the selection, and the Violations pane (5.2) whose entries navigate the canvas when clicked; a bottom dock for the simulation console and waveforms. White canvas, light-gray 0.1 inch dot grid, Wokwi-like.
 
 ### 4.2 Navigation
 
@@ -464,7 +469,7 @@ Mirrors Wokwi's exporter: the TT port list, `default_nettype none`, `wire netN`,
 
 ### 5.4 Equivalence test
 
-Automated: compile Chiply's export and Wokwi's golden export of the reference design with Verilator, drive both with the same random `ui_in`/`uio_in`/`rst_n` sequence for 100k cycles, compare `uo_out`/`uio_out`/`uio_oe` every cycle. This proves the netlister against your own 1024-part design before you trust it for a tapeout.
+Automated (developer machines with Icarus Verilog or Verilator installed; skipped elsewhere): compile Chiply's export and Wokwi's golden export of the reference design, drive both with the same random `ui_in`/`uio_in`/`rst_n` sequence for 100k cycles, compare `uo_out`/`uio_out`/`uio_oe` every cycle. This proves the netlister against your own 1024-part design before you trust it for a tapeout.
 
 ### 5.5 Export Tiny Tapeout project
 
@@ -476,21 +481,46 @@ Writes `src/tt_um_<name>.v`, `src/cells.v`, any custom-block `.v` files, and pat
 
 ---
 
-## 6. Simulation with Verilator
+## 6. Built-in simulator (decided 2026-10-03)
 
-Pipeline, all driven from the Run button and a worker thread:
+Chiply simulates designs itself, like Wokwi: press Run and the circuit runs, with no PDK, no standard-cell or gate-level netlist, and nothing else to install. The simulator lives in its own plain C++ library (`src/sim`, no Qt) so the GUI, the CLI and the tests all use the same engine.
 
-1. Netlist → `build/<design>/top.v` (section 5) plus `cells.v` and custom block sources.
-2. Chiply also generates `harness.cpp`: a tiny C ABI (`sim_create`, `sim_set_input(i, v)`, `sim_eval`, `sim_clock(n)`, `sim_get(i)`, `sim_names()`, `sim_trace(path)`). Because Chiply wrote the Verilog, it knows every `netN` and emits direct accessors for them (Verilator `--public-flat-rw`), so every wire in the schematic is observable.
-3. Run `verilator --cc --build -O2 --trace -CFLAGS -fPIC -LDFLAGS -shared ...` to produce `libchiply_sim.dylib`; cache by hash of the netlist so unchanged designs do not rebuild. Verilator output appears in the bottom dock.
-4. Load with `QLibrary`, run on a worker thread paced to the `wokwi-clock-generator` frequency (your design uses 10 kHz; Wokwi recommends ≤ 100 kHz), with Run / Pause / Step-one-clock / speed slider.
-5. **Stimulus parts**: pushbutton (mouse or its `key` attr, e.g. `s` for Step, `r` for RESET), slide switch, DIP switch, clock generator; VCC/GND constants; the `ena` port is tied high. The net connected to `EXTINk` drives `ui_in[k]`, `EXTCLK` → `clk`, `EXTRST_N` → `rst_n`.
-6. **Display parts**: LED, 7-segment (common anode/cathode per attr), and optionally live net coloring on the schematic (high = bright, low = dim) and a value tooltip on hover. This is something Wokwi does not do and is very useful for debugging flop chains.
-7. **Traces**: VCD to a chosen file; "Open in GTKWave" (installed at `/opt/local/bin/gtkwave`). A `wokwi-logic-analyzer` part does the same thing Wokwi's does: it records the nets on D0..D7 into a VCD named by its attrs, with channel names and trigger settings from its attrs, so a design that already has an analyzer wired in keeps working.
-8. **Truth-table tests**: run Tiny Tapeout's `truthtable.md` format headlessly (`chiply-cli run-truthtable`) so a design can be regression-tested from the command line.
-9. **Boards**: a `wokwi-pi-pico` is rendered, wired, saved and loaded like any part, and in this project the simulator treats its pins as undriven. The intent, agreed, is that a later project adds a full RP2040 emulator as a second `SimBackend` so the Pico runs real firmware (UF2/ELF) against the Verilator model, the way Wokwi does with its rp2040js. To keep that door open, `SimBackend` is specified now as a co-simulation interface: each backend owns a set of pins, advances by a requested number of picoseconds, and exchanges pin states with the others at a shared time base; the Verilator backend is written against that interface even though it is the only one in this project.
+### 6.1 Model
 
-Optional later: a built-in event-driven gate-level simulator for instant feedback without a compile step. Not needed for correctness since Verilator is the reference.
+- **Values**: four states per net: `0`, `1`, `X` (unknown: uninitialised flip-flop, conflict) and `Z` (undriven). Drive strength is either strong (gate outputs, VCC/GND, Tiny Tapeout block outputs) or weak (a resistor pulling a net to VCC/GND). Net value = the strong drivers if any (all equal, else `X`), else the weak ones, else `Z`.
+- **Primitives** (from the part library's `verilog` mapping and Wokwi's own simulator behaviour): AND/OR/XOR/NAND/NOR/XNOR (2-input), NOT, buffer, MUX (`out = SEL ? B : A`), D flip-flop, DR (async reset), DSR (async set and reset, reset wins, as `cells.v`), SR flip-flop (Wokwi's `wokwi-flip-flop-sr`), constants for VCC/GND. Gates treat `X`/`Z` inputs pessimistically (`0 AND X = 0`, `1 AND X = X`, ...). Flip-flops sample on a rising `CLK` edge (`0→1`), outputs `X` until reset or first clock.
+- **Time and events**: an event queue keyed by time (integer picoseconds) and delta cycle. Default mode is zero-delay with delta cycles (fast, Wokwi-like); a unit-delay mode (configurable per gate type) is available to see glitches and races. Combinational loops are allowed; an oscillation limit per time step reports "combinational loop did not settle" with the nets involved instead of hanging.
+- **Switch-level parts**: pushbuttons, slide switches, DIP switches and resistors are passive. Nets joined through a closed switch form one electrical node; toggling a switch re-partitions just those nodes. Resistors join nets weakly (pull-ups / pull-downs), which is how the Tiny Tapeout template's RESET button works.
+- **Netlist compile**: the document is compiled once per Run into flat arrays (nets, primitives, fanout lists) for speed; edits while stopped recompile in milliseconds. Unknown part types and the Pico are ignored with a warning (their pins float).
+
+### 6.2 Board and stimulus
+
+- **Tiny Tapeout blocks**: the input block drives its `IN0..7`, `CLK`, `RST_N` pins from whatever its `EXT*` pins see; the output block passes `OUT0..7` through to `EXTOUT0..7`; the bidirectional block drives `IN` from `UIO` and drives `UIO` from `OUT` when `OE` is 1. So the design side and the testbench side are wired exactly as in Wokwi, and the same diagram simulates the chip plus its board.
+- **Clock generator**: square wave at its `frequency` attr (e.g. `10000`, `10k`).
+- **Inputs**: click a pushbutton (or press its `key` attr, e.g. `s` = Step, `r` = RESET), click slide switches and DIP switches; `bounce` ignored.
+- **Outputs**: LEDs light (anode high, cathode low), 7-segment segments light per `common` (anode/cathode) and `color`.
+- **Pacing**: real time by default, paced to the clock generator; a speed control runs faster or slower; Pause, Step (one clock period), Reset (re-initialise state).
+
+### 6.3 UI while running
+
+- Run / Pause / Step / Reset on the toolbar; editing is locked while running (Wokwi behaviour), selection and navigation still work.
+- Live values on the canvas: wires drawn bright when `1`, dim when `0`, red-dashed when `X` / conflict, gray-dotted when `Z`; values must not rely on colour alone, so `X`/`Z` also differ in line style. Hovering a pin or wire shows its value in the tooltip.
+- A status line shows simulated time, clock cycles and speed (e.g. "1.25x real time").
+
+### 6.4 Traces and tests
+
+- **Logic analyzer part**: records D0..D7 into a VCD named by its attrs, as Wokwi does; "Open in GTKWave" if it is installed (optional).
+- **Probes**: any net can be probed into a built-in waveform strip (later stage), also written to VCD.
+- **Truth tables**: `chiply-cli sim` runs a design headlessly with scripted stimulus and Tiny Tapeout's `truthtable.md` format, for regression tests and CI.
+- **Verification of the simulator itself**: per-primitive unit tests; event-ordering tests (delta cycles, async set/reset, clock edges); and a co-simulation test that drives Chiply's simulator and a reference Verilog simulation of Wokwi's golden export of the reference design (`reference/tt_um_wokwi_*.v` + `cells.v`) with the same random `ui_in`/`uio_in`/`rst_n` sequence and compares `uo_out`/`uio_out`/`uio_oe` every cycle. That test uses Icarus Verilog or Verilator only when present on the developer machine (skipped otherwise); users never need them.
+
+### 6.5 Boards with firmware
+
+A `wokwi-pi-pico` is rendered, wired, saved and loaded like any part; the simulator treats its pins as undriven. A later, separate project adds a full RP2040 emulator as another `SimBackend` (each backend owns a set of pins, advances by a requested number of picoseconds and exchanges pin states at a shared time base), so the Pico runs real firmware against the built-in logic simulation, the way Wokwi uses rp2040js.
+
+### 6.6 Optional Verilator backend (M9)
+
+For very large designs, or designs with Verilog custom blocks, the same netlist can be exported (section 5) and simulated by Verilator behind the `SimBackend` interface. Optional, detected at runtime, never required.
 
 ---
 
@@ -523,7 +553,8 @@ blocks/sram_16x8/
 
 - It becomes part type `chiply-block-sram_16x8`, in the palette under Custom. The auto symbol is a rectangle with inputs on the left, outputs on the right, clock pins marked with the triangle; an SVG can be supplied instead.
 - Multi-bit ports are expanded to one pin per bit (`addr0..addr3`, `dout0..dout7`) so wires stay single-bit, exactly like the TT blocks do with `IN0..IN7`. The netlister rebuilds the vector: `.addr({net44, net43, net42, net41})`. Single-bit wires only, decided: every wire Chiply writes is a plain Wokwi connection, so any design without custom blocks pastes into Wokwi and renders. Bus wires may come later as an extension.
-- The Verilog module is included verbatim in exports and in the Verilator build; parameters come from the part's attrs.
+- The Verilog module is included verbatim in exports; parameters come from the part's attrs.
+- Simulation of custom blocks without external tools: (a) blocks whose implementation is another Chiply schematic (sub-sheets) simulate natively in the built-in simulator; (b) common blocks are built-in behavioural primitives with parameters, starting with RAM and ROM (width, depth, init file) since memories are the main need; (c) blocks backed only by arbitrary Verilog simulate through the optional Verilator backend (M9).
 - Wokwi cannot load a file containing `chiply-block-*` parts. Chiply warns on save ("this design is no longer Wokwi-loadable") and the TT export path (section 5.5) is the way to tape it out.
 - Later: hierarchical blocks whose implementation is another Chiply schematic (sub-sheets).
 
@@ -535,19 +566,25 @@ Estimates are working days for one developer using Claude Code; each milestone e
 
 | # | Milestone | Deliverable / acceptance | Est. |
 |---|---|---|---|
-| M0 | Project skeleton | CMake + Qt 6 + Catch2 build on your Mac; empty window; CI on GitHub Actions (macOS, Linux) | 1 |
-| M1 | Core model + Wokwi JSON | Load/save all three reference files with JSON-equal round trip; wire path codec incl. `"*"`; id generator | 2–3 |
+| M0 | Project skeleton | **Done.** CMake + Qt 6 + Catch2 build on your Mac; empty window; CI on GitHub Actions (macOS, Linux) | 1 |
+| M1 | Core model + Wokwi JSON | **Done.** Load/save all three reference files with JSON-equal round trip; wire path codec incl. `"*"`; id generator | 2–3 |
 | M2 | Part library + calibration | **Done.** 30 part types in `resources/parts.json` with exact Wokwi geometry and pin directions (2.7); Chiply's own symbol artwork for all of them; wires drawn with Wokwi's completion rule; verified against the reference design | 3–4 |
 | M3 | Viewer + selection | **Done.** Wokwi-exact rendering, zoom/pan/fit/grid, hover (part outline, pin names); click / Shift+click / Ctrl+click, marquee (enclosed, Alt = touched, Ctrl = add, edge auto-scroll), Esc, Select All, implicit and stretching wires, group box and count, selection kept across theme changes; GUI tests on the reference design | 2–3 |
 | M4 | Part editing | **Done.** Click-drag move (part or selection, wires follow live, grid snap with Alt half / Ctrl-Cmd free, Esc cancel, one undo step); arrows move the selection 1 grid step, Shift 5; R rotate; Delete; D duplicate with renumbered ids; `A` / `+ Add Part` palette with cursor placement; Inspector (name with Verilog validation, attributes, pins with directions, wire color); F2 / double-click / mini toolbar to rename; Show Part Names; unlimited undo/redo with a history panel. Alt+drag duplicate moves to M6 with copy/paste | 3–4 |
 | M5 | Wire editing | **Done.** Drawing wires from pins (L-bend preview, grid-snapped bends, click or drag-release on a pin, Esc / right-click cancel, Backspace, GND/VCC default colors); yellow segment handles, orange corner handles, cyan end handles (drag onto another pin to reconnect, elastic preview); Ctrl/Cmd+drag split; Wokwi color keys while drawing and on selected wires; double-click delete; all undoable | 4–5 |
 | M6 | Copy/paste + tabs | **Done.** Cut/Copy/Paste (Cmd/Ctrl+X/C/V) as Wokwi JSON text on the system clipboard (also pastes a whole diagram.json or a fragment from a text editor); ids renumbered against the target (auto ids next-free in order, custom names kept or suffixed); pasted parts float with the cursor until a click drops them (one undo step, Esc or Undo cancels); pasting into another tab asks whether to skip Tiny Tapeout I/O blocks the target already has (default skip); Option/Alt+drag duplicates; status bar reports renamed/skipped/dropped counts. Tabs, per-tab undo, Save All already in place. Deferred: drag a selection onto another tab, tear-off tabs, read-only library tabs, autosave | 3–4 |
-| M7 | Netlist, DRC, Verilog | Netlist with directions; switchable DRC checks running live; Violations pane with click-to-snap, F8 stepping and waivers (5.2); Verilog export; equivalence test vs Wokwi's golden export passes on the reference design; TT project export; CLI | 3–4 |
-| M8 | Verilator simulation | Build pipeline with cache; run/pause/step; buttons, switches, clock, LED, 7-segment; live nets; VCD; truth-table runner | 4–6 |
-| M9 | Custom blocks | `block.json` loader, auto symbols, bit-expanded pins, netlist and sim integration, TT export with extra sources | 3–4 |
-| M10 | Polish and packaging | Preferences, key remap, recent files, autosave, crash-safe save, `.app` bundle and Linux AppImage, user docs | 2–3 |
+| M7 | Built-in simulator (section 6) | Staged; each stage ends with something runnable and tested: | 8–12 |
+| M7a | Netlist compile | Nets from wires and junctions, drivers/loads from pin directions, passive switch/resistor groups; compiled flat form; checked against the net partition of Wokwi's Verilog export of the reference design | 1–2 |
+| M7b | Kernel + primitives | 4-state values, event queue with delta cycles, zero-delay and unit-delay modes, loop detection; all gate/mux/flip-flop primitives; headless API and `chiply-cli sim`; per-primitive and event-ordering tests; co-simulation test vs the golden Verilog (when a Verilog simulator is present) | 2–3 |
+| M7c | Board and stimulus | Tiny Tapeout blocks, clock generator, pushbuttons, slide/DIP switches, resistors as weak pulls, LEDs and 7-segment outputs; the TT template runs as in Wokwi | 1–2 |
+| M7d | Interactive UI | Run / Pause / Step / Reset, real-time pacing and speed, clicking buttons/switches and key shortcuts, lit LEDs/segments, live wire values (style + colour), values on hover, editing locked while running | 2–3 |
+| M7e | Traces | Logic analyzer VCD, net probes and a waveform strip, truth-table runner in the CLI | 1–2 |
+| M8 | Netlist, DRC, Verilog | Switchable DRC checks running live; Violations pane with click-to-snap, F8 stepping and waivers (5.2); Verilog export; equivalence test vs Wokwi's golden export; TT project export; CLI | 3–4 |
+| M9 | Optional Verilator backend | Same netlist simulated by Verilator behind `SimBackend` when installed; for very large designs and Verilog-only custom blocks | 2–3 |
+| M10 | Custom blocks | `block.json` loader, auto symbols, bit-expanded pins; built-in RAM/ROM primitives; schematic sub-sheets simulate natively; Verilog-backed blocks via M9; TT export with extra sources | 3–5 |
+| M11 | Polish and packaging | Preferences, key remap, recent files, autosave, crash-safe save, `.app` bundle and Linux AppImage, user docs | 2–3 |
 
-Total roughly 30–41 days. M1–M7 give you a Wokwi-compatible editor with export; M8–M9 are the parts Wokwi cannot do.
+Total roughly 40–55 days. M0–M6 (done) give a Wokwi-compatible editor; M7 makes it simulate on its own like Wokwi; M8 adds checks and export for tapeout; M9–M10 go beyond Wokwi.
 
 Suggested order of value: M0–M3 first (you can already open and inspect your design), then M5 before M4 if wire editing matters more to you than part editing.
 
@@ -558,7 +595,8 @@ Suggested order of value: M0–M3 first (you can already open and inspect your d
 - **Unit**: path codec (every `h/v/*` case, normalization), geometry (rotation, snapping), id generation, rename rewriting, `IdRemapper` (auto ids renumbered in order, custom names kept or suffixed, in-fragment collisions, connections rewritten, dangling connections dropped), netlist on small hand-built diagrams, DRC cases per check (each with the check enabled and disabled, plus waivers), and the pin-direction table of every part definition validated against the schema at build time.
 - **Round trip**: the three reference files load → save JSON-equal; also a fuzz test that edits and un-edits (undo) and checks equality. Cross-document test: copy a block from the TT template tab, paste into the reference design, assert no duplicate ids, every pasted wire still references pasted parts, and the netlist of the pasted block is isomorphic to the original.
 - **Golden images**: render each part type at the four rotations to PNG and compare against checked-in images, so symbol regressions are caught.
-- **Equivalence**: Verilator co-simulation of Chiply's export vs Wokwi's export of the reference design (section 5.4).
+- **Simulator**: per-primitive and event-ordering unit tests; co-simulation of the built-in simulator against a Verilog simulation of Wokwi's golden export of the reference design (6.4, only where Icarus/Verilator is installed).
+- **Equivalence**: Chiply's Verilog export vs Wokwi's export of the reference design (section 5.4).
 - **Interaction**: Qt Test with synthesized mouse events for selection (click, Shift+click, marquee enclosed/crossing/additive), click-drag moves (single part, group, snapping, Esc cancel, wires following, single undo step), the wire tool and its handles, and the Violations pane (click centers and zooms on the item, selects it, highlights the whole net for multiple drivers; F8 stepping).
 - **Manual Wokwi check** once per milestone: save from Chiply, upload to Wokwi, confirm it renders and simulates. This is the only test that catches a wrong pin offset, which is why calibration comes early (M2).
 
@@ -570,13 +608,13 @@ The machine is an Apple M4 Max (arm64). The original Homebrew in `/usr/local` is
 
 ```bash
 /opt/homebrew/bin/brew install qtbase qtsvg cmake ninja   # prebuilt arm64 bottles, Qt 6.11
-/opt/homebrew/bin/brew install verilator                  # needed natively from M8 on
+/opt/homebrew/bin/brew install icarus-verilog             # optional: only for the simulator co-simulation test
 export PATH=/opt/homebrew/bin:$PATH
 cmake -S chiply -B chiply/build -G Ninja -DCMAKE_PREFIX_PATH="$(brew --prefix qtbase)"
 cmake --build chiply/build
 ```
 
-Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pull Qt WebEngine. The simulator library built by Verilator in M8 must match the app's architecture, so it must come from the arm64 Verilator, not the Intel one in `/usr/local`.
+Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pull Qt WebEngine. Simulation needs nothing extra. If the optional Verilator backend (M9) is used, its generated library must match the app's architecture, so it must come from an arm64 Verilator, not the Intel one in `/usr/local`.
 
 ---
 
@@ -587,7 +625,8 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 | Pin offsets or rotation pivot differ from Wokwi by a grid unit, so saved files look broken in Wokwi | Resolved in M2: geometry taken from Wokwi's own definitions (2.7) and guarded by the reference-wiring unit test; still do a manual Wokwi check each milestone |
 | Wokwi changes its format or adds parts | Unknown keys/parts preserved verbatim (3.6); part library is data, not code |
 | Wire editing UX takes longer than estimated | It is the biggest milestone (M5) and is isolated in `WireTool` + handles; ship draw-only first, handles second |
-| Verilator build time annoys interactive use | Cache by netlist hash; `-O1` for interactive builds; optional built-in simulator later |
+| Built-in simulator too slow for big designs | Compiled flat netlist, zero-delay event kernel; the reference design (1024 parts) is the benchmark; optional Verilator backend (M9) for anything larger |
+| Built-in simulator behaves differently from silicon / Wokwi | Primitive semantics follow `cells.v`; co-simulation test against Wokwi's golden Verilog export; truth-table regression tests |
 | Qt licensing concerns | LGPL dynamic linking; no commercial Qt needed for an open-source Chiply |
 
 ---
@@ -604,8 +643,10 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 | 6 | Qt 6 install | Native arm64 Homebrew: `brew install qtbase qtsvg` (the modules of `qt` that Chiply uses) | 10 |
 | 7 | License | BSD 3-Clause | 3.1, M0 |
 | 8 | Keys | Pure Wokwi keys, plus the additions in decisions 1 and 2 | 4.9 |
+| 9 | Simulation (2026-10-03) | Built-in event-driven simulator, no PDK, gate-level netlists or external tools; Verilator only as an optional backend | 6, M7, M9 |
+| 10 | CI (2026-10-03) | Every change verified locally with the full test suite; GitHub CI runs only on request | 9 |
 
-Repository: <https://github.com/kdp1965/Chiply> (public, BSD 3-Clause, `main`). The Pico is agreed to be a future full-emulation backend and a project of its own; this plan only keeps the simulation interface ready for it (6.9). Nothing remains open.
+Repository: <https://github.com/kdp1965/Chiply> (public, BSD 3-Clause, `main`). The Pico is agreed to be a future full-emulation backend and a project of its own; this plan only keeps the simulation interface ready for it (6.5). Nothing remains open.
 
 ---
 
