@@ -4,9 +4,11 @@
 #include <QPalette>
 #include <QSettings>
 #include <QStyleHints>
+#include <QToolTip>
 
 namespace {
 constexpr char kSettingsKey[] = "appearance/theme";
+constexpr char kHoverSizeKey[] = "appearance/hoverTextPoints";
 }
 
 QColor CanvasColors::displayWireColor(const QColor& c) const
@@ -54,7 +56,23 @@ Theme::Theme()
             emit changed();
     });
 #endif
+    m_hoverTextSize = s.value(kHoverSizeKey, 18).toInt();
     applyToApplication();
+    applyHoverTextSize();
+}
+
+void Theme::setHoverTextSize(int points)
+{
+    m_hoverTextSize = points;
+    QSettings().setValue(kHoverSizeKey, points);
+    applyHoverTextSize();
+}
+
+void Theme::applyHoverTextSize()
+{
+    QFont f = QToolTip::font();
+    f.setPointSize(m_hoverTextSize);
+    QToolTip::setFont(f);
 }
 
 void Theme::setMode(Mode m)

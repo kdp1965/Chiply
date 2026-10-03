@@ -316,6 +316,7 @@ Calibrated numbers replace the placeholders. Physical parts reference an SVG fro
 ### 3.8 Rendering and performance
 
 - `PartItem` paints from the cached `QPainterPath`s of its symbol; `ItemCoordinateCache` makes 1k parts cheap. `WireItem` is a path item whose bounding rect is the route; the scene's BSP index handles hit testing.
+- Readability: hover text defaults to 18 pt and View → Hover Text Size offers 13 / 18 / 24 / 30 pt (persisted). Later UI text (pin labels, part names, Violations pane, Inspector) gets the same kind of size setting rather than fixed small fonts.
 - Hover (done): a dotted outline around the part under the cursor and its id as tooltip; on a pin, a blue pin marker and an immediate `part:PIN` tooltip, as in Wokwi. Wires only react within a few pixels of the drawn line, so they never steal hover from parts they loop around. Selected part: blue outline plus the floating mini toolbar (rotate / edit / delete).
 - Wire colors are the CSS names from the file, mapped through `QColor(name)` (Qt knows the SVG color names, so `limegreen`, `gold`, `violet` just work).
 - **Themes**: View → Theme offers System (follow macOS), Light and Dark, remembered in preferences; `--theme` overrides it for one run. Light is the Wokwi look (white canvas, magenta symbols, black leads). Dark matches Wokwi's dark mode (see below). The window chrome follows the same choice. All canvas colors come from one `CanvasColors` table, so every item type added later (symbols, wires, handles, violation highlights) reads its colors there instead of hard-coding them.

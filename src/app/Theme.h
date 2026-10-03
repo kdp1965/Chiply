@@ -33,6 +33,11 @@ public:
     bool isDark() const;               // resolved: System follows the OS
     const CanvasColors& canvas() const { return isDark() ? m_dark : m_light; }
 
+    // Hover (tooltip) text size in points; persisted. Applied app-wide.
+    static constexpr int kHoverSizes[] = {13, 18, 24, 30};
+    int hoverTextSize() const { return m_hoverTextSize; }
+    void setHoverTextSize(int points);
+
     static QString modeName(Mode m);
     static bool parseMode(const QString& s, Mode* out);
 
@@ -43,7 +48,10 @@ private:
     Theme();
     void applyToApplication();
 
+    void applyHoverTextSize();
+
     Mode m_mode = Mode::System;
+    int m_hoverTextSize = 18;
     CanvasColors m_light;
     CanvasColors m_dark;
 };

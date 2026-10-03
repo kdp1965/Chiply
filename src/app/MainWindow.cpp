@@ -74,6 +74,17 @@ void MainWindow::buildMenus()
         themeGroup->addAction(a);
         connect(a, &QAction::triggered, this, [m] { Theme::instance().setMode(m); });
     }
+    QMenu* hoverMenu = view->addMenu(tr("&Hover Text Size"));
+    auto* hoverGroup = new QActionGroup(this);
+    const QStringList hoverNames{tr("Normal"), tr("Large"), tr("Extra Large"), tr("Huge")};
+    for (int i = 0; i < 4; ++i) {
+        const int pts = Theme::kHoverSizes[i];
+        QAction* a = hoverMenu->addAction(tr("%1 (%2 pt)").arg(hoverNames[i]).arg(pts));
+        a->setCheckable(true);
+        a->setChecked(Theme::instance().hoverTextSize() == pts);
+        hoverGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [pts] { Theme::instance().setHoverTextSize(pts); });
+    }
     view->addSeparator();
     view->addAction(tr("Next Tab"), QKeySequence(Qt::CTRL | Qt::Key_Tab), this, [this] {
         if (m_tabs->count())
