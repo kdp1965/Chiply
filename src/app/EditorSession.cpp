@@ -3,6 +3,7 @@
 #include "SchematicView.h"
 #include "Theme.h"
 #include "MiniToolbar.h"
+#include "SimRunner.h"
 #include "SchematicItems.h"
 #include "core/Edit.h"
 #include "core/IdGen.h"
@@ -15,6 +16,7 @@
 #include <QFileInfo>
 #include <QSignalBlocker>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <set>
@@ -43,6 +45,32 @@ EditorSession::EditorSession(QObject* parent)
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
     connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
+    connect(m_view, &SchematicView::simPress, this, [this](const QString& id, QPointF local) {
+        if (!m_sim)
+            return;
+        const chiply::Part* p = m_doc.findPart(id.toStdString());
+        if (!p)
+            return;
+        if (p->type == "wokwi-pushbutton") {
+            m_simHeldButton = p->id;
+            m_sim->pressButton(p->id, true);
+        } else if (p->type == "wokwi-slide-switch") {
+            m_sim->toggleSwitch(p->id, 0);
+        } else if (p->type == "wokwi-dip-switch-8") {
+            // Switch k is centred at x = 8.1 + 9.6 k (unrotated, px).
+            const int k = std::clamp(int(std::lround((local.x() - 8.1) / 9.6)), 0, 7);
+            m_sim->toggleSwitch(p->id, k);
+        }
+    });
+    connect(m_view, &SchematicView::simRelease, this, [this] {
+        if (m_sim && !m_simHeldButton.empty())
+            m_sim->pressButton(m_simHeldButton, false);
+        m_simHeldButton.clear();
+    });
+    connect(m_view, &SchematicView::simKey, this, [this](const QString& text, bool pressed) {
+        if (m_sim)
+            m_sim->key(text, pressed);
+    });
     connect(m_view, &SchematicView::visibleRectChanged, this, [this](const QRectF& r) {
         for (QGraphicsItem* it : m_scene.selectedItems())
             if (it->type() == WireItem::Type)
@@ -159,6 +187,8 @@ private:
 
 void EditorSession::editWireRoute(int wireIndex, const std::vector<chiply::Point>& route)
 {
+    if (m_sim)
+        return; // no editing while simulating
     if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
         return;
     chiply::WirePath after = chiply::pathFromPolyline(route);
@@ -416,6 +446,8 @@ void EditorSession::refreshWiresOf(const std::string& partId)
 
 void EditorSession::beginMove()
 {
+    if (m_sim)
+        return; // no editing while simulating
     m_moveStart.clear();
     m_moveWireStart.clear();
     for (const std::string& id : selectedPartIds())
@@ -488,6 +520,8 @@ void EditorSession::endMove(bool commit)
 
 void EditorSession::nudgeSelection(int gx, int gy, bool autoRepeat)
 {
+    if (m_sim)
+        return; // no editing while simulating
     const std::vector<std::string> ids = selectedPartIds();
     if (ids.empty())
         return;
@@ -504,6 +538,8 @@ void EditorSession::nudgeSelection(int gx, int gy, bool autoRepeat)
 
 void EditorSession::rotateSelection()
 {
+    if (m_sim)
+        return; // no editing while simulating
     const std::vector<std::string> ids = selectedPartIds();
     if (ids.empty())
         return;
@@ -519,6 +555,8 @@ void EditorSession::rotateSelection()
 
 void EditorSession::deleteSelection()
 {
+    if (m_sim)
+        return; // no editing while simulating
     const std::vector<std::string> ids = selectedPartIds();
     const std::vector<int> wires = selectedWireIndices();
     if (ids.empty() && wires.empty())
@@ -531,6 +569,8 @@ void EditorSession::deleteSelection()
 
 void EditorSession::duplicateSelection()
 {
+    if (m_sim)
+        return; // no editing while simulating
     const std::vector<std::string> ids = selectedPartIds();
     if (ids.empty())
         return;
@@ -568,6 +608,8 @@ QPointF placementOrigin(const chiply::Part& p, QPointF c)
 
 QString EditorSession::renamePart(const std::string& from, const std::string& to)
 {
+    if (m_sim)
+        return tr("Stop the simulation to edit.");
     if (from == to)
         return {};
     if (!chiply::isValidInstanceName(to))
@@ -585,6 +627,8 @@ QString EditorSession::renamePart(const std::string& from, const std::string& to
 
 void EditorSession::setPartAttr(const std::string& id, const std::string& key, const std::string& value)
 {
+    if (m_sim)
+        return; // no editing while simulating
     chiply::Document after = m_doc;
     chiply::Part* p = after.findPart(id);
     if (!p)
@@ -598,6 +642,8 @@ void EditorSession::setPartAttr(const std::string& id, const std::string& key, c
 
 void EditorSession::setWireColor(int wireIndex, const std::string& color)
 {
+    if (m_sim)
+        return; // no editing while simulating
     if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()) || m_doc.wires[size_t(wireIndex)].color == color)
         return;
     chiply::Document after = m_doc;
@@ -608,6 +654,8 @@ void EditorSession::setWireColor(int wireIndex, const std::string& color)
 
 void EditorSession::setSelectedWiresColor(const std::string& color)
 {
+    if (m_sim)
+        return; // no editing while simulating
     const std::vector<int> ws = selectedWireIndices();
     chiply::Document after = m_doc;
     bool changed = false;
@@ -623,6 +671,8 @@ void EditorSession::setSelectedWiresColor(const std::string& color)
 
 void EditorSession::deleteWire(int wireIndex)
 {
+    if (m_sim)
+        return; // no editing while simulating
     if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
         return;
     chiply::Document after = m_doc;
@@ -633,6 +683,8 @@ void EditorSession::deleteWire(int wireIndex)
 void EditorSession::reanchorWire(int wireIndex, bool atStart, const chiply::PinRef& pin,
                                  const std::vector<chiply::Point>& route)
 {
+    if (m_sim)
+        return; // no editing while simulating
     if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
         return;
     const chiply::Wire& cur = m_doc.wires[size_t(wireIndex)];
@@ -646,6 +698,32 @@ void EditorSession::reanchorWire(int wireIndex, bool atStart, const chiply::PinR
     w.hasPathElement = true;
     m_undo.push(new DocumentCommand(this, tr("Reconnect wire to %1").arg(QString::fromStdString(pin.str())), m_doc,
                                     after, selectedPartIds(), {}, selectedWireIndices(), {wireIndex}));
+}
+
+void EditorSession::startSimulation()
+{
+    if (m_sim)
+        return;
+    cancelPlacing();
+    endMove(false);
+    m_sim = new SimRunner(this);
+    m_view->setSimMode(true);
+    m_mini->hide();
+    connect(m_sim, &SimRunner::changed, this, &EditorSession::simulationChanged);
+    emit simulationChanged();
+}
+
+void EditorSession::stopSimulation()
+{
+    if (!m_sim)
+        return;
+    m_sim->pause();
+    m_sim->clearVisuals();
+    m_sim->deleteLater();
+    m_sim = nullptr;
+    m_simHeldButton.clear();
+    m_view->setSimMode(false);
+    emit simulationChanged();
 }
 
 std::string EditorSession::duplicateInPlace(const std::string& grab)
@@ -696,6 +774,11 @@ QStringList EditorSession::existingTtBlocksIn(const QString& text) const
 
 EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anchor, bool skipExistingTtBlocks)
 {
+    if (m_sim) {
+        PasteReport r;
+        r.error = tr("Stop the simulation to edit.");
+        return r;
+    }
     PasteReport rep;
     finishPaste(true);
     endMove(true);
@@ -800,6 +883,8 @@ std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const
 void EditorSession::addWire(const chiply::PinRef& from, const chiply::PinRef& to, const std::string& color,
                             const std::vector<chiply::Point>& route)
 {
+    if (m_sim)
+        return; // no editing while simulating
     chiply::Wire w;
     w.from = from;
     w.to = to;
@@ -815,6 +900,8 @@ void EditorSession::addWire(const chiply::PinRef& from, const chiply::PinRef& to
 
 void EditorSession::startPlacing(const std::string& type)
 {
+    if (m_sim)
+        return; // no editing while simulating
     cancelPlacing();
     m_placeType = type;
     chiply::Part p = newPart(type, m_doc);

@@ -11,6 +11,8 @@
 #include <QGraphicsPathItem>
 #include <QGraphicsSimpleTextItem>
 
+#include <functional>
+
 // A part drawn at Wokwi's placement: position = unrotated top-left,
 // rotation about the outline center.
 class PartItem : public QGraphicsItem {
@@ -31,6 +33,11 @@ public:
     // Scene position of one of this part's pins.
     QPointF pinScenePos(const chiply::PinDef& pin) const { return mapToScene(QPointF(pin.x, pin.y)); }
     const chiply::PartDef* def() const { return m_def; }
+    // Simulation: live state for interactive/display parts (see
+    // SymbolPainter::SimVisual), and a provider of pin values for tooltips.
+    void setSim(bool active, unsigned bits);
+    bool simActive() const { return m_simActive; }
+    static void setPinValueProvider(std::function<QString(const std::string& part, const std::string& pin)> f);
     static void setShowNames(bool on);
     static bool showNames();
     // Follows a placement change (left/top/rotate) of the document part.
@@ -48,6 +55,8 @@ private:
     const chiply::PartDef* m_def;     // null for unknown types
     double m_w, m_h;
     bool m_hovered = false;
+    bool m_simActive = false;
+    unsigned m_simBits = 0;
     const chiply::PinDef* m_hoverPin = nullptr;
 };
 
@@ -104,6 +113,10 @@ public:
     const std::string& toPart() const { return m_toPart; }
     Link link() const { return m_link; }
     void setLink(Link l);
+    // Simulation value of the wire's net: -1 = not simulating, else
+    // 0 = low, 1 = high, 2 = X, 3 = Z (chiply::sim::V).
+    void setSimValue(int v);
+    int simValue() const { return m_simValue; }
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
     QRectF boundingRect() const override;
 
@@ -132,6 +145,7 @@ private:
     int m_index;
     std::string m_fromPart, m_toPart;
     Link m_link = Link::None;
+    int m_simValue = -1;
 };
 
 class TextItem : public QGraphicsSimpleTextItem {

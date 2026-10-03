@@ -188,6 +188,21 @@ QPainterPath PartItem::shape() const
 }
 
 static bool s_showNames = false;
+static std::function<QString(const std::string&, const std::string&)> s_pinValue;
+
+void PartItem::setPinValueProvider(std::function<QString(const std::string& part, const std::string& pin)> f)
+{
+    s_pinValue = std::move(f);
+}
+
+void PartItem::setSim(bool active, unsigned bits)
+{
+    if (active == m_simActive && bits == m_simBits)
+        return;
+    m_simActive = active;
+    m_simBits = bits;
+    update();
+}
 void PartItem::setShowNames(bool on) { s_showNames = on; }
 bool PartItem::showNames() { return s_showNames; }
 
@@ -236,7 +251,12 @@ void PartItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
         m_hoverPin = pin;
         if (pin) {
             // Pin names show immediately, like Wokwi's pin overlay.
-            const QString label = QString::fromStdString(m_part.id + ":" + pin->name);
+            QString label = QString::fromStdString(m_part.id + ":" + pin->name);
+            if (s_pinValue) {
+                const QString v = s_pinValue(m_part.id, pin->name);
+                if (!v.isEmpty())
+                    label += QStringLiteral(" = ") + v;
+            }
             QToolTip::showText(event->screenPos() + QPoint(12, 12), label);
             setToolTip(label);
         } else {
@@ -267,8 +287,9 @@ QRectF PartItem::boundingRect() const
 void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
 {
     const CanvasColors& c = Theme::instance().canvas();
+    SymbolPainter::SimVisual sv{m_simBits};
     if (m_def)
-        SymbolPainter::paint(painter, *m_def, m_part, c);
+        SymbolPainter::paint(painter, *m_def, m_part, c, m_simActive ? &sv : nullptr);
     else
         SymbolPainter::paintUnknown(painter, m_w, m_h, QString::fromStdString(m_part.type), c);
 
@@ -345,6 +366,17 @@ QPainterPath WireItem::shape() const
     return hit;
 }
 
+void WireItem::setSimValue(int v)
+{
+    if (v == m_simValue)
+        return;
+    m_simValue = v;
+    static const char* const names[] = {" = 0", " = 1", " = X (unknown)", " = Z (floating)"};
+    setToolTip(m_tip + (v >= 0 && v <= 3 ? QString::fromLatin1(names[v]) : QString()));
+    restyle();
+    update();
+}
+
 void WireItem::setLink(Link l)
 {
     if (l == m_link)
@@ -382,6 +414,29 @@ void WireItem::restyle()
     QPen p(c.displayWireColor(m_fileColor), kWireWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     if (m_link == Link::Stretch)
         p.setDashPattern({3, 2});
+    // Simulation values (PLAN.md 6.3): high = full colour and a bit wider,
+    // low = dimmed, X = red dashed, Z = grey dotted. Line style differs too,
+    // so the states do not depend on colour alone.
+    switch (m_simValue) {
+    case 1:
+        p.setWidthF(kWireWidth + 1.2);
+        break;
+    case 0: {
+        QColor dim = p.color();
+        dim.setAlphaF(0.35);
+        p.setColor(dim);
+        break;
+    }
+    case 2:
+        p.setColor(QColor(0xe5, 0x39, 0x35));
+        p.setDashPattern({4, 3});
+        break;
+    case 3:
+        p.setColor(QColor(0x9e, 0x9e, 0x9e));
+        p.setDashPattern({1, 3});
+        break;
+    default: break;
+    }
     setPen(p);
 }
 

@@ -42,6 +42,10 @@ private:
     void newFile();
     void addPart();
     void updateThemeButton();
+    void playPause();
+    void updateSimControls();
+    enum class SimIcon { Play, Pause, Stop, Step };
+    static QIcon simIcon(SimIcon which);
     static QPixmap titlePixmap(const QColor& ink, qreal dpr);
     void paste();
     void openDialog();
@@ -50,6 +54,11 @@ private:
     QTimer m_saveLayout;
     class QToolButton* m_themeButton = nullptr;
     class QLabel* m_titleLabel = nullptr;
+    QAction* m_playAction = nullptr;
+    QAction* m_stepAction = nullptr;
+    QAction* m_stopAction = nullptr;
+    QAction* m_addPartAction = nullptr;
+    QMenu* m_editMenu = nullptr;
     static inline bool s_persistLayout = true;
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;

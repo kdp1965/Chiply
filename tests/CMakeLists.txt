@@ -102,3 +102,13 @@ add_test(NAME cli_sim_template
 add_test(NAME cli_sim_template_board
   COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
           ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_board.sim)
+
+if(CHIPLY_BUILD_GUI)
+  add_executable(chiply_gui_sim_tests test_gui_sim.cpp)
+  set_target_properties(chiply_gui_sim_tests PROPERTIES AUTOMOC ON)
+  target_link_libraries(chiply_gui_sim_tests PRIVATE chiply_ui Qt6::Test)
+  target_compile_definitions(chiply_gui_sim_tests PRIVATE
+    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+  add_test(NAME gui_sim COMMAND chiply_gui_sim_tests)
+  set_tests_properties(gui_sim PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

@@ -115,6 +115,12 @@ public:
         int index;
         chiply::WirePath path;
     };
+    // ---- simulation (PLAN.md 6.3) ----
+    void startSimulation();   // compiles and enters simulation mode (paused)
+    void stopSimulation();    // back to edit mode
+    class SimRunner* sim() const { return m_sim; }
+    bool simulating() const { return m_sim != nullptr; }
+
     // Applies placements and wire paths without undo (used by commands).
     void applyPlacements(const std::vector<Placement>& ps);
     void applyWirePaths(const std::vector<WireChange>& ws);
@@ -140,6 +146,7 @@ signals:
     void titleChanged();
     void selectionChanged();
     void documentChanged(); // any edit, including undo/redo
+    void simulationChanged(); // started, stopped, running state or time
 
 private:
     void rebuildScene();
@@ -159,6 +166,8 @@ private:
     std::map<std::string, QGraphicsItem*> m_partItems;            // id -> PartItem/TextItem
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
     QGraphicsItem* m_ghost = nullptr;
+    class SimRunner* m_sim = nullptr;
+    std::string m_simHeldButton;
     bool m_pasteFloating = false;
     QPointF m_pasteAnchor;
     class DocumentCommand* m_pasteCmd = nullptr;

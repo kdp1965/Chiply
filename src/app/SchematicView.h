@@ -48,6 +48,10 @@ public:
     void applyTheme();
 
     void setPlacing(bool on);
+    // Simulation mode: clicks and keys go to parts (buttons, switches), never
+    // select or edit; navigation still works.
+    void setSimMode(bool on);
+    bool simMode() const { return m_simMode; }
     bool drawingWire() const { return m_drawing; }
     void cancelWire();
     void setWireColorProvider(std::function<QString(const QString& pinRef)> f) { m_colorFor = std::move(f); }
@@ -81,6 +85,10 @@ signals:
     void placeCancelled();
     void addPartRequested();
     void editPartRequested(); // F2 or double-click on a part
+    // Simulation mode: press/release on a part (local, unrotated coords).
+    void simPress(QString partId, QPointF local);
+    void simRelease();
+    void simKey(QString text, bool pressed);
     void wireColorRequested(QString color);   // color key with wires selected
     // A wire end was dropped on another pin; `route` ends there.
     void wireReanchored(int wireIndex, bool atStart, QString pinRef, std::vector<chiply::Point> route);
@@ -129,6 +137,8 @@ private:
     PartItem* m_pendingWirePart = nullptr; // junction pressed: wire on click, move on drag
     const chiply::PinDef* m_pendingWirePin = nullptr;
     bool m_placing = false;
+    bool m_simMode = false;
+    bool m_simPressed = false;
 
     // Wire drawing (PLAN.md 4.6).
     void startWire(PartItem* part, const chiply::PinDef* pin);

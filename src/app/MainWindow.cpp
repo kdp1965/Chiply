@@ -4,6 +4,7 @@
 #include "PartPalette.h"
 #include "Inspector.h"
 #include "MiniToolbar.h"
+#include "SimRunner.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
 #include "Theme.h"
@@ -50,6 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
             m_undoGroup->setActiveStack(s->undoStack());
         if (m_inspector)
             m_inspector->setSession(current());
+        updateSimControls();
         updateStatus();
     });
 
@@ -113,9 +115,34 @@ void MainWindow::buildMenus()
     tb->addWidget(m_titleLabel);
     tb->addSeparator();
     QAction* addPart = tb->addAction(tr("+  Add Part"), this, &MainWindow::addPart);
+    m_addPartAction = addPart;
     addPart->setToolTip(tr("Add a part (A)"));
     tb->addSeparator();
     tb->addAction(tr("Fit"), this, [this] { if (auto* s = current()) s->view()->fitContents(); });
+    // Simulation controls, left of the zoom buttons: Play/Pause, Step, Stop.
+    tb->addSeparator();
+    m_playAction = tb->addAction(simIcon(SimIcon::Play), tr("Play"), this, &MainWindow::playPause);
+    m_playAction->setObjectName("playAction");
+    m_playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Return));
+    m_stepAction = tb->addAction(simIcon(SimIcon::Step), tr("Step"), this, [this] {
+        if (auto* s = current(); s && s->sim())
+            s->sim()->step();
+    });
+    m_stepAction->setObjectName("stepAction");
+    m_stopAction = tb->addAction(simIcon(SimIcon::Stop), tr("Stop"), this, [this] {
+        if (auto* s = current())
+            s->stopSimulation();
+    });
+    m_stopAction->setObjectName("stopAction");
+    for (QAction* a : {m_playAction, m_stepAction, m_stopAction}) {
+        // Icon-only (the toolbar shows text for its other buttons); the name
+        // is the tooltip.
+        auto* b = qobject_cast<QToolButton*>(tb->widgetForAction(a));
+        b->setObjectName(a->objectName() + "Button");
+        b->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        b->setIconSize(QSize(30, 30));
+    }
+    tb->addSeparator();
     tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
     tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
     // Right end: light/dark switch (sun in light mode, moon in dark mode).
@@ -134,6 +161,7 @@ void MainWindow::buildMenus()
     connect(&Theme::instance(), &Theme::changed, this, &MainWindow::updateThemeButton);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
+    m_editMenu = edit;
     QAction* undo = m_undoGroup->createUndoAction(this, tr("&Undo"));
     undo->setShortcut(QKeySequence::Undo);
     QAction* redo = m_undoGroup->createRedoAction(this, tr("&Redo"));
@@ -275,6 +303,10 @@ int MainWindow::addSession(EditorSession* s)
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
     connect(s->view(), &SchematicView::addPartRequested, this, &MainWindow::addPart);
+    connect(s, &EditorSession::simulationChanged, this, [this, s] {
+        if (s == current())
+            updateSimControls();
+    });
     auto edit = [this] {
         if (m_inspector)
             m_inspector->focusName();
@@ -364,6 +396,92 @@ QPixmap MainWindow::titlePixmap(const QColor& ink, qreal dpr)
         x += adv + gap;
     }
     return pm;
+}
+
+QIcon MainWindow::simIcon(SimIcon which)
+{
+    // Shapes, not colour, carry the meaning (colour-blind friendly).
+    const int s = 64;
+    QPixmap pm(s, s);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(QColor(0x2a, 0x2a, 0x2a), 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    switch (which) {
+    case SimIcon::Play: {
+        p.setBrush(QColor(0x43, 0xa0, 0x47));
+        QPolygonF t;
+        t << QPointF(18, 10) << QPointF(54, 32) << QPointF(18, 54);
+        p.drawPolygon(t);
+        break;
+    }
+    case SimIcon::Pause:
+        p.setBrush(QColor(0xff, 0xb3, 0x00));
+        p.drawRoundedRect(QRectF(14, 10, 13, 44), 3, 3);
+        p.drawRoundedRect(QRectF(37, 10, 13, 44), 3, 3);
+        break;
+    case SimIcon::Stop:
+        p.setBrush(QColor(0xe5, 0x39, 0x35));
+        p.drawRoundedRect(QRectF(13, 13, 38, 38), 4, 4);
+        break;
+    case SimIcon::Step: {
+        p.setBrush(QColor(0x1e, 0x88, 0xe5));
+        QPolygonF t;
+        t << QPointF(12, 12) << QPointF(40, 32) << QPointF(12, 52);
+        p.drawPolygon(t);
+        p.drawRoundedRect(QRectF(44, 12, 9, 40), 2, 2);
+        break;
+    }
+    }
+    return QIcon(pm);
+}
+
+void MainWindow::playPause()
+{
+    EditorSession* s = current();
+    if (!s)
+        return;
+    if (!s->sim()) {
+        s->startSimulation();
+        if (!s->sim())
+            return;
+        if (!s->sim()->error().isEmpty())
+            statusBar()->showMessage(s->sim()->error(), 8000);
+    }
+    if (s->sim()->running())
+        s->sim()->pause();
+    else
+        s->sim()->play();
+    s->view()->setFocus();
+    updateSimControls();
+}
+
+void MainWindow::updateSimControls()
+{
+    EditorSession* s = current();
+    const bool active = s && s->sim();
+    const bool running = active && s->sim()->running();
+    if (m_playAction) {
+        m_playAction->setIcon(simIcon(running ? SimIcon::Pause : SimIcon::Play));
+        m_playAction->setText(running ? tr("Pause") : tr("Play"));
+        m_playAction->setToolTip(running ? tr("Pause the simulation") : active ? tr("Resume the simulation")
+                                                                               : tr("Start simulating (edit mode is locked while simulating)"));
+        m_playAction->setProperty("running", running);
+        m_stepAction->setEnabled(active && !running);
+        m_stepAction->setToolTip(tr("Advance one clock period"));
+        m_stopAction->setEnabled(active);
+        m_stopAction->setToolTip(tr("Stop the simulation and return to editing"));
+    }
+    // No editing while simulating.
+    if (m_editMenu)
+        for (QAction* a : m_editMenu->actions())
+            if (!a->isSeparator() && !a->text().startsWith(tr("&Copy")) && !a->text().startsWith(tr("Select")))
+                a->setEnabled(!active);
+    if (m_addPartAction)
+        m_addPartAction->setEnabled(!active);
+    if (m_undoGroup)
+        m_undoGroup->setActiveStack(active ? nullptr : (s ? s->undoStack() : nullptr));
+    updateStatus();
 }
 
 void MainWindow::updateThemeButton()
@@ -580,6 +698,14 @@ void MainWindow::updateStatus()
         return;
     }
     QString sel;
+    if (SimRunner* r = s->sim()) {
+        const double t = double(r->now()) / 1e12; // seconds
+        QString time = t < 1e-3 ? tr("%1 us").arg(t * 1e6, 0, 'f', 1)
+            : t < 1 ? tr("%1 ms").arg(t * 1e3, 0, 'f', 2) : tr("%1 s").arg(t, 0, 'f', 3);
+        sel = r->running() ? tr("SIMULATING  %1  (%2x real time)").arg(time).arg(r->speed(), 0, 'f', 2)
+                           : tr("SIMULATION PAUSED  %1").arg(time);
+        sel += QStringLiteral("   |   ");
+    }
     const auto sum = s->selectionSummary();
     if (!sum.empty()) {
         sel = tr("Selected: %1 parts, %2 wires").arg(sum.parts).arg(sum.wires);

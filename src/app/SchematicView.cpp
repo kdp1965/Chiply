@@ -302,6 +302,19 @@ void SchematicView::resizeEvent(QResizeEvent* event)
     emit visibleRectChanged(visibleSceneRect());
 }
 
+void SchematicView::setSimMode(bool on)
+{
+    m_simMode = on;
+    m_press = Press::None;
+    m_simPressed = false;
+    if (on) {
+        cancelWire();
+        clearSelection();
+    }
+    viewport()->setCursor(on ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    viewport()->update();
+}
+
 void SchematicView::setPlacing(bool on)
 {
     m_placing = on;
@@ -311,6 +324,19 @@ void SchematicView::setPlacing(bool on)
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_simMode && event->button() == Qt::LeftButton && !m_spaceHeld && !(event->modifiers() & Qt::ShiftModifier)) {
+        // Simulation: the click goes to the part under the cursor.
+        for (QGraphicsItem* it : items(pos)) {
+            if (it->type() == PartItem::Type) {
+                auto* p = static_cast<PartItem*>(it);
+                m_simPressed = true;
+                emit simPress(QString::fromStdString(p->partId()), p->mapFromScene(mapToScene(pos)));
+                break;
+            }
+        }
+        event->accept();
+        return;
+    }
     // Handles on a selected wire win over everything under them (pins).
     if (event->button() == Qt::LeftButton && !m_spaceHeld && !m_drawing) {
         for (QGraphicsItem* it : items(pos)) {
@@ -556,6 +582,12 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
 void SchematicView::mouseReleaseEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_simMode && event->button() == Qt::LeftButton && m_simPressed) {
+        m_simPressed = false;
+        emit simRelease();
+        event->accept();
+        return;
+    }
     if (m_drawing && event->button() == Qt::LeftButton && !m_panning && !m_shiftPending) {
         // Press on a pin, drag, release on another pin: finish there too.
         if (m_drawPressMoved && m_drawPts.size() == 1)
@@ -677,6 +709,10 @@ void SchematicView::updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods)
 
 void SchematicView::mouseDoubleClickEvent(QMouseEvent* event)
 {
+    if (m_simMode) {
+        mousePressEvent(event); // a quick second click is just another click
+        return;
+    }
     QGraphicsItem* it = selectableAt(event->position().toPoint());
     if (event->button() == Qt::LeftButton && it && it->type() == WireItem::Type && !m_drawing) {
         // Wokwi: double-click deletes a wire.
@@ -864,6 +900,32 @@ bool SchematicView::hasSelectedParts() const
 
 void SchematicView::keyPressEvent(QKeyEvent* event)
 {
+    if (m_simMode) {
+        // Letters press pushbuttons by their "key"; navigation keys still work.
+        const bool nav = event->key() == Qt::Key_Left || event->key() == Qt::Key_Right || event->key() == Qt::Key_Up
+            || event->key() == Qt::Key_Down || event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal
+            || event->key() == Qt::Key_Minus || event->key() == Qt::Key_F || event->key() == Qt::Key_G
+            || event->key() == Qt::Key_Space;
+        if (!event->isAutoRepeat() && !(event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier))
+            && !event->text().isEmpty()) {
+            emit simKey(event->text(), true);
+        }
+        if (!nav) {
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right || event->key() == Qt::Key_Up
+            || event->key() == Qt::Key_Down) {
+            const QSize vp = viewport()->size();
+            const bool big = event->modifiers() & Qt::ShiftModifier;
+            const double fx = big ? vp.width() : vp.width() / 10.0, fy = big ? vp.height() : vp.height() / 10.0;
+            if (event->key() == Qt::Key_Left) panBy(QPointF(fx, 0));
+            if (event->key() == Qt::Key_Right) panBy(QPointF(-fx, 0));
+            if (event->key() == Qt::Key_Up) panBy(QPointF(0, fy));
+            if (event->key() == Qt::Key_Down) panBy(QPointF(0, -fy));
+            return;
+        }
+    }
     if (m_drawing) {
         const QString c = wokwiColorForKey(event->key());
         if (!c.isEmpty() && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
@@ -981,6 +1043,8 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
 
 void SchematicView::keyReleaseEvent(QKeyEvent* event)
 {
+    if (m_simMode && !event->isAutoRepeat() && !event->text().isEmpty())
+        emit simKey(event->text(), false);
     if (event->key() == Qt::Key_Space && !event->isAutoRepeat()) {
         m_spaceHeld = false;
         if (!m_panning)

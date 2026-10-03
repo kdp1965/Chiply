@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 project(Chiply VERSION 0.1.0 LANGUAGES CXX)
 
+# Optimised by default: the built-in simulator should run at full speed in
+# the app. Pass -DCMAKE_BUILD_TYPE=Debug for a debug build.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

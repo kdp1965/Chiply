@@ -2,6 +2,7 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QRadialGradient>
 
 #include <cmath>
 #include <functional>
@@ -21,6 +22,8 @@ struct Ctx {
     const PartDef& def;
     const Part& part;
     const CanvasColors& c;
+    const SymbolPainter::SimVisual* sim = nullptr;
+    bool bit(int i) const { return sim && ((sim->bits >> i) & 1u); }
 
     QPen leadPen() const { return QPen(c.lead, kStroke, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin); }
     QPen bodyPen() const { return QPen(c.partStroke, kStroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin); }
@@ -314,9 +317,11 @@ void pushbutton(const Ctx& k)
     k.p->drawRoundedRect(QRectF(11.3, 0, 45.4, 45.4), 2, 2);
     k.p->setBrush(QColor(0xea, 0xea, 0xea));
     k.p->drawRoundedRect(QRectF(14.1, 2.8, 39.8, 39.8), 1, 1);
-    k.p->setBrush(namedColor(k.part, "red"));
-    k.p->setPen(QPen(QColor(0, 0, 0, 80), 1));
-    k.p->drawEllipse(QPointF(34, 22.7), 13, 13);
+    const bool pressed = k.bit(0);
+    QColor cap = namedColor(k.part, "red");
+    k.p->setBrush(pressed ? cap.darker(150) : cap);
+    k.p->setPen(QPen(QColor(0, 0, 0, pressed ? 160 : 80), pressed ? 2.5 : 1));
+    k.p->drawEllipse(QPointF(34, 22.7), pressed ? 11.5 : 13, pressed ? 11.5 : 13);
     std::string label = k.part.attrs.value("label", std::string());
     if (!label.empty())
         k.text(34, 52, QString::fromStdString(label), 9, Qt::AlignCenter, &k.c.partText);
@@ -328,9 +333,12 @@ void slideSwitch(const Ctx& k)
     k.p->setPen(QPen(QColor(0x66, 0x66, 0x66), 1));
     k.p->setBrush(QColor(0x88, 0x88, 0x88));
     k.p->drawRect(QRectF(0, 7.8, 32.1, 13.2));
-    const bool right = k.part.attrs.value("value", std::string("")) == "1";
-    k.p->setBrush(QColor(0x33, 0x33, 0x33));
-    k.p->drawRect(QRectF(right ? 16.5 : 9.6, 2, 6, 7));
+    const bool right = k.sim ? k.bit(0) : k.part.attrs.value("value", std::string("")) == "1";
+    // Light lever with a dark outline: easy to see, and its position (not
+    // its colour) shows the state.
+    k.p->setPen(QPen(QColor(0x33, 0x33, 0x33), 1));
+    k.p->setBrush(QColor(0xf0, 0xf0, 0xf0));
+    k.p->drawRoundedRect(QRectF(right ? 18.5 : 7.6, 1, 6, 8), 1, 1);
 }
 
 void dipSwitch(const Ctx& k)
@@ -349,7 +357,7 @@ void dipSwitch(const Ctx& k)
         const double x = 8.1 + 9.6 * i;
         k.p->setBrush(QColor(0x91, 0x7c, 0x6f));
         k.p->drawRect(QRectF(x - 2.9, 21.2, 5.8, 13));
-        const bool on = i < int(values.size()) && values[size_t(i)] == '1';
+        const bool on = k.sim ? k.bit(i) : (i < int(values.size()) && values[size_t(i)] == '1');
         k.p->setBrush(white);
         k.p->drawRoundedRect(QRectF(x - 2.6, on ? 21.6 : 28.6, 5.2, 5.3), 0.7, 0.7);
         k.text(x - 0.6, 40.5, QString::number(i + 1), 7.0, Qt::AlignCenter, &white);
@@ -377,7 +385,23 @@ void led(const Ctx& k)
     k.line(15, 42, 15, 28);
     k.line(25, 42, 25, 28);
     QColor c = namedColor(k.part, "red");
-    c.setAlpha(200);
+    const bool lit = k.bit(0);
+    if (lit) {
+        // Glow around a lit LED.
+        QRadialGradient glow(QPointF(20, 16), 22);
+        QColor g = c;
+        g.setAlpha(150);
+        glow.setColorAt(0, g);
+        g.setAlpha(0);
+        glow.setColorAt(1, g);
+        k.p->setPen(Qt::NoPen);
+        k.p->setBrush(glow);
+        k.p->drawEllipse(QPointF(20, 16), 22, 22);
+        c = c.lighter(130);
+    } else if (k.sim) {
+        c = c.darker(220); // off while simulating
+    }
+    c.setAlpha(lit ? 255 : 200);
     k.p->setPen(QPen(c.darker(140), 1));
     k.p->setBrush(c);
     QPainterPath d;
@@ -417,8 +441,10 @@ void sevenSegment(const Ctx& k)
     k.p->setTransform(QTransform().shear(std::tan(-8 * M_PI / 180), 0), true);
     k.p->translate(3.5, 2.4);
     k.p->scale(0.81, 0.81);
-    k.p->setBrush(off);
+    QColor litColor = namedColor(k.part, "red");
+    int segIndex = 0;
     for (const auto& seg : segments) {
+        k.p->setBrush(k.bit(segIndex++) ? litColor : off);
         QPolygonF poly;
         for (const QPointF& pt : seg)
             poly << pt;
@@ -429,7 +455,7 @@ void sevenSegment(const Ctx& k)
         k.p->drawPolygon(shrunk);
     }
     k.p->restore();
-    k.p->setBrush(off);
+    k.p->setBrush(k.bit(7) ? litColor : off);
     k.p->drawEllipse(QPointF(3.5 + 7.4, 16), 0.89, 0.89); // decimal point
 
     // Pin dots: 5 per row, top (y 1) and bottom (y 19).
@@ -478,9 +504,9 @@ void piPico(const Ctx& k)
 
 namespace SymbolPainter {
 
-void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors& colors)
+void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors& colors, const SimVisual* sim)
 {
-    Ctx k{p, def, part, colors};
+    Ctx k{p, def, part, colors, sim};
     p->save();
     p->setRenderHint(QPainter::Antialiasing);
     const std::string& s = def.symbol;
