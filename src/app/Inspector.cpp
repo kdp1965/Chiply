@@ -27,9 +27,18 @@ Inspector::Inspector(QWidget* parent)
     QFont f = font();
     f.setPointSize(15);
     setFont(f);
-    m_lay = new QVBoxLayout(this);
+    auto* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    m_scroll = new QScrollArea(this);
+    m_scroll->setWidgetResizable(true);
+    m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* inner = new QWidget(m_scroll);
+    m_lay = new QVBoxLayout(inner);
     m_lay->setContentsMargins(10, 10, 10, 10);
-    setMinimumWidth(320);
+    m_scroll->setWidget(inner);
+    outer->addWidget(m_scroll);
+    setFixedWidth(kWidth);
     rebuild();
 }
 
@@ -67,7 +76,7 @@ void Inspector::clear()
 void Inspector::rebuild()
 {
     clear();
-    m_body = new QWidget(this);
+    m_body = new QWidget(m_scroll->widget());
     auto* v = new QVBoxLayout(m_body);
     v->setContentsMargins(0, 0, 0, 0);
     m_lay->addWidget(m_body);

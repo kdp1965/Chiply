@@ -448,6 +448,10 @@ void SchematicView::selectAll()
 
 void SchematicView::selectOnly(QGraphicsItem* item)
 {
+    if (!item) {
+        clearSelection();
+        return;
+    }
     {
         const QSignalBlocker block(scene());
         scene()->clearSelection();
@@ -458,6 +462,8 @@ void SchematicView::selectOnly(QGraphicsItem* item)
 
 void SchematicView::toggleSelected(QGraphicsItem* item)
 {
+    if (!item)
+        return;
     {
         const QSignalBlocker block(scene());
         item->setSelected(!item->isSelected());
