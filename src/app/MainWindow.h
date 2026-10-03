@@ -1,4 +1,7 @@
 #pragma once
+#include "sim/ChipBackend.h"
+
+#include <memory>
 #include <QMainWindow>
 #include <QTimer>
 
@@ -39,6 +42,14 @@ private:
     // warnings ask. True to go ahead.
     bool exportPreflight(EditorSession* s, const QString& what);
     void exportVerilog();
+    // Simulation engine (PLAN.md 6.6): built-in, or the chip in Verilator.
+    QAction* m_engineBuiltin = nullptr;
+    QAction* m_engineVerilator = nullptr;
+    void updateEngineActions();
+    // Builds (or loads the cached) Verilator chip for `s`, with a progress
+    // dialog. Null if cancelled or failed (after telling the user);
+    // *fallBack is set when the user chose the built-in simulator instead.
+    std::shared_ptr<chiply::sim::ChipBackend> buildVerilatorChip(EditorSession* s, bool* fallBack);
     // Adds a tab, replacing the initial empty, unmodified Untitled one.
     void addReplacingBlank(EditorSession* s);
     void exportTtProject();

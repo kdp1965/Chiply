@@ -28,6 +28,7 @@ endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/sim)
+add_subdirectory(src/vl)
 add_subdirectory(src/cli)
 
 if(CHIPLY_BUILD_GUI)

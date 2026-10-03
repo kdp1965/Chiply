@@ -38,7 +38,7 @@ std::string defaultModuleName(const std::string& stem)
     return s;
 }
 
-std::string writeVerilog(const Document& doc, const PartLibrary& lib, const VerilogOptions& opt)
+std::string writeVerilog(const Document& doc, const PartLibrary& lib, const VerilogOptions& opt, VerilogNetMap* computed)
 {
     const Netlist nl = Netlist::build(doc, lib);
 
@@ -150,6 +150,14 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
       << "  output wire [7:0] uio_out,    // IOs: Output path\n"
       << "  output wire [7:0] uio_oe,    // IOs: Enable path (active high: 0=input, 1=output)\n"
       << "  input ena,\n  input clk,\n  input rst_n\n);\n";
+    if (computed) {
+        *computed = {};
+        for (std::size_t i = 0; i < order.size(); ++i)
+            if (init[size_t(order[i])].empty()) {
+                computed->netlistIndex.push_back(order[i]);
+                computed->number.push_back(int(i) + 1);
+            }
+    }
     for (std::size_t i = 0; i < order.size(); ++i) {
         const std::string& in = init[size_t(order[i])];
         o << "  wire net" << i + 1 << (in.empty() ? std::string() : " = " + in) << ";\n";

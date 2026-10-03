@@ -110,7 +110,10 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         }("value");
 
         auto k = kinds.find(d.type);
-        if (k != kinds.end()) {
+        if (m_opt.chip && k != kinds.end() && k->second != Kind::Const && d.def && d.def->verilog.is_object()
+            && d.def->verilog.contains("cell")) {
+            // Simulated by the chip backend.
+        } else if (k != kinds.end()) {
             std::vector<int> ins;
             for (const char* n : inputs.at(k->second))
                 ins.push_back(pinNet(n));
@@ -171,6 +174,42 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         } else if (!kInert.count(d.type)) {
             m_warnings.push_back("not simulated: " + d.partId + " (" + d.type + ")");
         }
+    }
+    if (m_opt.chip) {
+        // Chip inputs, as the Verilog export names them: the first input
+        // block's CLK, RST_N, IN0..7; uio_in[n] from the bidirectional block
+        // with verilogBit n (a later block wins, as in the export).
+        m_chipIn.assign(18, -1);
+        bool haveIn = false;
+        for (const Device& d : nl.devices) {
+            auto pinNet = [&](const std::string& name) {
+                for (std::size_t i = 0; i < d.pinNames.size(); ++i)
+                    if (d.pinNames[i] == name)
+                        return d.pinNets[i];
+                return -1;
+            };
+            if (!haveIn && (d.type == "board-tt-block-input" || d.type == "board-tt-block-input-8")) {
+                haveIn = true;
+                m_chipIn[0] = pinNet("CLK");
+                m_chipIn[1] = pinNet("RST_N");
+                for (int b = 0; b < 8; ++b)
+                    m_chipIn[size_t(2 + b)] = pinNet("IN" + std::to_string(b));
+            } else if (d.type == "board-tt-block-bidirectional-io" && d.attrs && d.attrs->contains("verilogBit")) {
+                const Json& bit = (*d.attrs)["verilogBit"];
+                const std::string s = bit.is_string() ? bit.get<std::string>() : bit.dump();
+                if (s.size() == 1 && s[0] >= '0' && s[0] <= '7')
+                    m_chipIn[size_t(10 + (s[0] - '0'))] = pinNet("IN");
+            }
+        }
+        Prim p;
+        p.kind = Kind::Chip;
+        m_chipPrim = int(m_prims.size());
+        m_prims.push_back(p);
+        for (int net : m_chipIn)
+            if (net >= 0)
+                m_fanout[size_t(net)].push_back(m_chipPrim);
+        for (int net : m_opt.chip->nets())
+            m_chipSlots.push_back(addSlot(net, Strength::Strong));
     }
     for (int net : padPulls) {
         const int slot = addSlot(net, Strength::Pad);
@@ -413,6 +452,7 @@ void Simulator::evaluate(int idx)
         setSlot(p.out[0], strongValue(p.in[1]));
         setSlot(p.out[1], strongValue(p.in[0]));
         return;
+    case Kind::Chip: evaluateChip(); return;
     default: break;
     }
 
@@ -586,8 +626,28 @@ V Simulator::value(int net) const
     return net < 0 ? V::Z : m_groupValue[size_t(m_groupOf[size_t(net)])];
 }
 
+void Simulator::evaluateChip()
+{
+    // A two-state engine: an input is 1 only if it is driven to 1.
+    auto bit = [&](int i) {
+        const int net = m_chipIn[size_t(i)];
+        return net >= 0 && m_groupValue[size_t(m_groupOf[size_t(net)])] == V::H;
+    };
+    std::uint8_t ui = 0, uio = 0;
+    for (int b = 0; b < 8; ++b) {
+        ui |= std::uint8_t(bit(2 + b) << b);
+        uio |= std::uint8_t(bit(10 + b) << b);
+    }
+    m_opt.chip->eval(ui, uio, bit(0), bit(1));
+    m_opt.chip->read(m_chipValues);
+    for (std::size_t i = 0; i < m_chipSlots.size() && i < m_chipValues.size(); ++i)
+        setSlot(m_chipSlots[i], m_chipValues[i] ? V::H : V::L);
+}
+
 void Simulator::initialise()
 {
+    if (m_opt.chip)
+        m_opt.chip->reset(m_opt.flopStart, m_rng());
     for (Prim& p : m_prims) {
         if (isFlop(int(p.kind))) {
             switch (m_opt.flopStart) {

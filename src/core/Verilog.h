@@ -32,7 +32,15 @@ struct ExportError : std::runtime_error {
 
 // Throws ExportError for parts that cannot be exported (unknown types, SR
 // flip-flops, which cells.v does not have).
-std::string writeVerilog(const Document& doc, const PartLibrary& lib, const VerilogOptions& opt);
+// Chip nets the design computes: for each, its Netlist::build() index and
+// its number in the export (wire net<number>). Inputs and constants are
+// left out.
+struct VerilogNetMap {
+    std::vector<int> netlistIndex;
+    std::vector<int> number;
+};
+std::string writeVerilog(const Document& doc, const PartLibrary& lib, const VerilogOptions& opt,
+                         VerilogNetMap* computed = nullptr);
 
 // "tt_um_" + the file stem made into a Verilog identifier
 // ("My Design.json" -> "tt_um_My_Design").

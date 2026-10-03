@@ -18,7 +18,7 @@ qt_add_library(chiply_ui STATIC
   Text.h
 )
 target_include_directories(chiply_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(chiply_ui PUBLIC chiply_core chiply_sim Qt6::Widgets)
+target_link_libraries(chiply_ui PUBLIC chiply_core chiply_sim chiply_vl Qt6::Widgets)
 
 qt_add_executable(chiply MACOSX_BUNDLE main.cpp)
 target_link_libraries(chiply PRIVATE chiply_ui)

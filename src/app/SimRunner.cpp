@@ -19,13 +19,16 @@ constexpr double kBudgetMs = 12.0;   // CPU time per tick for simulation
 constexpr Time kChunk = 20'000'000;  // simulate in 20 us chunks within a tick
 }
 
-SimRunner::SimRunner(EditorSession* s)
+SimRunner::SimRunner(EditorSession* s, std::shared_ptr<chiply::sim::ChipBackend> chip)
     : QObject(s)
     , m_s(s)
     , m_doc(s->document())
 {
     m_nl = std::make_unique<chiply::Netlist>(chiply::Netlist::build(m_doc, chiply::PartLibrary::builtin()));
-    m_sim = std::make_unique<chiply::sim::Simulator>(*m_nl);
+    chiply::sim::Options opt;
+    opt.chip = std::move(chip);
+    m_engine = opt.chip ? QString::fromStdString(opt.chip->name()) : tr("built-in");
+    m_sim = std::make_unique<chiply::sim::Simulator>(*m_nl, opt);
     m_trace = std::make_shared<chiply::sim::Trace>();
     m_trace->addLogicAnalyzers(*m_sim);
     for (const QString& p : s->probes())
@@ -43,6 +46,12 @@ SimRunner::~SimRunner()
         PartItem::setPinValueProvider(nullptr);
         s_tooltipOwner = nullptr;
     }
+}
+
+QString SimRunner::engineName() const
+{
+    // Options are not exposed; the chip backend is the only engine choice.
+    return m_engine;
 }
 
 void SimRunner::play()

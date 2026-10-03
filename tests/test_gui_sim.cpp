@@ -6,6 +6,7 @@
 #include "SchematicView.h"
 #include "SimRunner.h"
 #include "core/WokwiJson.h"
+#include "vl/VerilatorChip.h"
 
 #include <QGraphicsScene>
 #include <QMenuBar>
@@ -272,6 +273,27 @@ private slots:
         s->removeProbe("ttin:IN1");
         s->load(QStringLiteral(CHIPLY_REFERENCE_DIR "/tt_template_354858054593504257.diagram.json"));
         QVERIFY(s->probes().isEmpty());
+    }
+
+    void verilatorEngineRunsTheChip()
+    {
+        if (!chiply::vl::findTools())
+            QSKIP("Verilator not installed");
+        qputenv("CHIPLY_VL_CACHE", QByteArray(CHIPLY_VL_TEST_CACHE));
+        action("engineVerilator")->trigger();
+        QCOMPARE(QSettings().value("sim/engine").toString(), QStringLiteral("verilator"));
+        action("playAction")->trigger(); // builds (or loads) the chip, then runs
+        QVERIFY(s->simulating());
+        QVERIFY(s->sim()->engineName().startsWith("Verilator"));
+        action("playAction")->trigger(); // pause
+        QCOMPARE(*s->sim()->simulator().segments("sevseg1"), 0x0Fu);
+        PartItem* dip = part("sw1");
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(dip, QPointF(8.1, 28))); // IN0 on
+        QCOMPARE(*s->sim()->simulator().segments("sevseg1"), 0x0Eu); // through the Verilator chip
+        // Chip wires are live: the inverter output not1:OUT is now 0.
+        QCOMPARE(val("not1:OUT"), V::L);
+        action("stopAction")->trigger();
+        action("engineBuiltin")->trigger();
         QSettings().clear();
     }
 };

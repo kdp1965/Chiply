@@ -20,6 +20,7 @@ Status: early development. The design and milestones are in
 | M6 Copy/paste across tabs with id renumbering, Alt+drag duplicate | done |
 | M7 Built-in event-driven simulator, board parts, live UI, waveforms, VCD, truth tables | done |
 | M8 Incremental DRC with Violations pane, Verilog and Tiny Tapeout project export | done |
+| M9 Optional Verilator engine for the chip (Simulation > Engine), built and cached at run time | done |
 
 ## Building
 
@@ -54,6 +55,10 @@ cmake -S . -B build -G Ninja -DCHIPLY_BUILD_GUI=OFF
 ```bash
 ctest --test-dir build   # core, round-trip, Wokwi wire fixture, and offscreen GUI tests
 ```
+
+Optional: with Verilator installed (`brew install verilator`), Simulation >
+Engine > Verilator simulates the chip in Verilator. Nothing is needed at build
+time; Chiply compiles Verilator's output itself and caches it.
 
 GitHub Actions CI (Linux and macOS) runs only on request: Actions tab, CI,
 "Run workflow".

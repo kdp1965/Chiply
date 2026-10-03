@@ -23,7 +23,10 @@ class SimRunner : public QObject {
 public:
     // Compiles the session's current document. The document is copied, so
     // the simulation never changes the file.
-    explicit SimRunner(EditorSession* s);
+    // `chip`: another engine for the chip (Verilator, PLAN.md 6.6); null =
+    // built-in.
+    explicit SimRunner(EditorSession* s, std::shared_ptr<chiply::sim::ChipBackend> chip = {});
+    QString engineName() const;
     ~SimRunner() override;
 
     void play();
@@ -65,6 +68,7 @@ private:
     std::unique_ptr<chiply::Netlist> m_nl;
     std::unique_ptr<chiply::sim::Simulator> m_sim;
     std::shared_ptr<chiply::sim::Trace> m_trace;
+    QString m_engine;
     QTimer m_timer;
     QElapsedTimer m_wall;
     double m_simPerWall = 1.0; // pacing: 1 = real time

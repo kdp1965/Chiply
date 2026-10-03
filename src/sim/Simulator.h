@@ -10,9 +10,11 @@
 // Flip-flop updates are applied in a separate phase, like Verilog
 // non-blocking assignments.
 #include "core/Netlist.h"
+#include "sim/ChipBackend.h"
 #include "sim/Value.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <queue>
 #include <random>
@@ -44,6 +46,10 @@ struct Options {
     // false: Verilog four-state logic (X propagates), used to verify
     // against the Verilog export.
     bool wokwiLogic = true;
+    // Another engine for the chip (e.g. Verilator, PLAN.md 6.6): the logic
+    // cells are not simulated here; the backend computes the chip nets from
+    // the Tiny Tapeout inputs. Null: everything built in.
+    std::shared_ptr<ChipBackend> chip;
 };
 
 // "10000", "10k", "2.5kHz", "1M", "1MHz" -> Hz; nullopt if unparsable.
@@ -119,7 +125,8 @@ private:
         TtIn,     // Tiny Tapeout input pad: Z reads as 0
         TtOut,    // output pad: pass through
         TtTri,    // bidirectional pad driver: OUT when OE is 1, else Z
-        Res       // resistor: weak copy of each side's strong value onto the other
+        Res,      // resistor: weak copy of each side's strong value onto the other
+        Chip      // the chip in a ChipBackend (one primitive; see m_chip*)
     };
     // Pad < Weak < Strong: a Tiny Tapeout input pad's built-in pull-down
     // loses to a resistor, which loses to any driver.
@@ -187,6 +194,13 @@ private:
     std::vector<int> m_extSlot;                 // net -> testbench slot (-1)
     std::vector<Switch> m_switches;
     std::vector<ClockGen> m_clocks;
+    // Chip backend: inputs clk, rst_n, ui_in[0..7], uio_in[0..7] (-1 = none)
+    // and one strong slot per backend net.
+    int m_chipPrim = -1;
+    std::vector<int> m_chipIn;
+    std::vector<int> m_chipSlots;
+    std::vector<std::uint8_t> m_chipValues;
+    void evaluateChip();
 
     std::vector<int> m_active, m_cur;
     std::vector<int> m_nba;

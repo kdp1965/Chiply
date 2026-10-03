@@ -12,9 +12,14 @@
 #include "WaveformView.h"
 #include "ViolationsPane.h"
 #include "core/Verilog.h"
+#include "vl/VerilatorChip.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <atomic>
+#include <mutex>
+#include <thread>
+#include <QProgressDialog>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QInputDialog>
@@ -368,6 +373,23 @@ void MainWindow::buildMenus()
     simMenu->addAction(m_stepAction);
     simMenu->addAction(m_stopAction);
     simMenu->addSeparator();
+    QMenu* engine = simMenu->addMenu(tr("&Engine"));
+    auto* engines = new QActionGroup(this);
+    m_engineBuiltin = engine->addAction(tr("&Built-in"));
+    m_engineBuiltin->setObjectName("engineBuiltin");
+    m_engineVerilator = engine->addAction(tr("&Verilator (chip)"));
+    m_engineVerilator->setObjectName("engineVerilator");
+    for (QAction* a : {m_engineBuiltin, m_engineVerilator}) {
+        a->setCheckable(true);
+        engines->addAction(a);
+    }
+    const bool vlPref = QSettings().value("sim/engine").toString() == QStringLiteral("verilator");
+    (vlPref ? m_engineVerilator : m_engineBuiltin)->setChecked(true);
+    connect(engines, &QActionGroup::triggered, this, [this](QAction* a) {
+        QSettings().setValue("sim/engine", a == m_engineVerilator ? "verilator" : "builtin");
+    });
+    connect(engine, &QMenu::aboutToShow, this, &MainWindow::updateEngineActions);
+    engine->setToolTipsVisible(true);
     m_saveTraceAction = simMenu->addAction(tr("Save Trace as &VCD..."), this, &MainWindow::saveTrace);
     m_saveTraceAction->setObjectName("saveTraceAction");
     m_gtkwaveAction = simMenu->addAction(tr("Open Trace in &GTKWave"), this, &MainWindow::openInGtkWave);
@@ -552,7 +574,14 @@ void MainWindow::playPause()
     if (!s)
         return;
     if (!s->sim()) {
-        s->startSimulation();
+        std::shared_ptr<chiply::sim::ChipBackend> chip;
+        if (m_engineVerilator && m_engineVerilator->isChecked()) {
+            bool fallBack = false;
+            chip = buildVerilatorChip(s, &fallBack);
+            if (!chip && !fallBack)
+                return;
+        }
+        s->startSimulation(chip);
         if (!s->sim())
             return;
         if (!s->sim()->error().isEmpty())
@@ -572,6 +601,101 @@ void MainWindow::playPause()
         s->sim()->play();
     s->view()->setFocus();
     updateSimControls();
+}
+
+namespace {
+// Verilator and a compiler, looked up once (two short process runs).
+const std::optional<chiply::vl::Tools>& verilatorTools(QString* why = nullptr)
+{
+    static std::string reason;
+    static const std::optional<chiply::vl::Tools> tools = chiply::vl::findTools(&reason);
+    if (why)
+        *why = QString::fromStdString(reason);
+    return tools;
+}
+} // namespace
+
+void MainWindow::updateEngineActions()
+{
+    QString why;
+    const auto& tools = verilatorTools(&why);
+    m_engineVerilator->setEnabled(tools.has_value() || m_engineVerilator->isChecked());
+    m_engineVerilator->setToolTip(tools ? tr("Simulate the chip in Verilator %1 (%2); the board stays built in")
+                                              .arg(QString::fromStdString(tools->version), QString::fromStdString(tools->verilator))
+                                        : why);
+    m_engineBuiltin->setToolTip(tr("Chiply's own simulator: no other tools needed"));
+}
+
+std::shared_ptr<chiply::sim::ChipBackend> MainWindow::buildVerilatorChip(EditorSession* s, bool* fallBack)
+{
+    *fallBack = false;
+    auto offerBuiltin = [&](const QString& text, const QString& details) {
+        QMessageBox box(QMessageBox::Warning, tr("Verilator"), text, QMessageBox::Cancel, this);
+        QPushButton* builtin = box.addButton(tr("Use Built-in Simulator"), QMessageBox::AcceptRole);
+        box.setDefaultButton(builtin);
+        if (!details.isEmpty())
+            box.setDetailedText(details);
+        box.exec();
+        *fallBack = box.clickedButton() == builtin;
+    };
+    QString why;
+    const auto& tools = verilatorTools(&why);
+    if (!tools) {
+        offerBuiltin(tr("Verilator cannot be used: %1.").arg(why), {});
+        return nullptr;
+    }
+    const chiply::Document doc = s->document(); // the dialog is modal: no edits meanwhile
+    std::atomic<bool> cancel{false}, done{false};
+    std::mutex mu;
+    std::string status = "Starting";
+    std::shared_ptr<chiply::sim::ChipBackend> chip;
+    std::string error, log;
+    chiply::vl::BuildInfo info;
+    std::thread worker([&] {
+        chiply::vl::BuildOptions bo;
+        bo.cancel = &cancel;
+        bo.status = [&](const std::string& line) {
+            std::lock_guard<std::mutex> g(mu);
+            status = line;
+        };
+        try {
+            chip = chiply::vl::buildChip(doc, *tools, bo, &info);
+        } catch (const chiply::vl::BuildError& e) {
+            error = e.what();
+            log = e.log;
+        } catch (const std::exception& e) {
+            error = e.what();
+        }
+        done = true;
+    });
+    QProgressDialog dlg(tr("Building the chip with Verilator..."), tr("Cancel"), 0, 0, this);
+    dlg.setWindowTitle(tr("Verilator"));
+    dlg.setWindowModality(Qt::WindowModal);
+    dlg.setMinimumDuration(400); // a cached chip loads without a flash of dialog
+    dlg.setMinimumWidth(420);
+    while (!done) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 30);
+        if (dlg.wasCanceled())
+            cancel = true;
+        {
+            std::lock_guard<std::mutex> g(mu);
+            dlg.setLabelText(tr("Building the chip with Verilator %1...\n%2")
+                                 .arg(QString::fromStdString(tools->version), QString::fromStdString(status)));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    }
+    worker.join();
+    dlg.close();
+    if (!chip) {
+        if (!cancel)
+            offerBuiltin(tr("Building the chip with Verilator failed: %1").arg(QString::fromStdString(error)),
+                         QString::fromStdString(log));
+        return nullptr;
+    }
+    statusBar()->showMessage(info.fromCache ? tr("%1: chip loaded from the cache").arg(QString::fromStdString(chip->name()))
+                                            : tr("%1: chip built in %2 s").arg(QString::fromStdString(chip->name())).arg(info.seconds, 0, 'f', 1),
+                             6000);
+    return chip;
 }
 
 namespace {
@@ -1016,6 +1140,8 @@ void MainWindow::updateStatus()
             : t < 1 ? tr("%1 ms").arg(t * 1e3, 0, 'f', 2) : tr("%1 s").arg(t, 0, 'f', 3);
         sel = r->running() ? tr("SIMULATING  %1  (%2x real time)").arg(time).arg(r->speed(), 0, 'f', 2)
                            : tr("SIMULATION PAUSED  %1").arg(time);
+        if (r->engineName() != tr("built-in"))
+            sel += QStringLiteral("  [") + r->engineName() + QLatin1Char(']');
         sel += QStringLiteral("   |   ");
     }
     const auto sum = s->selectionSummary();

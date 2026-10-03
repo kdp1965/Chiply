@@ -17,6 +17,7 @@
 #include "sim/Simulator.h"
 #include "sim/Trace.h"
 #include "sim/TruthTable.h"
+#include "vl/VerilatorChip.h"
 
 #include <chrono>
 #include <cstring>
@@ -29,6 +30,25 @@
 using namespace chiply;
 
 namespace {
+
+// The chip in Verilator (PLAN.md 6.6); progress on stderr.
+std::shared_ptr<chiply::sim::ChipBackend> verilatorChip(const Document& doc)
+{
+    std::string why;
+    const auto tools = vl::findTools(&why);
+    if (!tools)
+        throw std::runtime_error(why);
+    vl::BuildOptions bo;
+    vl::BuildInfo info;
+    try {
+        auto chip = vl::buildChip(doc, *tools, bo, &info);
+        std::cerr << chip->name() << ": chip " << (info.fromCache ? "loaded from cache" : "built") << " in "
+                  << info.seconds << " s\n";
+        return chip;
+    } catch (const vl::BuildError& e) {
+        throw std::runtime_error(std::string(e.what()) + (e.log.empty() ? "" : "\n" + e.log));
+    }
+}
 
 int simScript(const std::string& diagram, const std::string& scriptPath)
 {
@@ -51,8 +71,11 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
             opt.seed = std::stoull(l.substr(12));
         else if (l.rfind("option chip-only", 0) == 0)
             opt.board = false;
-        else if (l.rfind("option verilog", 0) == 0)
+        else if (l.rfind("option verilog", 0) == 0 && l.rfind("option verilator", 0) != 0)
             opt.wokwiLogic = false;
+    for (const std::string& l : lines)
+        if (l.rfind("option verilator", 0) == 0)
+            opt.chip = verilatorChip(r.doc);
     Simulator sim(nl, opt);
     for (const std::string& w : sim.warnings())
         std::cerr << "warning: " << w << "\n";
@@ -187,6 +210,7 @@ int truthTable(int argc, char** argv)
     opt.board = false; // like tt-support-tools: the testbench drives ui_in directly
     std::vector<std::pair<std::string, V>> sets;
     std::string vcdPath;
+    bool useVerilator = false;
     for (int i = 4; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--verilog")
@@ -199,6 +223,8 @@ int truthTable(int argc, char** argv)
             opt.seed = std::stoull(argv[++i]);
         else if (a == "--vcd" && i + 1 < argc)
             vcdPath = argv[++i];
+        else if (a == "--verilator")
+            useVerilator = true;
         else if (a == "--set" && i + 1 < argc) {
             const std::string kv = argv[++i];
             const auto eq = kv.find('=');
@@ -211,6 +237,8 @@ int truthTable(int argc, char** argv)
     }
     LoadResult r = loadWokwiFile(diagram);
     const Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
+    if (useVerilator)
+        opt.chip = verilatorChip(r.doc);
     Simulator sim(nl, opt);
     std::vector<int> in(8, -1), out(8, -1);
     std::string inId, outId;
@@ -272,7 +300,7 @@ int usage()
                  "     writes src/<module>.v and src/cells.v, updates info.yaml and test/Makefile\n"
                  "  chiply-cli sim <diagram.json> <script>\n"
                  "  chiply-cli truthtable <diagram.json> <truthtable.md> [--set part:PIN=0|1]... [--vcd out.vcd]\n"
-                 "             [--verilog] [--zero-start|--x-start] [--seed n]\n"
+                 "             [--verilog] [--zero-start|--x-start] [--seed n] [--verilator]\n"
                  "     Tiny Tapeout truthtable.md: rows | ui_in | uo_out | comment |, 8 chars MSB first;\n"
                  "     inputs 0 1 t(oggle) c(lock) x/- (unchanged), outputs 0 1 x/- (don't care).\n"
                  "     Chip only: ui_in drives the input block's IN pins; CLK and RST_N float unless --set.\n"
@@ -283,6 +311,7 @@ int usage()
                  "  option seed <n>       repeatable random start state\n"
                  "  option chip-only      Tiny Tapeout blocks passive: drive IN*/CLK/RST_N directly\n"
                  "  option verilog        four-state logic (X propagates); default is Wokwi logic\n"
+                 "  option verilator      simulate the chip in Verilator (if installed); the board stays built in\n"
                  "  set <part:PIN> <0|1|x|z>\n"
                  "  clock <part:PIN> [n]  n rising edges (default 1), 0-1-0 each\n"
                  "  run <ps>              advance simulated time\n"

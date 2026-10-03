@@ -18,11 +18,13 @@ add_executable(chiply_tests
   test_trace.cpp
   test_drc.cpp
   test_verilog.cpp
+  test_verilator.cpp
 )
-target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
+target_link_libraries(chiply_tests PRIVATE chiply_vl Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
   CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference"
-  CHIPLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+  CHIPLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
+  CHIPLY_VL_TEST_CACHE="${CMAKE_BINARY_DIR}/verilator-test-cache")
 
 include(Catch)
 catch_discover_tests(chiply_tests)
@@ -121,7 +123,8 @@ if(CHIPLY_BUILD_GUI)
   set_target_properties(chiply_gui_sim_tests PROPERTIES AUTOMOC ON)
   target_link_libraries(chiply_gui_sim_tests PRIVATE chiply_ui Qt6::Test)
   target_compile_definitions(chiply_gui_sim_tests PRIVATE
-    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+    CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference"
+    CHIPLY_VL_TEST_CACHE="${CMAKE_BINARY_DIR}/verilator-test-cache")
   add_test(NAME gui_sim COMMAND chiply_gui_sim_tests)
   set_tests_properties(gui_sim PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()

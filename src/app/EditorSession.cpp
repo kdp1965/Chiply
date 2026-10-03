@@ -770,13 +770,13 @@ void EditorSession::reanchorWire(int wireIndex, bool atStart, const chiply::PinR
                                     after, selectedPartIds(), {}, selectedWireIndices(), {wireIndex}));
 }
 
-void EditorSession::startSimulation()
+void EditorSession::startSimulation(std::shared_ptr<chiply::sim::ChipBackend> chip)
 {
     if (m_sim)
         return;
     cancelPlacing();
     endMove(false);
-    m_sim = new SimRunner(this);
+    m_sim = new SimRunner(this, std::move(chip));
     m_trace = m_sim->trace();
     m_view->setSimMode(true);
     m_mini->hide();

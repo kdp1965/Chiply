@@ -124,7 +124,9 @@ public:
         chiply::WirePath path;
     };
     // ---- simulation (PLAN.md 6.3) ----
-    void startSimulation();   // compiles and enters simulation mode (paused)
+    // Compiles and enters simulation mode (paused). `chip`: the chip in
+    // another engine (Verilator), built from this document.
+    void startSimulation(std::shared_ptr<chiply::sim::ChipBackend> chip = {});
     void stopSimulation();    // back to edit mode
     class SimRunner* sim() const { return m_sim; }
     bool simulating() const { return m_sim != nullptr; }
