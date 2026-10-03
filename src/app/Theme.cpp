@@ -11,14 +11,8 @@ constexpr char kSettingsKey[] = "appearance/theme";
 
 QColor CanvasColors::displayWireColor(const QColor& c) const
 {
-    if (!dark)
-        return c;
-    // Lift anything too dark to read on the dark canvas (black GND wires,
-    // brown, navy...), keeping its hue.
-    if (c.lightnessF() < 0.35) {
-        QColor l = c.toHsl();
-        return QColor::fromHslF(l.hslHueF() < 0 ? 0 : l.hslHueF(), l.hslSaturationF(), 0.62);
-    }
+    // Wokwi draws wire colors exactly as named, in both themes (measured from
+    // a dark-mode Wokwi screenshot: green stays #008000, black stays black).
     return c;
 }
 
@@ -39,13 +33,14 @@ Theme::Theme()
     m_light.lead = QColor(0x00, 0x00, 0x00);
     m_light.dark = false;
 
-    m_dark.background = QColor(0x1e, 0x1f, 0x22);
-    m_dark.gridDot = QColor(0x3d, 0x3f, 0x44);
+    // Wokwi's dark palette, measured from a dark-mode Wokwi screenshot.
+    m_dark.background = QColor(0x33, 0x33, 0x33);
+    m_dark.gridDot = QColor(0x4d, 0x4d, 0x4d);
     m_dark.selection = QColor(0x4f, 0xb3, 0xff);
-    m_dark.partStroke = QColor(0xe0, 0x6c, 0xe0);
-    m_dark.partFill = QColor(0x34, 0x2a, 0x38);
-    m_dark.partText = QColor(0xe6, 0xe6, 0xe6);
-    m_dark.lead = QColor(0xc8, 0xc8, 0xc8);
+    m_dark.partStroke = QColor(0xd4, 0x78, 0xe2);
+    m_dark.partFill = QColor(0x3d, 0x33, 0x40);
+    m_dark.partText = QColor(0xcc, 0xcc, 0xcc);
+    m_dark.lead = QColor(0xaa, 0xaa, 0xaa);
     m_dark.dark = true;
 
     QSettings s;

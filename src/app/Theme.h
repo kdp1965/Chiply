@@ -14,9 +14,7 @@ struct CanvasColors {
     QColor partText;
     QColor lead;           // pin leads, black in light mode
 
-    // Wire colors stay as stored in the file. In dark mode the few that would
-    // vanish on the background (black, and very dark names) are drawn lighter;
-    // the file is never changed.
+    // Wire colors are drawn exactly as stored in the file, as Wokwi does.
     QColor displayWireColor(const QColor& fileColor) const;
     bool dark = false;
 };
