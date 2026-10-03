@@ -1,6 +1,7 @@
 #include "Theme.h"
 
 #include <QGuiApplication>
+#include <QPalette>
 #include <QSettings>
 #include <QStyleHints>
 
@@ -52,10 +53,12 @@ Theme::Theme()
     parseMode(s.value(kSettingsKey, "system").toString(), &m);
     m_mode = m;
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
         if (m_mode == Mode::System)
             emit changed();
     });
+#endif
     applyToApplication();
 }
 
@@ -83,18 +86,25 @@ bool Theme::isDark() const
     case Mode::Dark: return true;
     case Mode::System: break;
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+#else
+    return QGuiApplication::palette().color(QPalette::Window).lightness() < 128;
+#endif
 }
 
 void Theme::applyToApplication()
 {
-    // Window chrome, menus, docks and dialogs follow the same choice.
+    // Window chrome, menus, docks and dialogs follow the same choice
+    // (needs Qt 6.8; older Qt keeps the OS appearance for the chrome).
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     Qt::ColorScheme scheme = Qt::ColorScheme::Unknown; // Unknown = follow the OS
     if (m_mode == Mode::Light)
         scheme = Qt::ColorScheme::Light;
     else if (m_mode == Mode::Dark)
         scheme = Qt::ColorScheme::Dark;
     QGuiApplication::styleHints()->setColorScheme(scheme);
+#endif
 }
 
 QString Theme::modeName(Mode m)

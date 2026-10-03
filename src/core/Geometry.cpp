@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace chiply {
 
@@ -17,7 +18,7 @@ Point partToDiagram(const Part& part, const PartDef& def, Point local)
             dy = t;
         }
     } else {
-        const double a = quarter * M_PI / 180.0;
+        const double a = quarter * std::numbers::pi / 180.0;
         const double rx = dx * std::cos(a) - dy * std::sin(a);
         const double ry = dx * std::sin(a) + dy * std::cos(a);
         dx = rx;
