@@ -81,6 +81,7 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         {Kind::Dffsr, {"D", "CLK", "S", "R"}}, {Kind::Srff, {"S", "CLK", "R"}}, {Kind::Const, {}},
     };
 
+    std::vector<int> padPulls; // nets with a pad pull-down
     for (const Device& d : nl.devices) {
         auto pinNet = [&](const std::string& name) {
             for (std::size_t i = 0; i < d.pinNames.size(); ++i)
@@ -89,7 +90,7 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             return -1;
         };
         // A primitive reading `ins` and driving `outs` (strong unless weak).
-        auto addPrim = [&](Kind k, std::vector<int> ins, std::vector<int> outs, bool weak = false) {
+        auto addPrim = [&](Kind k, std::vector<int> ins, std::vector<int> outs, Strength st = Strength::Strong) {
             Prim p;
             p.kind = k;
             const int idx = int(m_prims.size());
@@ -99,7 +100,7 @@ Simulator::Simulator(const Netlist& nl, Options opt)
                     m_fanout[size_t(ins[i])].push_back(idx);
             }
             for (std::size_t i = 0; i < outs.size() && i < 2; ++i)
-                p.out[i] = addSlot(outs[i], weak);
+                p.out[i] = addSlot(outs[i], st);
             m_prims.push_back(p);
             return idx;
         };
@@ -126,11 +127,17 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         } else if (!m_opt.board && d.type.rfind("board-tt-block", 0) == 0) {
             // chip-only mode: the testbench drives the design-side pins
         } else if (d.type == "board-tt-block-input" || d.type == "board-tt-block-input-8") {
+            // Each input pad: pass EXT* in, with a very weak pull-down on the
+            // pad so an open switch reads (and shows) 0, as on Wokwi.
+            auto pad = [&](const std::string& ext, const std::string& inside) {
+                addPrim(Kind::TtIn, {pinNet(ext)}, {pinNet(inside)});
+                padPulls.push_back(pinNet(ext));
+            };
             for (int b = 0; b < 8; ++b)
-                addPrim(Kind::TtIn, {pinNet("EXTIN" + std::to_string(b))}, {pinNet("IN" + std::to_string(b))});
+                pad("EXTIN" + std::to_string(b), "IN" + std::to_string(b));
             if (d.type == "board-tt-block-input") {
-                addPrim(Kind::TtIn, {pinNet("EXTCLK")}, {pinNet("CLK")});
-                addPrim(Kind::TtIn, {pinNet("EXTRST_N")}, {pinNet("RST_N")});
+                pad("EXTCLK", "CLK");
+                pad("EXTRST_N", "RST_N");
             }
         } else if (d.type == "board-tt-block-output") {
             for (int b = 0; b < 8; ++b)
@@ -138,8 +145,9 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         } else if (d.type == "board-tt-block-bidirectional-io") {
             addPrim(Kind::TtTri, {pinNet("OUT"), pinNet("OE")}, {pinNet("UIO")});
             addPrim(Kind::TtIn, {pinNet("UIO")}, {pinNet("IN")});
+            padPulls.push_back(pinNet("UIO"));
         } else if (d.type == "wokwi-resistor") {
-            addPrim(Kind::Res, {pinNet("1"), pinNet("2")}, {pinNet("1"), pinNet("2")}, true);
+            addPrim(Kind::Res, {pinNet("1"), pinNet("2")}, {pinNet("1"), pinNet("2")}, Strength::Weak);
         } else if (d.type == "wokwi-pushbutton") {
             m_switches.push_back({d.partId, d.type, {{pinNet("1.l"), pinNet("2.l")}}, {}, {false}});
         } else if (d.type == "wokwi-slide-switch") {
@@ -164,15 +172,20 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             m_warnings.push_back("not simulated: " + d.partId + " (" + d.type + ")");
         }
     }
+    for (int net : padPulls) {
+        const int slot = addSlot(net, Strength::Pad);
+        if (slot >= 0)
+            m_slots[size_t(slot)].v = V::L;
+    }
     m_queued.assign(m_prims.size(), 0);
     initialise();
 }
 
-int Simulator::addSlot(int net, bool weak)
+int Simulator::addSlot(int net, Strength st)
 {
     if (net < 0)
         return -1;
-    m_slots.push_back({net, V::Z, weak});
+    m_slots.push_back({net, V::Z, st});
     m_netSlots[size_t(net)].push_back(int(m_slots.size()) - 1);
     return int(m_slots.size()) - 1;
 }
@@ -199,39 +212,28 @@ void Simulator::enqueue(int prim)
 
 void Simulator::resolveGroup(int g, bool notify)
 {
-    bool strong = false, weak = false, strongConflict = false, weakConflict = false;
-    V sv = V::Z, wv = V::Z;
+    // The strongest drive level present wins; disagreement at that level
+    // gives X; no drive at all gives Z.
+    Strength best = Strength::None;
+    V v = V::Z;
+    bool conflict = false;
     for (int net : m_groupNets[size_t(g)]) {
         for (int s : m_netSlots[size_t(net)]) {
             const Slot& slot = m_slots[size_t(s)];
-            if (slot.v == V::Z)
+            if (slot.v == V::Z || slot.strength < best)
                 continue;
-            if (slot.weak) {
-                if (!weak) {
-                    wv = slot.v;
-                    weak = true;
-                } else if (slot.v != wv) {
-                    weakConflict = true;
-                }
-            } else {
-                if (!strong) {
-                    sv = slot.v;
-                    strong = true;
-                } else if (slot.v != sv) {
-                    strongConflict = true;
-                }
+            if (slot.strength > best) {
+                best = slot.strength;
+                v = slot.v;
+                conflict = false;
+            } else if (slot.v != v) {
+                conflict = true;
             }
         }
     }
-    V v = V::Z;
-    Strength st = Strength::None;
-    if (strong) {
-        v = strongConflict ? V::X : sv;
-        st = Strength::Strong;
-    } else if (weak) {
-        v = weakConflict ? V::X : wv;
-        st = Strength::Weak;
-    }
+    if (conflict)
+        v = V::X;
+    const Strength st = best;
     if (v == m_groupValue[size_t(g)] && st == m_groupStrength[size_t(g)])
         return;
     m_groupValue[size_t(g)] = v;
@@ -315,7 +317,14 @@ void Simulator::evaluate(int idx)
 {
     Prim& p = m_prims[size_t(idx)];
     ++m_evals;
-    auto val = [&](int k) { return p.in[k] >= 0 ? m_groupValue[size_t(m_groupOf[size_t(p.in[k])])] : V::Z; };
+    auto val = [&](int k) {
+        const V v = p.in[k] >= 0 ? m_groupValue[size_t(m_groupOf[size_t(p.in[k])])] : V::Z;
+        // Wokwi logic: an input is 1 only if driven to 1; floating or
+        // unknown reads 0. Pads and resistors see the raw value.
+        if (m_opt.wokwiLogic && p.kind != Kind::TtIn && p.kind != Kind::TtOut && p.kind != Kind::Res)
+            return v == V::H ? V::H : V::L;
+        return v;
+    };
     auto out = [&](V v) {
         if (p.delay > 0 && !m_initialising)
             m_timed.push({m_now + p.delay, m_seq++, p.out[0], v});
@@ -407,13 +416,50 @@ void Simulator::evaluate(int idx)
 bool Simulator::settle()
 {
     flush();
+    if (m_opt.wokwiLogic) {
+        // Wokwi-style: evaluate one gate at a time, each seeing the latest
+        // outputs (so symmetric loops such as an SR latch settle instead of
+        // flipping in lock-step). Flip-flops still update in their own
+        // phase, after the logic has settled.
+        const std::size_t limit = std::size_t(m_opt.maxDeltas) * (m_prims.size() + 1);
+        std::size_t evals = 0, head = 0;
+        while (head < m_active.size() || !m_nba.empty()) {
+            if (head == m_active.size()) {
+                m_active.clear();
+                head = 0;
+                std::vector<int> nba;
+                nba.swap(m_nba);
+                for (int idx : nba) {
+                    Prim& p = m_prims[size_t(idx)];
+                    p.pending = false;
+                    p.q = p.nq;
+                    setSlot(p.out[0], p.q);
+                    setSlot(p.out[1], vnot(p.q));
+                }
+                flush();
+                continue;
+            }
+            if (++evals > limit) {
+                // Keep the pending work so the next step continues from a
+                // consistent state.
+                m_active.erase(m_active.begin(), m_active.begin() + long(head));
+                m_error = "combinational loop did not settle at t=" + std::to_string(m_now) + " ps";
+                return false;
+            }
+            const int idx = m_active[head++];
+            m_queued[size_t(idx)] = 0;
+            evaluate(idx);
+            flush();
+        }
+        m_active.clear();
+        return true;
+    }
     int deltas = 0;
     while (!m_active.empty() || !m_nba.empty()) {
         if (++deltas > m_opt.maxDeltas) {
+            // Keep the pending work so the next step continues from a
+            // consistent state.
             m_error = "combinational loop did not settle at t=" + std::to_string(m_now) + " ps";
-            for (int p : m_active)
-                m_queued[size_t(p)] = 0;
-            m_active.clear();
             return false;
         }
         if (m_active.empty()) {

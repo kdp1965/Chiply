@@ -18,7 +18,15 @@ struct Bench {
     std::unique_ptr<Netlist> nl;
     std::unique_ptr<Simulator> sim;
 
-    Bench(const std::string& parts, const std::string& wires, Options opt = {})
+    // These tests check the four-state (Verilog) semantics unless an
+    // option says otherwise.
+    static Options verilog()
+    {
+        Options o;
+        o.wokwiLogic = false;
+        return o;
+    }
+    Bench(const std::string& parts, const std::string& wires, Options opt = verilog())
     {
         std::string json = R"({"parts":[)";
         std::istringstream ps(parts);
@@ -126,7 +134,7 @@ TEST_CASE("D flip-flop samples on the rising edge only")
 
 TEST_CASE("flip-flops can start unknown")
 {
-    Options o;
+    Options o = Bench::verilog();
     o.flopsStartUnknown = true;
     Bench b("wokwi-flip-flop-d f1", "", o);
     CHECK(b.get("f1:Q") == X);
@@ -222,7 +230,7 @@ TEST_CASE("a ring without a known value stays X, as in Verilog")
 
 TEST_CASE("unit-delay mode shows the delay")
 {
-    Options o;
+    Options o = Bench::verilog();
     o.gateDelay = 100; // ps
     Bench b("wokwi-gate-not n1 wokwi-gate-not n2", "n1:OUT n2:IN", o);
     b.sim->drive(*PinRef::parse("n1:IN"), L);
@@ -234,4 +242,31 @@ TEST_CASE("unit-delay mode shows the delay")
     CHECK(b.get("n2:OUT") == L);
     b.sim->advance(100);
     CHECK(b.get("n2:OUT") == H);
+}
+
+TEST_CASE("Wokwi logic: floating and unknown inputs read 0")
+{
+    Options w; // default: Wokwi logic
+    Bench b("wokwi-gate-not n1 wokwi-gate-and-2 a1", "", w);
+    CHECK(b.get("n1:IN") == Z);  // the net itself is still shown as floating
+    CHECK(b.get("n1:OUT") == H); // but the gate reads it as 0
+    CHECK(b.get("a1:OUT") == L);
+}
+
+TEST_CASE("Wokwi logic: a cross-coupled latch starts from definite values")
+{
+    // SR latch from two NOR gates. With four-state logic it starts X and
+    // stays X until set or reset; with Wokwi logic it starts at a definite
+    // state, like on wokwi.com, so designs relying on that run.
+    const char* parts = "wokwi-gate-nor-2 n1 wokwi-gate-nor-2 n2";
+    const char* wires = "n1:OUT n2:A n2:OUT n1:B";
+    Bench verilog(parts, wires);
+    CHECK(verilog.get("n1:OUT") == X);
+    Options w;
+    Bench wokwi(parts, wires, w);
+    CHECK(known(wokwi.get("n1:OUT")));
+    CHECK(wokwi.get("n2:OUT") == vnot(wokwi.get("n1:OUT")));
+    wokwi.set("n1:A", H); // set -> n1:OUT = 0, n2:OUT = 1
+    CHECK(wokwi.get("n1:OUT") == L);
+    CHECK(wokwi.get("n2:OUT") == H);
 }

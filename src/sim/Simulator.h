@@ -30,6 +30,12 @@ struct Options {
     // testbench drives IN*/CLK/RST_N and the uio pins directly, as when
     // verifying against the Verilog export. true: chip plus board, as Wokwi.
     bool board = true;
+    // true (default): Wokwi logic. Every input reads 0 or 1: a floating (Z)
+    // or unknown (X) input reads 0, so feedback loops start from definite
+    // values, as on wokwi.com. Net values still show X/Z for debugging.
+    // false: Verilog four-state logic (X propagates), used to verify
+    // against the Verilog export.
+    bool wokwiLogic = true;
 };
 
 // "10000", "10k", "2.5kHz", "1M", "1MHz" -> Hz; nullopt if unparsable.
@@ -92,7 +98,9 @@ private:
         TtTri,    // bidirectional pad driver: OUT when OE is 1, else Z
         Res       // resistor: weak copy of each side's strong value onto the other
     };
-    enum class Strength : std::uint8_t { None, Weak, Strong };
+    // Pad < Weak < Strong: a Tiny Tapeout input pad's built-in pull-down
+    // loses to a resistor, which loses to any driver.
+    enum class Strength : std::uint8_t { None, Pad, Weak, Strong };
     struct Prim {
         Kind kind;
         int in[4] = {-1, -1, -1, -1};  // input nets (meaning per kind)
@@ -106,7 +114,7 @@ private:
     struct Slot {
         int net;
         V v = V::Z;
-        bool weak = false;
+        Strength strength = Strength::Strong;
     };
     struct Timed {
         Time t;
@@ -131,7 +139,7 @@ private:
         V v = V::L;
     };
 
-    int addSlot(int net, bool weak = false);
+    int addSlot(int net, Strength s = Strength::Strong);
     void setSlot(int slot, V v);
     void resolveGroup(int group, bool notify = true);
     void regroup();

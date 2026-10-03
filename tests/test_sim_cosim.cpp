@@ -102,6 +102,7 @@ TEST_CASE("built-in simulator matches Icarus on Wokwi's Verilog export")
     Options opt;
     opt.flopsStartUnknown = true;
     opt.board = false; // drive the chip's pins directly, like the Verilog testbench
+    opt.wokwiLogic = false; // Verilog four-state semantics
     Simulator sim(nl, opt);
 
     std::map<std::string, std::string> uio; // bit -> part (last wins, like the export)

@@ -52,7 +52,10 @@ TEST_CASE("template: DIP switches drive the 7-segment display through the chip")
     Board b(templateJson());
     INFO(b.sim->lastError());
     CHECK(b.sim->warnings().empty());
-    // All switches off: inputs float and read 0. IN0..3 are inverted, so
+    // Open switches: the pads' pull-downs make the inputs 0, and the wires
+    // show 0 too (not floating).
+    CHECK(b.get("ttin:EXTIN0") == V::L);
+    // All switches off: inputs read 0. IN0..3 are inverted, so
     // OUT0..3 = 1 lights segments A..D; IN4..7 pass straight, E..DP dark.
     CHECK(b.sim->segments("sevseg1") == 0x0Fu);
     CHECK(b.get("ttin:IN0") == V::L);
@@ -126,8 +129,8 @@ TEST_CASE("resistors pull weakly; strong drivers win; opposite pulls give X")
       {"type":"wokwi-gnd","id":"g","top":0,"left":0,"attrs":{}},{"type":"wokwi-vcc","id":"v","top":0,"left":0,"attrs":{}},
       {"type":"wokwi-gate-not","id":"n1","top":0,"left":0,"attrs":{}},{"type":"wokwi-gate-buffer","id":"b1","top":0,"left":0,"attrs":{}}],
      "connections":[["g:GND","r1:1","black",[]],["r1:2","n1:IN","green",[]],["b1:OUT","n1:IN","green",[]]]})");
-    // b1's input floats, so b1 drives X strongly: strong wins over the pull-down.
-    CHECK(b.get("n1:IN") == V::X);
+    // b1's input floats and reads 0 (Wokwi logic), so b1 drives 0 strongly.
+    CHECK(b.get("n1:IN") == V::L);
     b.sim->drive(*PinRef::parse("b1:IN"), V::H);
     b.sim->settle();
     CHECK(b.get("n1:IN") == V::H); // strong 1 beats the weak pull-down
@@ -144,6 +147,12 @@ TEST_CASE("resistors pull weakly; strong drivers win; opposite pulls give X")
      "connections":[["g:GND","r1:1","black",[]],["r1:2","n1:IN","green",[]]]})");
     CHECK(down.get("n1:IN") == V::L); // pulled down when nothing else drives
     CHECK(down.get("n1:OUT") == V::H);
+}
+
+TEST_CASE("RESET pull-up beats the pad pull-down")
+{
+    Board b(templateJson());
+    CHECK(b.get("ttin:EXTRST_N") == V::H); // resistor (weak) > pad pull-down
 }
 
 TEST_CASE("reference design runs on its board with the clock generator")

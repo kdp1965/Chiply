@@ -37,6 +37,8 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
             opt.flopsStartUnknown = true;
         else if (l.rfind("option chip-only", 0) == 0)
             opt.board = false;
+        else if (l.rfind("option verilog", 0) == 0)
+            opt.wokwiLogic = false;
     Simulator sim(nl, opt);
     for (const std::string& w : sim.warnings())
         std::cerr << "warning: " << w << "\n";
@@ -134,6 +136,7 @@ int usage()
                  "sim script, one command per line (# comments):\n"
                  "  option x-start        flip-flops start unknown (default: 0, like Wokwi)\n"
                  "  option chip-only      Tiny Tapeout blocks passive: drive IN*/CLK/RST_N directly\n"
+                 "  option verilog        four-state logic (X propagates); default is Wokwi logic\n"
                  "  set <part:PIN> <0|1|x|z>\n"
                  "  clock <part:PIN> [n]  n rising edges (default 1), 0-1-0 each\n"
                  "  run <ps>              advance simulated time\n"

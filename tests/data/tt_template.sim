@@ -17,5 +17,5 @@ expect ttout:OUT4 1
 expect ttout:OUT5 0
 expect ttout:OUT6 1
 expect ttout:OUT7 0
-set ttin:IN0 z      # released input floats: the inverter output is unknown
-expect ttout:OUT0 x
+set ttin:IN0 z      # released input floats; Wokwi logic reads it as 0
+expect ttout:OUT0 1
