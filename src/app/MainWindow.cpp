@@ -104,6 +104,14 @@ void MainWindow::buildMenus()
     QFont tbf = tb->font();
     tbf.setPointSize(16);
     tb->setFont(tbf);
+    // Program title C͓̽H͓̽I͓̽P͓̽L͓̽Y͓̽ drawn as a graphic (a small x above and below each
+    // letter) so it looks the same in every font.
+    m_titleLabel = new QLabel(tb);
+    m_titleLabel->setObjectName("programTitle");
+    m_titleLabel->setAccessibleName(QStringLiteral("Chiply"));
+    m_titleLabel->setContentsMargins(8, 0, 14, 0);
+    tb->addWidget(m_titleLabel);
+    tb->addSeparator();
     QAction* addPart = tb->addAction(tr("+  Add Part"), this, &MainWindow::addPart);
     addPart->setToolTip(tr("Add a part (A)"));
     tb->addSeparator();
@@ -319,8 +327,49 @@ QIcon themeIcon(bool dark)
 }
 } // namespace
 
+QPixmap MainWindow::titlePixmap(const QColor& ink, qreal dpr)
+{
+    QFont f(QStringLiteral("Helvetica"));
+    f.setPixelSize(24);
+    f.setBold(true);
+    const QFontMetricsF fm(f);
+    const QString word = QStringLiteral("CHIPLY");
+    const double gap = 3.5;   // extra space between letters
+    const double xs = 3.2;    // half-size of the little x marks
+    double width = 0;
+    for (QChar c : word)
+        width += fm.horizontalAdvance(c) + gap;
+    const double h = fm.capHeight() + 2 * (2 * xs + 4) + 2;
+    QPixmap pm(QSize(int(std::ceil(width + 2)), int(std::ceil(h))) * dpr);
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setFont(f);
+    const double baseline = 2 * xs + 5 + fm.capHeight();
+    double x = 1;
+    QPen xpen(ink, 1.6, Qt::SolidLine, Qt::RoundCap);
+    for (QChar c : word) {
+        const double adv = fm.horizontalAdvance(c);
+        p.setPen(ink);
+        p.drawText(QPointF(x, baseline), QString(c));
+        const double cx = x + adv / 2;
+        const double above = baseline - fm.capHeight() - xs - 3;
+        const double below = baseline + xs + 3;
+        p.setPen(xpen);
+        for (double cy : {above, below}) {
+            p.drawLine(QPointF(cx - xs, cy - xs), QPointF(cx + xs, cy + xs));
+            p.drawLine(QPointF(cx - xs, cy + xs), QPointF(cx + xs, cy - xs));
+        }
+        x += adv + gap;
+    }
+    return pm;
+}
+
 void MainWindow::updateThemeButton()
 {
+    if (m_titleLabel)
+        m_titleLabel->setPixmap(titlePixmap(palette().color(QPalette::WindowText), devicePixelRatioF()));
     if (!m_themeButton)
         return;
     const bool dark = Theme::instance().isDark();

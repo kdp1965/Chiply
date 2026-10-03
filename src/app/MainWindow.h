@@ -42,12 +42,14 @@ private:
     void newFile();
     void addPart();
     void updateThemeButton();
+    static QPixmap titlePixmap(const QColor& ink, qreal dpr);
     void paste();
     void openDialog();
 
     QTabWidget* m_tabs = nullptr;
     QTimer m_saveLayout;
     class QToolButton* m_themeButton = nullptr;
+    class QLabel* m_titleLabel = nullptr;
     static inline bool s_persistLayout = true;
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;
