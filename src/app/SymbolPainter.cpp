@@ -1,0 +1,499 @@
+#include "SymbolPainter.h"
+
+#include <QPainter>
+#include <QPainterPath>
+
+#include <functional>
+#include <map>
+
+using chiply::Part;
+using chiply::PartDef;
+using chiply::PartLibrary;
+
+namespace {
+
+constexpr double kMm = PartLibrary::kPxPerMm;
+constexpr double kStroke = 0.4; // mm, same weight as Wokwi's symbols
+
+struct Ctx {
+    QPainter* p;
+    const PartDef& def;
+    const Part& part;
+    const CanvasColors& c;
+
+    QPen leadPen() const { return QPen(c.lead, kStroke, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin); }
+    QPen bodyPen() const { return QPen(c.partStroke, kStroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin); }
+    void line(double x1, double y1, double x2, double y2) const { p->drawLine(QPointF(x1, y1), QPointF(x2, y2)); }
+    void leads(std::initializer_list<QLineF> ls) const
+    {
+        p->setPen(leadPen());
+        for (const QLineF& l : ls)
+            p->drawLine(l);
+    }
+    void body(const QPainterPath& path) const
+    {
+        p->setPen(bodyPen());
+        p->setBrush(Qt::NoBrush);
+        p->drawPath(path);
+    }
+    void bubble(double cx, double cy) const
+    {
+        p->setPen(bodyPen());
+        p->setBrush(Qt::NoBrush);
+        p->drawEllipse(QPointF(cx, cy), 0.75, 0.75);
+    }
+    void text(double x, double y, const QString& s, double size, Qt::Alignment align = Qt::AlignCenter,
+              const QColor* color = nullptr) const
+    {
+        QFont f("Helvetica");
+        f.setPixelSize(100); // draw large and scale down for crisp small text
+        p->save();
+        p->setFont(f);
+        p->setPen(color ? *color : c.partStroke);
+        p->translate(x, y);
+        p->scale(size / 100.0, size / 100.0);
+        QRectF r(-2000, -60, 4000, 120);
+        if (align & Qt::AlignLeft)
+            r = QRectF(0, -60, 4000, 120);
+        else if (align & Qt::AlignRight)
+            r = QRectF(-4000, -60, 4000, 120);
+        p->drawText(r, int(align | Qt::AlignVCenter), s);
+        p->restore();
+    }
+};
+
+// ---- logic gates (25.4 x 10 mm, inputs at y 2.54 / 7.62, output 5.08) ----
+
+QPainterPath andBody()
+{
+    QPainterPath b;
+    b.moveTo(7.62, 0.4);
+    b.lineTo(12.7, 0.4);
+    b.arcTo(QRectF(12.7 - 4.68, 5.08 - 4.68, 9.36, 9.36), 90, -180);
+    b.lineTo(7.62, 9.76);
+    b.closeSubpath();
+    return b;
+}
+
+void orBack(QPainterPath& b, double x)
+{
+    b.moveTo(x, 0.4);
+    b.quadTo(x + 2.6, 5.08, x, 9.76);
+}
+
+QPainterPath orBody(double x0)
+{
+    QPainterPath b;
+    orBack(b, x0);
+    b.moveTo(x0, 0.4);
+    b.quadTo(x0 + 7.5, 0.4, x0 + 11.2, 5.08);
+    b.quadTo(x0 + 7.5, 9.76, x0, 9.76);
+    return b;
+}
+
+void gate(const Ctx& k, const std::string& kind)
+{
+    const bool inv = kind == "nand" || kind == "nor" || kind == "xnor";
+    double outX = 17.38;
+    double inEnd = 7.62;
+    if (kind == "and" || kind == "nand") {
+        k.body(andBody());
+    } else {
+        const double x0 = (kind == "xor" || kind == "xnor") ? 8.4 : 7.2;
+        QPainterPath b = orBody(x0);
+        if (kind == "xor" || kind == "xnor")
+            orBack(b, x0 - 1.2);
+        k.body(b);
+        outX = x0 + 11.2;
+        inEnd = (kind == "xor" || kind == "xnor") ? 7.9 : 8.6;
+    }
+    if (inv) {
+        k.bubble(outX + 0.75, 5.08);
+        outX += 1.5;
+    }
+    k.leads({QLineF(0, 2.54, inEnd, 2.54), QLineF(0, 7.62, inEnd, 7.62), QLineF(outX, 5.08, 25.4, 5.08)});
+}
+
+void inverter(const Ctx& k, bool bubble)
+{
+    QPainterPath t;
+    t.moveTo(7.62, 0.9);
+    t.lineTo(16.0, 5.08);
+    t.lineTo(7.62, 9.26);
+    t.closeSubpath();
+    k.body(t);
+    double outX = 16.0;
+    if (bubble) {
+        k.bubble(16.75, 5.08);
+        outX = 17.5;
+    }
+    k.leads({QLineF(0, 5.08, 7.62, 5.08), QLineF(outX, 5.08, 25.4, 5.08)});
+}
+
+void mux(const Ctx& k)
+{
+    // Trapezoid, wide side at the inputs; SEL enters from below.
+    QPainterPath t;
+    t.moveTo(8.89, 0.2);
+    t.lineTo(16.51, 2.4);
+    t.lineTo(16.51, 7.76);
+    t.lineTo(8.89, 9.96);
+    t.closeSubpath();
+    k.body(t);
+    const double selY = 9.96 - (12.7 - 8.89) / (16.51 - 8.89) * 2.2;
+    k.leads({QLineF(0, 2.54, 8.89, 2.54), QLineF(0, 7.62, 8.89, 7.62), QLineF(16.51, 5.08, 25.4, 5.08),
+             QLineF(12.7, 12.7, 12.7, selY)});
+    k.text(10.0, 2.54, "0", 1.9, Qt::AlignLeft);
+    k.text(10.0, 7.62, "1", 1.9, Qt::AlignLeft);
+}
+
+void flipFlop(const Ctx& k, const std::string& kind)
+{
+    // Box between x 7.62 and 17.78; vertical extent depends on the variant.
+    double top = 0.4, bottom = 9.76, dy = 0;
+    if (kind == "dff-sr") {
+        top = 2.54;
+        bottom = 12.7;
+        dy = 2.54;
+    }
+    k.p->setPen(k.bodyPen());
+    k.p->setBrush(Qt::NoBrush);
+    k.p->drawRect(QRectF(7.62, top, 10.16, bottom - top));
+
+    std::vector<QLineF> l;
+    if (kind == "sr") {
+        l = {QLineF(0, 2.54, 7.62, 2.54), QLineF(0, 5.08, 7.62, 5.08), QLineF(0, 7.62, 7.62, 7.62)};
+        k.text(8.4, 2.54, "S", 2.2, Qt::AlignLeft);
+        k.text(8.4, 7.62, "R", 2.2, Qt::AlignLeft);
+    } else {
+        l = {QLineF(0, 2.54 + dy, 7.62, 2.54 + dy), QLineF(0, 7.62 + dy, 7.62, 7.62 + dy)};
+        k.text(8.4, 2.54 + dy, "D", 2.2, Qt::AlignLeft);
+    }
+    l.push_back(QLineF(17.78, 2.54 + dy, 25.4, 2.54 + dy));
+    l.push_back(QLineF(17.78, 7.62 + dy, 25.4, 7.62 + dy));
+    if (kind == "dff-r")
+        l.push_back(QLineF(12.7, 12.7, 12.7, bottom));
+    if (kind == "dff-sr") {
+        l.push_back(QLineF(12.7, 0, 12.7, top));
+        l.push_back(QLineF(12.7, 15.24, 12.7, bottom));
+        k.text(12.7, top + 1.4, "S", 2.0);
+        k.text(12.7, bottom - 1.4, "R", 2.0);
+    }
+    if (kind == "dff-r")
+        k.text(12.7, bottom - 1.4, "R", 2.0);
+    k.p->setPen(k.leadPen());
+    for (const QLineF& x : l)
+        k.p->drawLine(x);
+
+    // Clock wedge on the CLK input.
+    const double cy = (kind == "sr") ? 5.08 : 7.62 + dy;
+    QPainterPath w;
+    w.moveTo(7.62, cy - 1.1);
+    w.lineTo(9.3, cy);
+    w.lineTo(7.62, cy + 1.1);
+    k.body(w);
+    // Q and Q-bar labels.
+    k.text(17.0, 2.54 + dy, "Q", 2.2, Qt::AlignRight);
+    k.text(17.0, 7.62 + dy, "Q", 2.2, Qt::AlignRight);
+    k.p->setPen(QPen(k.c.partStroke, 0.18));
+    k.line(15.35, 6.35 + dy, 16.95, 6.35 + dy);
+}
+
+void vcc(const Ctx& k)
+{
+    k.leads({QLineF(2.54, 7.42, 2.54, 3.0)});
+    k.p->setPen(QPen(k.c.lead, kStroke, Qt::SolidLine, Qt::RoundCap));
+    k.line(0.6, 3.0, 4.48, 3.0);
+    k.text(2.54, 1.3, "VCC", 2.0, Qt::AlignCenter, &k.c.lead);
+}
+
+void gnd(const Ctx& k)
+{
+    k.leads({QLineF(2.7, 0, 2.7, 5.08)});
+    QPainterPath t;
+    t.moveTo(0.12, 5.08);
+    t.lineTo(5.28, 5.08);
+    t.lineTo(2.7, 9.5);
+    t.closeSubpath();
+    k.p->setPen(QPen(k.c.lead, kStroke, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+    k.p->setBrush(Qt::NoBrush);
+    k.p->drawPath(t);
+}
+
+void clockGen(const Ctx& k)
+{
+    k.p->setPen(k.bodyPen());
+    k.p->setBrush(Qt::NoBrush);
+    k.p->drawRect(QRectF(0.2, 0.2, 9.8, 9.6));
+    QPainterPath sq;
+    sq.moveTo(1.5, 6.5);
+    sq.lineTo(3.4, 6.5);
+    sq.lineTo(3.4, 2.6);
+    sq.lineTo(5.3, 2.6);
+    sq.lineTo(5.3, 6.5);
+    sq.lineTo(7.2, 6.5);
+    sq.lineTo(7.2, 2.6);
+    sq.lineTo(8.8, 2.6);
+    k.body(sq);
+    k.leads({QLineF(10.0, 5.08, 17.78, 5.08)});
+    std::string f = k.part.attrs.value("frequency", std::string("10k"));
+    k.text(5.1, 8.5, QString::fromStdString(f) + "Hz", 1.7);
+}
+
+void ttBlock(const Ctx& k)
+{
+    const double w = k.def.width / kMm, h = k.def.height / kMm;
+    k.p->setPen(k.bodyPen());
+    k.p->setBrush(Qt::NoBrush);
+    k.p->drawRoundedRect(QRectF(2.54, 0.6, w - 5.08, h - 1.2), 0.8, 0.8);
+    QString title;
+    if (k.def.symbol == "tt-input" || k.def.symbol == "tt-input-8")
+        title = "INPUT";
+    else if (k.def.symbol == "tt-output")
+        title = "OUTPUT";
+    else
+        title = "D" + QString::fromStdString(k.part.attrs.value("verilogBit", std::string("?")));
+    k.text(w / 2, k.def.symbol == "tt-bidir" ? h / 2 : 3.2, title, 2.4);
+    if (k.def.symbol != "tt-bidir")
+        k.text(w / 2, 5.4, "Tiny Tapeout", 1.5);
+    k.p->setPen(k.leadPen());
+    for (const auto& pin : k.def.pins) {
+        const double x = pin.x / kMm, y = pin.y / kMm;
+        const bool left = x < w / 2;
+        k.line(x, y, left ? 2.54 : w - 2.54, y);
+        k.text(left ? 3.2 : w - 3.2, y, QString::fromStdString(pin.name), 1.45, left ? Qt::AlignLeft : Qt::AlignRight);
+        k.p->setPen(k.leadPen());
+    }
+}
+
+void junction(const Ctx& k)
+{
+    k.p->setPen(Qt::NoPen);
+    k.p->setBrush(k.c.lead);
+    k.p->drawEllipse(QPointF(1.27, 1.27), 1.0, 1.0);
+}
+
+// ---- physical parts (drawn in px; approximate artwork, exact pins) ----
+
+QColor namedColor(const Part& part, const char* fallback)
+{
+    QColor c(QString::fromStdString(part.attrs.value("color", std::string(fallback))));
+    return c.isValid() ? c : QColor(fallback);
+}
+
+void pins(const Ctx& k, double len, bool vertical)
+{
+    k.p->setPen(QPen(QColor(0xaa, 0xaa, 0xaa), 2.0, Qt::SolidLine, Qt::FlatCap));
+    for (const auto& pin : k.def.pins) {
+        if (vertical)
+            k.line(pin.x, pin.y, pin.x, pin.y + (pin.y > k.def.height / 2 ? -len : len));
+        else
+            k.line(pin.x, pin.y, pin.x + (pin.x > k.def.width / 2 ? -len : len), pin.y);
+    }
+}
+
+void pushbutton(const Ctx& k)
+{
+    pins(k, 12, false);
+    k.p->setPen(QPen(QColor(0x46, 0x46, 0x46), 1));
+    k.p->setBrush(QColor(0x46, 0x46, 0x46));
+    k.p->drawRoundedRect(QRectF(11.3, 0, 45.4, 45.4), 2, 2);
+    k.p->setBrush(QColor(0xea, 0xea, 0xea));
+    k.p->drawRoundedRect(QRectF(14.1, 2.8, 39.8, 39.8), 1, 1);
+    k.p->setBrush(namedColor(k.part, "red"));
+    k.p->setPen(QPen(QColor(0, 0, 0, 80), 1));
+    k.p->drawEllipse(QPointF(34, 22.7), 13, 13);
+    std::string label = k.part.attrs.value("label", std::string());
+    if (!label.empty())
+        k.text(34, 52, QString::fromStdString(label), 9, Qt::AlignCenter, &k.c.partText);
+}
+
+void slideSwitch(const Ctx& k)
+{
+    pins(k, 14, true);
+    k.p->setPen(QPen(QColor(0x66, 0x66, 0x66), 1));
+    k.p->setBrush(QColor(0x88, 0x88, 0x88));
+    k.p->drawRect(QRectF(0, 7.8, 32.1, 13.2));
+    const bool right = k.part.attrs.value("value", std::string("")) == "1";
+    k.p->setBrush(QColor(0x33, 0x33, 0x33));
+    k.p->drawRect(QRectF(right ? 16.5 : 9.6, 2, 6, 7));
+}
+
+void dipSwitch(const Ctx& k)
+{
+    pins(k, 8, true);
+    k.p->setPen(QPen(QColor(0x99, 0x00, 0x00), 1));
+    k.p->setBrush(QColor(0xd0, 0x1c, 0x1c));
+    k.p->drawRect(QRectF(0, 9, 82.87, 37.4));
+    for (int i = 0; i < 8; ++i) {
+        const double x = 8.1 + 9.6 * i;
+        k.p->setBrush(QColor(0xee, 0xee, 0xee));
+        k.p->setPen(Qt::NoPen);
+        k.p->drawRect(QRectF(x - 2.9, 16, 5.8, 22));
+        k.p->setBrush(QColor(0x55, 0x55, 0x55));
+        k.p->drawRect(QRectF(x - 2.9, 27, 5.8, 11));
+        k.text(x, 42.5, QString::number(i + 1), 6, Qt::AlignCenter, &k.c.background);
+    }
+}
+
+void resistor(const Ctx& k)
+{
+    k.p->setPen(QPen(QColor(0xaa, 0xaa, 0xaa), 2.4));
+    k.line(0, 5.65, 58.8, 5.65);
+    k.p->setPen(QPen(QColor(0x99, 0x80, 0x60), 0.6));
+    k.p->setBrush(QColor(0xd5, 0xb5, 0x97));
+    k.p->drawRoundedRect(QRectF(13, 1, 33, 9.3), 3, 3);
+    const QColor bands[] = {QColor("brown"), QColor("black"), QColor("red"), QColor(0xf1, 0xd8, 0x63)};
+    for (int i = 0; i < 4; ++i) {
+        k.p->setPen(Qt::NoPen);
+        k.p->setBrush(bands[i]);
+        k.p->drawRect(QRectF(17 + i * 6.5, 1, 3, 9.3));
+    }
+}
+
+void led(const Ctx& k)
+{
+    k.p->setPen(QPen(QColor(0x8c, 0x8c, 0x8c), 2.2));
+    k.line(15, 42, 15, 28);
+    k.line(25, 42, 25, 28);
+    QColor c = namedColor(k.part, "red");
+    c.setAlpha(200);
+    k.p->setPen(QPen(c.darker(140), 1));
+    k.p->setBrush(c);
+    QPainterPath d;
+    d.moveTo(8, 30);
+    d.lineTo(8, 14);
+    d.arcTo(QRectF(8, 2, 24, 24), 180, -180);
+    d.lineTo(32, 30);
+    d.closeSubpath();
+    k.p->drawPath(d);
+    k.text(13, 46, "C", 6, Qt::AlignCenter, &k.c.partText);
+    k.text(27, 46, "A", 6, Qt::AlignCenter, &k.c.partText);
+}
+
+void sevenSegment(const Ctx& k)
+{
+    const double w = k.def.width, h = k.def.height;
+    k.p->setPen(Qt::NoPen);
+    k.p->setBrush(QColor(0x22, 0x22, 0x22));
+    k.p->drawRect(QRectF(0, 0, w, h));
+    k.p->setBrush(QColor(0x99, 0x99, 0x99));
+    for (const auto& pin : k.def.pins)
+        k.p->drawRect(QRectF(pin.x - 1, pin.y - 3.8, 2, 7.6));
+    // Segments, unlit.
+    QColor seg = namedColor(k.part, "red");
+    seg.setAlpha(60);
+    k.p->setBrush(seg);
+    const double x0 = 12, x1 = 33, y0 = 14, ym = 41, y1 = 68, t = 3.2;
+    auto hs = [&](double y) { k.p->drawRect(QRectF(x0 + 2, y - t / 2, x1 - x0 - 4, t)); };
+    auto vs = [&](double x, double ya, double yb) { k.p->drawRect(QRectF(x - t / 2, ya + 2, t, yb - ya - 4)); };
+    hs(y0); hs(ym); hs(y1);
+    vs(x0, y0, ym); vs(x1, y0, ym); vs(x0, ym, y1); vs(x1, ym, y1);
+    k.p->drawEllipse(QPointF(39, y1), 2, 2);
+}
+
+void logicAnalyzer(const Ctx& k)
+{
+    k.p->setPen(QPen(QColor(0xcc, 0xcc, 0xcc), 2.8));
+    for (const auto& pin : k.def.pins)
+        k.line(0, pin.y, 16, pin.y);
+    k.p->setPen(QPen(QColor(0x44, 0x37, 0x4b), 0.8));
+    k.p->setBrush(QColor(0x80, 0x00, 0x80));
+    k.p->drawRect(QRectF(15.4, 0.4, 140.6, 93.2));
+    const QColor white(0xf2, 0xf2, 0xf2);
+    for (const auto& pin : k.def.pins)
+        k.text(19, pin.y, QString::fromStdString(pin.name), 8, Qt::AlignLeft, &white);
+    k.text(105, 47, "Logic Analyzer", 10, Qt::AlignCenter, &white);
+}
+
+void piPico(const Ctx& k)
+{
+    k.p->setPen(Qt::NoPen);
+    k.p->setBrush(QColor(0x1d, 0x7f, 0x3a));
+    k.p->drawRoundedRect(QRectF(0, 0, k.def.width, k.def.height), 3, 3);
+    k.p->setBrush(QColor(0xd4, 0xb0, 0x4a));
+    for (const auto& pin : k.def.pins)
+        k.p->drawEllipse(QPointF(pin.x, pin.y), 3, 3);
+    k.p->setBrush(QColor(0x22, 0x22, 0x22));
+    k.p->drawRect(QRectF(24, 80, 32, 32));
+    k.p->setBrush(QColor(0xbb, 0xbb, 0xbb));
+    k.p->drawRect(QRectF(28, 0, 23, 14));
+    const QColor white(0xff, 0xff, 0xff);
+    k.text(40, 128, "Raspberry Pi", 6, Qt::AlignCenter, &white);
+    k.text(40, 136, "Pico", 6, Qt::AlignCenter, &white);
+}
+
+} // namespace
+
+namespace SymbolPainter {
+
+void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors& colors)
+{
+    Ctx k{p, def, part, colors};
+    p->save();
+    p->setRenderHint(QPainter::Antialiasing);
+    const std::string& s = def.symbol;
+    static const std::map<std::string, bool> mmSymbols = {
+        {"and", true}, {"nand", true}, {"or", true}, {"nor", true}, {"xor", true}, {"xnor", true},
+        {"not", true}, {"buffer", true}, {"mux", true}, {"dff", true}, {"dff-r", true}, {"dff-sr", true},
+        {"sr", true}, {"vcc", true}, {"gnd", true}, {"clock", true}, {"tt-input", true}, {"tt-input-8", true},
+        {"tt-output", true}, {"tt-bidir", true}, {"junction", true}};
+    if (mmSymbols.count(s))
+        p->scale(kMm, kMm);
+
+    if (s == "and" || s == "nand" || s == "or" || s == "nor" || s == "xor" || s == "xnor")
+        gate(k, s);
+    else if (s == "not")
+        inverter(k, true);
+    else if (s == "buffer")
+        inverter(k, false);
+    else if (s == "mux")
+        mux(k);
+    else if (s == "dff" || s == "dff-r" || s == "dff-sr" || s == "sr")
+        flipFlop(k, s);
+    else if (s == "vcc")
+        vcc(k);
+    else if (s == "gnd")
+        gnd(k);
+    else if (s == "clock")
+        clockGen(k);
+    else if (s.rfind("tt-", 0) == 0)
+        ttBlock(k);
+    else if (s == "junction")
+        junction(k);
+    else if (s == "pushbutton")
+        pushbutton(k);
+    else if (s == "slide-switch")
+        slideSwitch(k);
+    else if (s == "dip-switch-8")
+        dipSwitch(k);
+    else if (s == "resistor")
+        resistor(k);
+    else if (s == "led")
+        led(k);
+    else if (s == "7segment")
+        sevenSegment(k);
+    else if (s == "logic-analyzer")
+        logicAnalyzer(k);
+    else if (s == "pi-pico")
+        piPico(k);
+    else
+        paintUnknown(p, def.width, def.height, QString::fromStdString(def.type), colors);
+    p->restore();
+}
+
+void paintUnknown(QPainter* p, double w, double h, const QString& type, const CanvasColors& colors)
+{
+    p->save();
+    p->setPen(QPen(colors.gridDot.darker(150), 1, Qt::DashLine));
+    p->setBrush(QColor(128, 128, 128, 40));
+    p->drawRect(QRectF(0, 0, w, h));
+    QFont f("Helvetica");
+    f.setPixelSize(7);
+    p->setFont(f);
+    p->setPen(colors.partText);
+    p->drawText(QRectF(2, 2, w - 4, h - 4), Qt::AlignCenter | Qt::TextWordWrap, type);
+    p->restore();
+}
+
+} // namespace SymbolPainter

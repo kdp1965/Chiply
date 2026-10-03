@@ -66,7 +66,7 @@ Rules observed:
 - Part keys are written in the order `type, id, top, left, rotate, attrs`. `rotate` is omitted when 0. `attrs` is always present, `{}` when empty. An optional `hide: true` exists.
 - `top`/`left` are the part's unrotated top-left corner in CSS pixels (96 dpi). Numbers are written with at most 2 decimals, integers without a decimal point.
 - A connection is `[from, to, color, path]`. Pin references are `"partId:PIN"`. Color is a CSS color name (`green`, `limegreen`, `gold`, `violet`, ...) or `""` to hide the wire.
-- `path` is a list of `"h<px>"` / `"v<px>"` moves starting at the source pin. An optional `"*"` splits source-side moves from target-side moves (target-side moves are applied in reverse from the target pin). Whatever gap remains after the moves is auto-completed by Wokwi as a straight line. Your design uses no `"*"` and wires are source-anchored, which is what Wokwi's editor writes.
+- `path` is a list of `"h<px>"` / `"v<px>"` moves starting at the source pin. An optional `"*"` splits source-side moves from target-side moves (target-side moves are applied in reverse from the target pin). Whatever gap remains is closed by Wokwi with orthogonal legs, by a fixed rule (3.5). Your design uses no `"*"` and wires are source-anchored, which is what Wokwi's editor writes.
 - The part `id` is the name: Wokwi's Verilog export uses it as the instance name (`dffsr_cell state_reg_2 (...)`). So "naming a flop" is "editing its id", and ids must be legal Verilog identifiers.
 - `wokwi-text` is the annotation part (`attrs.text`).
 
@@ -74,7 +74,7 @@ Rules observed:
 
 - Grid pitch is 0.1 inch = 9.6 px. Fine grid (Alt/Ctrl while dragging) is 4.8 px. Shift disables snapping. `G` toggles grid display.
 - In your design, 832 of 1024 part positions and 2024 of 2042 first wire segments sit exactly on the 9.6 px lattice. The logic-gate pins therefore sit on the grid relative to the part origin; the mm-based physical parts (7-segment, DIP switch) do not, which is where the `h21.01`-style fractional first segments come from.
-- Rotation is 0 / 90 / 180 / 270, clockwise. The pivot convention has to be calibrated (see Appendix A); your design has 96 parts at 90° and 48 at 270°, which makes the calibration easy to verify visually.
+- Rotation is 0 / 90 / 180 / 270, clockwise, about the center of the part's outline (CSS `transform-origin: center`). Your design has 96 parts at 90° and 48 at 270°, all rendered correctly.
 
 ### 2.3 Editor behavior and keys (from the Wokwi docs)
 
@@ -106,12 +106,15 @@ Pin names below were read directly from your design's connections; the Verilog m
 | `wokwi-gate-or-2` | A, B, OUT | `or_cell` |
 | `wokwi-gate-xor-2` | A, B, OUT | `xor_cell` |
 | `wokwi-gate-nand-2` | A, B, OUT | `nand_cell` |
-| `wokwi-gate-nor-2` (confirm name) | A, B, OUT | `nor_cell` |
-| `wokwi-gate-xnor-2` (confirm name) | A, B, OUT | `xnor_cell` |
+| `wokwi-gate-nor-2` | A, B, OUT | `nor_cell` |
+| `wokwi-gate-xnor-2` | A, B, OUT | `xnor_cell` |
 | `wokwi-gate-not` | IN, OUT | `not_cell(in,out)` |
 | `wokwi-gate-buffer` | IN, OUT | `buffer_cell` |
 | `wokwi-mux-2` | A, B, SEL, OUT | `mux_cell(a,b,sel,out)`, `out = sel ? b : a` |
-| `wokwi-flip-flop-d` | D, CLK, Q (NOTQ exists in the cell; confirm pin) | `dff_cell(clk,d,q,notq)` |
+| `wokwi-flip-flop-d` | D, CLK, Q, NOTQ | `dff_cell(clk,d,q,notq)` |
+| `wokwi-flip-flop-sr` | S, CLK, R, Q, NOTQ | none in `cells.v` (Wokwi simulates it; not exportable) |
+| `wokwi-junction` | J | none; a net junction (Wokwi beta part, prefix `j`) |
+| `board-tt-block-input-8` | IN0..7 / EXTIN0..7 (no clock or reset) | `ui_in[7:0]` |
 | `wokwi-flip-flop-dr` | D, CLK, R, Q, NOTQ | `dffr_cell` (async reset) |
 | `wokwi-flip-flop-dsr` | D, CLK, S, R, Q, NOTQ | `dffsr_cell` (async set/reset, reset wins) |
 | `board-tt-block-input` | IN0..IN7, CLK, RST_N (design side); EXTIN0..7, EXTCLK, EXTRST_N (stimulus side); attr `verilogRole: input` | `ui_in[7:0]`, `clk`, `rst_n` |
@@ -148,11 +151,14 @@ Consequence: if Chiply writes an equivalent `.v`, a Chiply design can be submitt
 
 This is the performance target: the editor must stay smooth at this size.
 
-### 2.7 What Wokwi does not give us
+### 2.7 Where the geometry comes from (resolved in M2)
 
-- The gate, flip-flop, mux and Tiny Tapeout block graphics are **not** in the open-source `wokwi-elements` repo (MIT). That repo does provide SVG art and exact `pinInfo` for the physical parts we need: 7-segment, LED, pushbutton, slide switch, DIP switch, resistor, and others. Chiply draws the logic symbols itself (they are simple ANSI distinctive-shape symbols: magenta outline, black leads, bubble on inverting outputs, trapezoid mux, rectangle flops with a clock triangle).
-- Exact pin coordinates for the logic parts cannot be recovered from `diagram.json` alone: wire paths are relative to the source pin and Wokwi silently auto-completes the last gap, so a path's end need not be the target pin. (I tried; your copy-pasted rows make the wrong answers vote consistently.) They have to be read once from Wokwi itself; this is a 15-minute job described in Appendix A, and the values live in a JSON part library, not in C++.
-- Wokwi does not document the logic parts at all, so the pin table above is the spec.
+- **Logic parts** (gates, buffer, MUX, the four flip-flop variants, VCC, GND, clock generator, junction, logic analyzer, Pico): pin positions and outline sizes come from the part definitions in Wokwi's public diagram-editor JavaScript, where they are given in millimetres (96/25.4 px per mm). Only these numbers are used; the artwork is Chiply's own.
+- **Tiny Tapeout blocks**: pins and sizes from the `board.json` files in the public `wokwi-boards` repository. That repository has no license file, so again only coordinates are used and Chiply draws its own block art.
+- **Physical parts** (pushbutton, slide switch, DIP switch, resistor, LED, 7-segment): `pinInfo` and SVG sizes from `wokwi-elements` (MIT). The 7-segment element places its pins with 3.78 px/mm while its outline uses 96/25.4; Chiply reproduces that quirk.
+- **Rotation**: Wokwi applies `transform: rotate(Ndeg)` with the default CSS origin, i.e. about the center of the outline.
+- **Verification**: a unit test routes all 2042 wires of the reference design and checks the gaps Wokwi leaves after the recorded bends; 95.5 % are whole half-grid steps (the rest involve the 7-segment and DIP switch, which are off-grid in Wokwi too). A wrong pin or pivot would break this immediately.
+- **Wokwi's own ERC**: the editor has a small electrical rule check with four issues: input pin not driven, multi-driven net, short circuit (VCC tied to GND), clock driven by combinational logic. It uses the same per-pin direction table that 3.7 describes. Chiply's DRC (5.2) covers all four.
 
 ---
 
@@ -236,12 +242,12 @@ Chiply-only data (net labels, custom block library paths, view state) goes in a 
 ### 3.4 Geometry and rotation
 
 - Scene units are Wokwi pixels; 1 grid = 9.6 px. Rendering scales with the view transform only.
-- Pin world position = part origin + Rotate(rotate, pivot) · pinLocal. The pivot convention is a single function in `Geometry.cpp` and is set by the calibration in Appendix A.
+- Pin world position = part origin + Rotate(rotate, pivot) · pinLocal. The pivot is the outline center, implemented once in `Geometry.cpp`.
 - Snapping: parts snap by their origin; wire vertices snap to the grid; Shift disables snapping; Alt/Ctrl uses the 4.8 px fine grid. Pins are not snapped (they are where the symbol puts them), which is exactly why Wokwi writes a fractional first segment for mm-based parts.
 
 ### 3.5 Wires
 
-- A wire's polyline is computed from the source pin by walking `path`; if the end does not coincide with the target pin, a straight "tail" is drawn to it, like Wokwi. Chiply renders that tail subtly different (thin or dashed) so you can see unfinished routes, with a preference to draw it exactly as Wokwi does.
+- A wire's polyline is computed exactly as Wokwi's editor does it (read from its code): endpoints rounded to 2 decimals; source moves walked from the source pin; without `"*"`, the remaining gap is closed on the axis of the last move first (horizontal if there are no moves), then the other axis; with `"*"`, the target moves are walked from the target pin starting with the last item, and if both axes still differ one leg on the axis of the first move after `"*"` joins the two halves. Implemented in `routePolyline()` with unit tests.
 - Moving the source part moves the whole route (path is relative to the source pin); moving the target part only stretches the tail. This mirrors Wokwi exactly, so what you see is what Wokwi will show.
 - Edits produce a new `path`; normalization merges collinear and zero-length segments and keeps everything on grid. If a loaded wire has a `"*"`, Chiply keeps the `"*"` form untouched until the wire is edited, then writes the source-anchored form.
 - Manhattan only: all segments are horizontal or vertical, like Wokwi's mini-language.
@@ -371,7 +377,7 @@ Selectable objects are parts (gates, flops, TT blocks, switches, displays, power
 
 ### 4.6 Wires
 
-- **Drawing**: click a pin, each further click adds a bend, click a pin to finish; Esc or right-click cancels. The pending segment previews as an L-bend that follows the cursor; the preview's elbow orientation flips when the cursor crosses the diagonal, which is how Wokwi's editor feels. Starting a new wire from an existing wire's vertex is **not** supported (Wokwi has no junctions; a net with three ends is two wires from the same pin), and Chiply keeps that model.
+- **Drawing**: click a pin, each further click adds a bend, click a pin to finish; Esc or right-click cancels. The pending segment previews as an L-bend that follows the cursor; the preview's elbow orientation flips when the cursor crosses the diagonal, which is how Wokwi's editor feels. A net with three ends is normally two wires from the same pin. Wokwi also has a beta `wokwi-junction` part (a dot with one pin `J`); Chiply supports it as a part, and a later option can drop a junction where a wire is started from the middle of another wire.
 - **Editing a selected wire**: round handles on every vertex (drag to move the corner; neighbors stay orthogonal), bar handles at the middle of each segment (drag to slide that segment perpendicular), a trash icon, and Delete. Double-click on a wire deletes it, exactly as in Wokwi (decided). Ctrl+click on a segment inserts a vertex there; on macOS this is Cmd+click, because Qt maps Cmd to its Ctrl modifier and the OS turns a physical Ctrl+click into a right-click. With several wires selected, color keys and Delete apply to all of them.
 - **Colors**: the key map in 2.3, active while drawing or with wires selected; default color by source pin function. Also a color swatch popup on the wire toolbar.
 - **Re-anchoring**: dragging a wire's endpoint off a pin and onto another pin reconnects it.
@@ -427,12 +433,13 @@ Each check has an id, a default severity and an on/off switch. Switches live in 
 |---|---|---|---|
 | `unconnected-input` | on | warning | an `in` pin with no wire, or whose net has no driver (message says which) |
 | `multiple-drivers` | on | error | a net with two or more driver pins (`out`, `inout`, `power`): two outputs tied together, an output tied to VCC/GND, etc. Lists every driver |
+| `short-circuit` | on | error | VCC and GND symbols on the same net (Wokwi's "Short circuit") |
+| `clock-from-logic` | on | warning | a flip-flop clock driven by combinational logic instead of a clock source or flip-flop output (Wokwi's "Clock driven by combinatorial logic") |
 | `unconnected-output` | off | info | an `out` pin that drives nothing (harmless; the ASIC tools optimize it away) |
 | `dangling-wire` | on | error | a connection naming a part or pin that does not exist (possible after hand-editing JSON) |
 | `invalid-id` | on | error | id is not a legal Verilog identifier, is a keyword, or is duplicated |
 | `unknown-part` | on | error | part type with no library definition (blocks export) |
 | `tt-bidir-bit` | on | error | bidirectional block with a missing or duplicated `verilogBit` |
-| `unrouted-wire-tail` | off | info | wire whose path does not end on its target pin (cosmetic; Wokwi draws a straight tail) |
 
 Running: DRC runs live by default, incrementally on the nets touched by each edit (debounced ~100 ms), so violations appear and disappear as you wire. A "Run DRC" button does a full pass, and live checking can be switched off for very large edits. Export and simulation always run a full pass first and refuse to proceed on errors (warnings only ask).
 
@@ -524,7 +531,7 @@ Estimates are working days for one developer using Claude Code; each milestone e
 |---|---|---|---|
 | M0 | Project skeleton | CMake + Qt 6 + Catch2 build on your Mac; empty window; CI on GitHub Actions (macOS, Linux) | 1 |
 | M1 | Core model + Wokwi JSON | Load/save all three reference files with JSON-equal round trip; wire path codec incl. `"*"`; id generator | 2–3 |
-| M2 | Part library + calibration | All part types in 2.4 defined, including the logic analyzer and the Pico board outline; logic symbols drawn; `wokwi-elements` SVGs integrated; pin offsets and rotation pivot calibrated (Appendix A) and verified on the reference's rotated parts | 3–4 |
+| M2 | Part library + calibration | **Done.** 30 part types in `resources/parts.json` with exact Wokwi geometry and pin directions (2.7); Chiply's own symbol artwork for all of them; wires drawn with Wokwi's completion rule; verified against the reference design | 3–4 |
 | M3 | Viewer + selection | Reference design renders like Wokwi; zoom/pan/fit/grid; hover pins; click, Shift+click and marquee selection with implicit-wire highlighting (4.3); 60 fps pan | 2–3 |
 | M4 | Part editing | Click-drag move of single parts and whole selections with wires following live, snapping, Esc cancel, one undo step (4.4); nudge; rotate/duplicate/delete; `+` palette; mini toolbar; Inspector; rename with validation | 3–4 |
 | M5 | Wire editing | Draw with bends and preview; vertex and segment handles; color keys; delete; reconnect; saved paths reload identically in Wokwi | 4–5 |
@@ -571,7 +578,7 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 
 | Risk | Mitigation |
 |---|---|
-| Pin offsets or rotation pivot differ from Wokwi by a grid unit, so saved files look broken in Wokwi | Calibrate from Wokwi itself (Appendix A) in M2; verify on the reference's 144 rotated parts; manual Wokwi check each milestone |
+| Pin offsets or rotation pivot differ from Wokwi by a grid unit, so saved files look broken in Wokwi | Resolved in M2: geometry taken from Wokwi's own definitions (2.7) and guarded by the reference-wiring unit test; still do a manual Wokwi check each milestone |
 | Wokwi changes its format or adds parts | Unknown keys/parts preserved verbatim (3.6); part library is data, not code |
 | Wire editing UX takes longer than estimated | It is the biggest milestone (M5) and is isolated in `WireTool` + handles; ship draw-only first, handles second |
 | Verilator build time annoys interactive use | Cache by netlist hash; `-O1` for interactive builds; optional built-in simulator later |
@@ -596,31 +603,9 @@ Repository: <https://github.com/kdp1965/Chiply> (public, BSD 3-Clause, `main`). 
 
 ---
 
-## Appendix A. Calibrating pin positions and rotation against Wokwi
+## Appendix A. Pin calibration (no longer needed)
 
-Goal: for each logic part type, the exact `(x, y)` of every pin relative to the part's `top`/`left`, the part's width/height, and the rotation pivot. Done once, stored in `resources/parts/*.json`.
-
-Method 1, browser console (fastest). Open the TT template in Wokwi, add one of each logic part (AND, OR, XOR, NAND, NOR, XNOR, NOT, buffer, MUX, D, DR, DSR flops, the three TT blocks, VCC, GND, clock generator, text), set zoom to 100%, then in DevTools:
-
-```js
-const seen = {};
-for (const el of document.querySelectorAll('*')) {
-  const t = el.tagName.toLowerCase();
-  if (!(t.startsWith('wokwi-') || t.startsWith('board-')) || seen[t] || !el.pinInfo) continue;
-  const r = el.getBoundingClientRect();
-  const cs = getComputedStyle(el);
-  seen[t] = { pins: el.pinInfo.map(p => ({ name: p.name, x: p.x, y: p.y })),
-              width: r.width, height: r.height,
-              transform: cs.transform, origin: cs.transformOrigin };
-}
-copy(JSON.stringify(seen, null, 2));   // now in the clipboard
-```
-
-Then rotate one part with `R` and rerun to see how Wokwi applies `rotate` (the `transform`/`transformOrigin` plus the new bounding box give the pivot). If the elements are wrapped so `pinInfo` is not on the tag you find, look one level down with `el.shadowRoot` or `el.firstElementChild`.
-
-Method 2, no DevTools. Place a `wokwi-vcc` at a known grid position, draw a wire from its VCC pin to the pin under test, routing it carefully so the last click lands on the pin. In the saved `diagram.json` the sum of the path's `h`/`v` values equals (pin position − VCC pin position), which gives the offset exactly. Repeat per pin; tedious but needs nothing but the editor.
-
-Either way the result is checked by loading the reference design in Chiply and confirming every wire ends on a pin, including the 144 rotated parts.
+The browser-console calibration planned here was not needed: the exact geometry was found in Wokwi's public editor code and the `wokwi-boards` repository (see 2.7). If Wokwi adds a part, the same sources are the place to look, and the reference-wiring unit test checks any new numbers against a real design.
 
 ## Appendix B. Verilog export shape to replicate
 

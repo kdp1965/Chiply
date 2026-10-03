@@ -49,14 +49,43 @@ TEST_CASE("normalization merges and drops zero moves")
     CHECK(formatWirePath(normalized(*p)) == std::vector<std::string>{"h12"});
 }
 
-TEST_CASE("polyline walks source moves, gap, then target moves backwards")
+TEST_CASE("gap continues on the last move's axis, then turns")
 {
-    auto p = parseWirePath({"h10", "*", "v-20"});
+    auto h = parseWirePath({"h10"});
+    REQUIRE(h);
+    CHECK(routePolyline({0, 0}, {50, 40}, *h)
+          == std::vector<Point>{{0, 0}, {10, 0}, {50, 0}, {50, 40}});
+    auto v = parseWirePath({"v10"});
+    REQUIRE(v);
+    CHECK(routePolyline({0, 0}, {50, 40}, *v)
+          == std::vector<Point>{{0, 0}, {0, 10}, {0, 40}, {50, 40}});
+}
+
+TEST_CASE("empty path goes horizontal first")
+{
+    CHECK(routePolyline({0, 0}, {50, 40}, WirePath{})
+          == std::vector<Point>{{0, 0}, {50, 0}, {50, 40}});
+}
+
+TEST_CASE("v0 to a pin on the same row is one straight segment")
+{
+    auto p = parseWirePath({"v0"});
     REQUIRE(p);
-    auto pts = routePolyline({0, 0}, {50, 40}, *p);
-    REQUIRE(pts.size() == 4);
-    CHECK(pts[0] == Point{0, 0});
-    CHECK(pts[1] == Point{10, 0});
-    CHECK(pts[2] == Point{50, 20});
-    CHECK(pts[3] == Point{50, 40});
+    CHECK(routePolyline({0, 5}, {30, 5}, *p) == std::vector<Point>{{0, 5}, {30, 5}});
+}
+
+TEST_CASE("star: target moves walk from the target, last item first")
+{
+    // From the docs example: v10 h5 from the source; from the target h10
+    // first, then v-15.
+    auto p = parseWirePath({"v10", "h5", "*", "v-15", "h10"});
+    REQUIRE(p);
+    auto pts = routePolyline({0, 0}, {100, 100}, *p);
+    CHECK(pts == std::vector<Point>{{0, 0}, {0, 10}, {5, 10}, {5, 85}, {110, 85}, {110, 100}, {100, 100}});
+}
+
+TEST_CASE("endpoints are rounded to 2 decimals")
+{
+    auto pts = routePolyline({0.004, 0}, {10.006, 0}, WirePath{});
+    CHECK(pts == std::vector<Point>{{0, 0}, {10.01, 0}});
 }

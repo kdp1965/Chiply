@@ -2,6 +2,7 @@
 
 #include "core/JsonFormat.h"
 
+#include <cmath>
 #include <cstdlib>
 
 namespace chiply {
@@ -101,19 +102,41 @@ Point sourceRouteEnd(Point from, const WirePath& path)
 
 std::vector<Point> routePolyline(Point from, Point to, const WirePath& path)
 {
+    from = {round2(from.x), round2(from.y)};
+    to = {round2(to.x), round2(to.y)};
+    auto same = [](double a, double b) { return std::fabs(a - b) < 0.005; };
+
     std::vector<Point> pts{from};
     Point p = from;
+    bool lastH = true;
     for (const Seg& s : path.source) {
+        lastH = s.axis == Axis::H;
         p = step(p, s);
         pts.push_back(p);
     }
-    std::vector<Point> back{to};
-    Point q = to;
-    for (const Seg& s : path.target) {
-        q = step(q, s);
-        back.push_back(q);
+
+    if (!path.hasStar) {
+        if (lastH && !same(p.x, to.x))
+            pts.push_back(p = {to.x, p.y});
+        if (!same(p.y, to.y))
+            pts.push_back(p = {p.x, to.y});
+        if (!lastH && !same(p.x, to.x))
+            pts.push_back(p = {to.x, p.y});
+    } else {
+        // Walk target moves from the target pin, last item first.
+        std::vector<Point> tail{to};
+        Point q = to;
+        for (auto it = path.target.rbegin(); it != path.target.rend(); ++it) {
+            lastH = it->axis == Axis::H;
+            q = step(q, *it);
+            tail.push_back(q);
+        }
+        if (!same(p.x, q.x) && !same(p.y, q.y))
+            pts.push_back(lastH ? Point{q.x, p.y} : Point{p.x, q.y});
+        pts.insert(pts.end(), tail.rbegin(), tail.rend());
     }
-    pts.insert(pts.end(), back.rbegin(), back.rend());
+    if (!(pts.back() == to))
+        pts.push_back(to);
 
     std::vector<Point> out;
     for (const Point& pt : pts)

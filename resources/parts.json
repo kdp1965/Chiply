@@ -1,0 +1,1762 @@
+{
+ "version": 1,
+ "description": "Chiply built-in part library. Coordinates are relative to the part's unrotated top-left corner; units 'mm' convert at 96/25.4 px per mm. Parts rotate about their center, as in Wokwi.",
+ "parts": [
+  {
+   "type": "wokwi-gate-and-2",
+   "label": "AND gate",
+   "category": "Logic",
+   "prefix": "and",
+   "symbol": "and",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "and_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-nand-2",
+   "label": "NAND gate",
+   "category": "Logic",
+   "prefix": "nand",
+   "symbol": "nand",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nand_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-or-2",
+   "label": "OR gate",
+   "category": "Logic",
+   "prefix": "or",
+   "symbol": "or",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "or_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-nor-2",
+   "label": "NOR gate",
+   "category": "Logic",
+   "prefix": "nor",
+   "symbol": "nor",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nor_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-xor-2",
+   "label": "XOR gate",
+   "category": "Logic",
+   "prefix": "xor",
+   "symbol": "xor",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "xor_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-xnor-2",
+   "label": "XNOR gate",
+   "category": "Logic",
+   "prefix": "xnor",
+   "symbol": "xnor",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "xnor_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-not",
+   "label": "NOT gate (inverter)",
+   "category": "Logic",
+   "prefix": "not",
+   "symbol": "not",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "IN",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "not_cell",
+    "ports": {
+     "IN": "in",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gate-buffer",
+   "label": "Buffer",
+   "category": "Logic",
+   "prefix": "buf",
+   "symbol": "buffer",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "IN",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "buffer_cell",
+    "ports": {
+     "IN": "in",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-mux-2",
+   "label": "MUX",
+   "category": "Logic",
+   "prefix": "mux",
+   "symbol": "mux",
+   "units": "mm",
+   "size": [
+    25.4,
+    12.7
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "SEL",
+     "x": 12.7,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "mux_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "SEL": "sel",
+     "OUT": "out"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-flip-flop-d",
+   "label": "Flip-Flop D",
+   "category": "Logic",
+   "prefix": "flop",
+   "symbol": "dff",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "D",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "CLK",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in",
+     "clock": true
+    },
+    {
+     "name": "Q",
+     "x": 25.4,
+     "y": 2.54,
+     "dir": "out"
+    },
+    {
+     "name": "NOTQ",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "dff_cell",
+    "ports": {
+     "CLK": "clk",
+     "D": "d",
+     "Q": "q",
+     "NOTQ": "notq"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-flip-flop-dr",
+   "label": "Flip-Flop DR",
+   "category": "Logic",
+   "prefix": "flop",
+   "symbol": "dff-r",
+   "units": "mm",
+   "size": [
+    25.4,
+    12.54
+   ],
+   "pins": [
+    {
+     "name": "D",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "CLK",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in",
+     "clock": true
+    },
+    {
+     "name": "R",
+     "x": 12.7,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "Q",
+     "x": 25.4,
+     "y": 2.54,
+     "dir": "out"
+    },
+    {
+     "name": "NOTQ",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "dffr_cell",
+    "ports": {
+     "CLK": "clk",
+     "D": "d",
+     "R": "r",
+     "Q": "q",
+     "NOTQ": "notq"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-flip-flop-dsr",
+   "label": "Flip-Flop DSR",
+   "category": "Logic",
+   "prefix": "flop",
+   "symbol": "dff-sr",
+   "units": "mm",
+   "size": [
+    25.4,
+    16
+   ],
+   "pins": [
+    {
+     "name": "D",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "CLK",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in",
+     "clock": true
+    },
+    {
+     "name": "S",
+     "x": 12.7,
+     "y": 0,
+     "dir": "in"
+    },
+    {
+     "name": "R",
+     "x": 12.7,
+     "y": 15.24,
+     "dir": "in"
+    },
+    {
+     "name": "Q",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    },
+    {
+     "name": "NOTQ",
+     "x": 25.4,
+     "y": 10.16,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "dffsr_cell",
+    "ports": {
+     "CLK": "clk",
+     "D": "d",
+     "S": "s",
+     "R": "r",
+     "Q": "q",
+     "NOTQ": "notq"
+    }
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-flip-flop-sr",
+   "label": "Flip-Flop SR",
+   "category": "Logic",
+   "prefix": "flop",
+   "symbol": "sr",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "S",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "CLK",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in",
+     "clock": true
+    },
+    {
+     "name": "R",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "Q",
+     "x": 25.4,
+     "y": 2.54,
+     "dir": "out"
+    },
+    {
+     "name": "NOTQ",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-vcc",
+   "label": "VCC",
+   "category": "Power",
+   "prefix": "vcc",
+   "symbol": "vcc",
+   "units": "mm",
+   "size": [
+    5.08,
+    7.55
+   ],
+   "pins": [
+    {
+     "name": "VCC",
+     "x": 2.54,
+     "y": 7.42,
+     "dir": "power",
+     "signal": "vcc"
+    }
+   ],
+   "verilog": {
+    "constant": "1'b1"
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-gnd",
+   "label": "GND",
+   "category": "Power",
+   "prefix": "gnd",
+   "symbol": "gnd",
+   "units": "mm",
+   "size": [
+    5.4,
+    9.66
+   ],
+   "pins": [
+    {
+     "name": "GND",
+     "x": 2.7,
+     "y": 0,
+     "dir": "power",
+     "signal": "gnd"
+    }
+   ],
+   "verilog": {
+    "constant": "1'b0"
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-clock-generator",
+   "label": "Clock Generator",
+   "category": "Input",
+   "prefix": "clock",
+   "symbol": "clock",
+   "units": "mm",
+   "size": [
+    17.78,
+    10
+   ],
+   "pins": [
+    {
+     "name": "CLK",
+     "x": 17.78,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "attrs": {
+    "frequency": "10k"
+   },
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-junction",
+   "label": "Junction",
+   "category": "Misc",
+   "prefix": "j",
+   "symbol": "junction",
+   "units": "mm",
+   "size": [
+    2.54,
+    2.54
+   ],
+   "pins": [
+    {
+     "name": "J",
+     "x": 1.27,
+     "y": 1.27,
+     "dir": "passive"
+    }
+   ],
+   "source": "Wokwi diagram editor part definition (pins and outline in mm)"
+  },
+  {
+   "type": "wokwi-text",
+   "label": "Text",
+   "category": "Annotation",
+   "prefix": "text",
+   "symbol": "text",
+   "units": "px",
+   "size": [
+    0,
+    0
+   ],
+   "pins": [],
+   "attrs": {
+    "text": ""
+   },
+   "source": "Wokwi diagram editor (HTML text, sized by its content)"
+  },
+  {
+   "type": "board-tt-block-input",
+   "label": "Tiny Tapeout input block",
+   "category": "Tiny Tapeout",
+   "prefix": "ttin",
+   "symbol": "tt-input",
+   "units": "mm",
+   "size": [
+    28,
+    31.2
+   ],
+   "pins": [
+    {
+     "name": "EXTCLK",
+     "x": 1.27,
+     "y": 7.02,
+     "dir": "in"
+    },
+    {
+     "name": "EXTRST_N",
+     "x": 1.27,
+     "y": 9.56,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN0",
+     "x": 1.27,
+     "y": 12.1,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN1",
+     "x": 1.27,
+     "y": 14.64,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN2",
+     "x": 1.27,
+     "y": 17.18,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN3",
+     "x": 1.27,
+     "y": 19.72,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN4",
+     "x": 1.27,
+     "y": 22.26,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN5",
+     "x": 1.27,
+     "y": 24.8,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN6",
+     "x": 1.27,
+     "y": 27.34,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN7",
+     "x": 1.27,
+     "y": 29.88,
+     "dir": "in"
+    },
+    {
+     "name": "CLK",
+     "x": 26.67,
+     "y": 7.02,
+     "dir": "out",
+     "clock": true
+    },
+    {
+     "name": "RST_N",
+     "x": 26.67,
+     "y": 9.56,
+     "dir": "out"
+    },
+    {
+     "name": "IN0",
+     "x": 26.67,
+     "y": 12.1,
+     "dir": "out"
+    },
+    {
+     "name": "IN1",
+     "x": 26.67,
+     "y": 14.64,
+     "dir": "out"
+    },
+    {
+     "name": "IN2",
+     "x": 26.67,
+     "y": 17.18,
+     "dir": "out"
+    },
+    {
+     "name": "IN3",
+     "x": 26.67,
+     "y": 19.72,
+     "dir": "out"
+    },
+    {
+     "name": "IN4",
+     "x": 26.67,
+     "y": 22.26,
+     "dir": "out"
+    },
+    {
+     "name": "IN5",
+     "x": 26.67,
+     "y": 24.8,
+     "dir": "out"
+    },
+    {
+     "name": "IN6",
+     "x": 26.67,
+     "y": 27.34,
+     "dir": "out"
+    },
+    {
+     "name": "IN7",
+     "x": 26.67,
+     "y": 29.88,
+     "dir": "out"
+    }
+   ],
+   "attrs": {
+    "verilogRole": "input"
+   },
+   "source": "wokwi-boards repository board.json (pins in mm); artwork is Chiply's own"
+  },
+  {
+   "type": "board-tt-block-input-8",
+   "label": "Tiny Tapeout input block (8 inputs)",
+   "category": "Tiny Tapeout",
+   "prefix": "ttin",
+   "symbol": "tt-input-8",
+   "units": "mm",
+   "size": [
+    28,
+    31.2
+   ],
+   "pins": [
+    {
+     "name": "EXTIN0",
+     "x": 1.27,
+     "y": 12.1,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN1",
+     "x": 1.27,
+     "y": 14.64,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN2",
+     "x": 1.27,
+     "y": 17.18,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN3",
+     "x": 1.27,
+     "y": 19.72,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN4",
+     "x": 1.27,
+     "y": 22.26,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN5",
+     "x": 1.27,
+     "y": 24.8,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN6",
+     "x": 1.27,
+     "y": 27.34,
+     "dir": "in"
+    },
+    {
+     "name": "EXTIN7",
+     "x": 1.27,
+     "y": 29.88,
+     "dir": "in"
+    },
+    {
+     "name": "IN0",
+     "x": 26.67,
+     "y": 12.1,
+     "dir": "out"
+    },
+    {
+     "name": "IN1",
+     "x": 26.67,
+     "y": 14.64,
+     "dir": "out"
+    },
+    {
+     "name": "IN2",
+     "x": 26.67,
+     "y": 17.18,
+     "dir": "out"
+    },
+    {
+     "name": "IN3",
+     "x": 26.67,
+     "y": 19.72,
+     "dir": "out"
+    },
+    {
+     "name": "IN4",
+     "x": 26.67,
+     "y": 22.26,
+     "dir": "out"
+    },
+    {
+     "name": "IN5",
+     "x": 26.67,
+     "y": 24.8,
+     "dir": "out"
+    },
+    {
+     "name": "IN6",
+     "x": 26.67,
+     "y": 27.34,
+     "dir": "out"
+    },
+    {
+     "name": "IN7",
+     "x": 26.67,
+     "y": 29.88,
+     "dir": "out"
+    }
+   ],
+   "attrs": {
+    "verilogRole": "input"
+   },
+   "source": "wokwi-boards repository board.json (pins in mm); artwork is Chiply's own"
+  },
+  {
+   "type": "board-tt-block-output",
+   "label": "Tiny Tapeout output block",
+   "category": "Tiny Tapeout",
+   "prefix": "ttout",
+   "symbol": "tt-output",
+   "units": "mm",
+   "size": [
+    28,
+    26.2
+   ],
+   "pins": [
+    {
+     "name": "OUT0",
+     "x": 1.27,
+     "y": 7.02,
+     "dir": "in"
+    },
+    {
+     "name": "OUT1",
+     "x": 1.27,
+     "y": 9.56,
+     "dir": "in"
+    },
+    {
+     "name": "OUT2",
+     "x": 1.27,
+     "y": 12.1,
+     "dir": "in"
+    },
+    {
+     "name": "OUT3",
+     "x": 1.27,
+     "y": 14.64,
+     "dir": "in"
+    },
+    {
+     "name": "OUT4",
+     "x": 1.27,
+     "y": 17.18,
+     "dir": "in"
+    },
+    {
+     "name": "OUT5",
+     "x": 1.27,
+     "y": 19.72,
+     "dir": "in"
+    },
+    {
+     "name": "OUT6",
+     "x": 1.27,
+     "y": 22.26,
+     "dir": "in"
+    },
+    {
+     "name": "OUT7",
+     "x": 1.27,
+     "y": 24.8,
+     "dir": "in"
+    },
+    {
+     "name": "EXTOUT0",
+     "x": 26.67,
+     "y": 7.02,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT1",
+     "x": 26.67,
+     "y": 9.56,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT2",
+     "x": 26.67,
+     "y": 12.1,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT3",
+     "x": 26.67,
+     "y": 14.64,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT4",
+     "x": 26.67,
+     "y": 17.18,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT5",
+     "x": 26.67,
+     "y": 19.72,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT6",
+     "x": 26.67,
+     "y": 22.26,
+     "dir": "out"
+    },
+    {
+     "name": "EXTOUT7",
+     "x": 26.67,
+     "y": 24.8,
+     "dir": "out"
+    }
+   ],
+   "attrs": {
+    "verilogRole": "output"
+   },
+   "source": "wokwi-boards repository board.json (pins in mm); artwork is Chiply's own"
+  },
+  {
+   "type": "board-tt-block-bidirectional-io",
+   "label": "Tiny Tapeout bidirectional I/O",
+   "category": "Tiny Tapeout",
+   "prefix": "ttio",
+   "symbol": "tt-bidir",
+   "units": "mm",
+   "size": [
+    28,
+    9
+   ],
+   "pins": [
+    {
+     "name": "IN",
+     "x": 1.27,
+     "y": 2.27,
+     "dir": "out"
+    },
+    {
+     "name": "OUT",
+     "x": 1.27,
+     "y": 4.81,
+     "dir": "in"
+    },
+    {
+     "name": "OE",
+     "x": 1.27,
+     "y": 7.35,
+     "dir": "in"
+    },
+    {
+     "name": "UIO",
+     "x": 26.67,
+     "y": 4.81,
+     "dir": "passive"
+    }
+   ],
+   "attrs": {
+    "verilogRole": "bidirectional",
+    "verilogBit": "0"
+   },
+   "source": "wokwi-boards repository board.json (pins in mm); artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-pushbutton",
+   "label": "Pushbutton",
+   "category": "Input",
+   "prefix": "btn",
+   "symbol": "pushbutton",
+   "units": "px",
+   "size": [
+    67.284,
+    45.354
+   ],
+   "pins": [
+    {
+     "name": "1.l",
+     "x": 0,
+     "y": 13,
+     "dir": "passive"
+    },
+    {
+     "name": "2.l",
+     "x": 0,
+     "y": 32,
+     "dir": "passive"
+    },
+    {
+     "name": "1.r",
+     "x": 67,
+     "y": 13,
+     "dir": "passive"
+    },
+    {
+     "name": "2.r",
+     "x": 67,
+     "y": 32,
+     "dir": "passive"
+    }
+   ],
+   "attrs": {
+    "color": "red"
+   },
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-slide-switch",
+   "label": "Slide Switch",
+   "category": "Input",
+   "prefix": "sw",
+   "symbol": "slide-switch",
+   "units": "px",
+   "size": [
+    32.126,
+    34.885
+   ],
+   "pins": [
+    {
+     "name": "1",
+     "x": 6.5,
+     "y": 34,
+     "dir": "passive"
+    },
+    {
+     "name": "2",
+     "x": 16,
+     "y": 34,
+     "dir": "passive"
+    },
+    {
+     "name": "3",
+     "x": 25.5,
+     "y": 34,
+     "dir": "passive"
+    }
+   ],
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-dip-switch-8",
+   "label": "DIP Switch 8",
+   "category": "Input",
+   "prefix": "sw",
+   "symbol": "dip-switch-8",
+   "units": "px",
+   "size": [
+    82.87,
+    55.355
+   ],
+   "pins": [
+    {
+     "name": "1a",
+     "x": 8.1,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "2a",
+     "x": 17.7,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "3a",
+     "x": 27.3,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "4a",
+     "x": 36.9,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "5a",
+     "x": 46.5,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "6a",
+     "x": 56.1,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "7a",
+     "x": 65.7,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "8a",
+     "x": 75.3,
+     "y": 51.3,
+     "dir": "passive"
+    },
+    {
+     "name": "8b",
+     "x": 75.3,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "7b",
+     "x": 65.7,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "6b",
+     "x": 56.1,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "5b",
+     "x": 46.5,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "4b",
+     "x": 36.9,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "3b",
+     "x": 27.3,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "2b",
+     "x": 17.7,
+     "y": 3,
+     "dir": "passive"
+    },
+    {
+     "name": "1b",
+     "x": 8.1,
+     "y": 3,
+     "dir": "passive"
+    }
+   ],
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-resistor",
+   "label": "Resistor",
+   "category": "Passive",
+   "prefix": "r",
+   "symbol": "resistor",
+   "units": "px",
+   "size": [
+    59.1303,
+    11.339
+   ],
+   "pins": [
+    {
+     "name": "1",
+     "x": 0,
+     "y": 5.65,
+     "dir": "passive"
+    },
+    {
+     "name": "2",
+     "x": 58.8,
+     "y": 5.65,
+     "dir": "passive"
+    }
+   ],
+   "attrs": {
+    "value": "1000"
+   },
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-led",
+   "label": "LED",
+   "category": "Output",
+   "prefix": "led",
+   "symbol": "led",
+   "units": "px",
+   "size": [
+    40,
+    50
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 25,
+     "y": 42,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 15,
+     "y": 42,
+     "dir": "in"
+    }
+   ],
+   "attrs": {
+    "color": "red"
+   },
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own"
+  },
+  {
+   "type": "wokwi-7segment",
+   "label": "7-Segment Display",
+   "category": "Output",
+   "prefix": "sevseg",
+   "symbol": "7segment",
+   "units": "px",
+   "size": [
+    47.4331,
+    83.1496
+   ],
+   "pins": [
+    {
+     "name": "COM.1",
+     "x": 23.7195,
+     "y": 71.82,
+     "dir": "passive"
+    },
+    {
+     "name": "COM.2",
+     "x": 23.7195,
+     "y": 3.78,
+     "dir": "passive"
+    },
+    {
+     "name": "A",
+     "x": 33.3207,
+     "y": 3.78,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 42.9219,
+     "y": 3.78,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 33.3207,
+     "y": 71.82,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 14.1183,
+     "y": 71.82,
+     "dir": "in"
+    },
+    {
+     "name": "E",
+     "x": 4.5171,
+     "y": 71.82,
+     "dir": "in"
+    },
+    {
+     "name": "F",
+     "x": 14.1183,
+     "y": 3.78,
+     "dir": "in"
+    },
+    {
+     "name": "G",
+     "x": 4.5171,
+     "y": 3.78,
+     "dir": "in"
+    },
+    {
+     "name": "DP",
+     "x": 42.9219,
+     "y": 71.82,
+     "dir": "in"
+    }
+   ],
+   "attrs": {
+    "common": "cathode",
+    "color": "red"
+   },
+   "source": "wokwi-elements (MIT) pinInfo and SVG size; artwork is Chiply's own; single digit, pins='top' (pin positions use the element's 3.78 px/mm)"
+  },
+  {
+   "type": "wokwi-logic-analyzer",
+   "label": "Logic Analyzer (8 channels)",
+   "category": "Misc",
+   "prefix": "logic",
+   "symbol": "logic-analyzer",
+   "units": "px",
+   "size": [
+    156,
+    94
+   ],
+   "pins": [
+    {
+     "name": "D0",
+     "x": 0,
+     "y": 9.25,
+     "dir": "in"
+    },
+    {
+     "name": "D1",
+     "x": 0,
+     "y": 18.85,
+     "dir": "in"
+    },
+    {
+     "name": "D2",
+     "x": 0,
+     "y": 28.45,
+     "dir": "in"
+    },
+    {
+     "name": "D3",
+     "x": 0,
+     "y": 38.05,
+     "dir": "in"
+    },
+    {
+     "name": "D4",
+     "x": 0,
+     "y": 47.65,
+     "dir": "in"
+    },
+    {
+     "name": "D5",
+     "x": 0,
+     "y": 57.25,
+     "dir": "in"
+    },
+    {
+     "name": "D6",
+     "x": 0,
+     "y": 66.85,
+     "dir": "in"
+    },
+    {
+     "name": "D7",
+     "x": 0,
+     "y": 76.45,
+     "dir": "in"
+    },
+    {
+     "name": "GND",
+     "x": 0,
+     "y": 86.05,
+     "dir": "power",
+     "signal": "gnd"
+    }
+   ],
+   "source": "Wokwi diagram editor part definition"
+  },
+  {
+   "type": "wokwi-pi-pico",
+   "label": "Raspberry Pi Pico",
+   "category": "Boards",
+   "prefix": "pico",
+   "symbol": "pi-pico",
+   "units": "px",
+   "size": [
+    79.371,
+    200.316
+   ],
+   "pins": [
+    {
+     "name": "GP0",
+     "x": 6,
+     "y": 12.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP1",
+     "x": 6,
+     "y": 22.35,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.1",
+     "x": 6,
+     "y": 31.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP2",
+     "x": 6,
+     "y": 41.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GP3",
+     "x": 6,
+     "y": 51.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP4",
+     "x": 6,
+     "y": 60.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP5",
+     "x": 6,
+     "y": 70.35,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.2",
+     "x": 6,
+     "y": 79.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP6",
+     "x": 6,
+     "y": 89.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GP7",
+     "x": 6,
+     "y": 99.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP8",
+     "x": 6,
+     "y": 108.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP9",
+     "x": 6,
+     "y": 118.35,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.3",
+     "x": 6,
+     "y": 127.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP10",
+     "x": 6,
+     "y": 137.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GP11",
+     "x": 6,
+     "y": 147.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP12",
+     "x": 6,
+     "y": 156.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP13",
+     "x": 6,
+     "y": 166.35,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.4",
+     "x": 6,
+     "y": 175.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP14",
+     "x": 6,
+     "y": 185.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GP15",
+     "x": 6,
+     "y": 195.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP16",
+     "x": 72,
+     "y": 195.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP17",
+     "x": 72,
+     "y": 185.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.5",
+     "x": 72,
+     "y": 175.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP18",
+     "x": 72,
+     "y": 166.35,
+     "dir": "passive"
+    },
+    {
+     "name": "GP19",
+     "x": 72,
+     "y": 156.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP20",
+     "x": 72,
+     "y": 147.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP21",
+     "x": 72,
+     "y": 137.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.6",
+     "x": 72,
+     "y": 127.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP22",
+     "x": 72,
+     "y": 118.35,
+     "dir": "passive"
+    },
+    {
+     "name": "RUN",
+     "x": 72,
+     "y": 108.75,
+     "dir": "passive"
+    },
+    {
+     "name": "GP26",
+     "x": 72,
+     "y": 99.15,
+     "dir": "passive"
+    },
+    {
+     "name": "GP27",
+     "x": 72,
+     "y": 89.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.7",
+     "x": 72,
+     "y": 79.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "GP28",
+     "x": 72,
+     "y": 70.35,
+     "dir": "passive"
+    },
+    {
+     "name": "ADC_VREF",
+     "x": 72,
+     "y": 60.75,
+     "dir": "passive"
+    },
+    {
+     "name": "3V3",
+     "x": 72,
+     "y": 51.15,
+     "dir": "passive"
+    },
+    {
+     "name": "3V3_EN",
+     "x": 72,
+     "y": 41.55,
+     "dir": "passive"
+    },
+    {
+     "name": "GND.8",
+     "x": 72,
+     "y": 31.95,
+     "dir": "power",
+     "signal": "gnd"
+    },
+    {
+     "name": "VSYS",
+     "x": 72,
+     "y": 22.35,
+     "dir": "passive"
+    },
+    {
+     "name": "VBUS",
+     "x": 72,
+     "y": 12.75,
+     "dir": "passive"
+    }
+   ],
+   "source": "Wokwi diagram editor part definition; placed and wired only (no firmware simulation)"
+  }
+ ]
+}

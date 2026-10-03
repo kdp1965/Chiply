@@ -13,7 +13,8 @@ Status: early development. The design and milestones are in
 |---|---|
 | M0 Project skeleton (CMake, Qt window with tabs, CI) | done |
 | M1 Core model, byte-exact Wokwi JSON round trip, wire path codec, ids | done |
-| M2 Part library and pin calibration | next |
+| M2 Part library: exact Wokwi geometry, pin directions, symbols, wires | done |
+| M3 Viewer polish and selection | next |
 
 ## Building
 

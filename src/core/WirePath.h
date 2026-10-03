@@ -1,7 +1,8 @@
 #pragma once
 // Wokwi wire routing mini-language: a list of "h<px>" / "v<px>" moves from
-// the source pin, optionally followed by "*" and moves applied backwards from
-// the target pin. Any remaining gap is closed by a straight tail.
+// the source pin, optionally followed by "*" and moves applied from the target
+// pin (last item first). The remaining gap is closed with orthogonal legs
+// using Wokwi's rule, see routePolyline().
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,7 +24,8 @@ struct Seg {
 
 struct WirePath {
     std::vector<Seg> source;  // moves starting at the source pin
-    std::vector<Seg> target;  // moves starting at the target pin (after "*")
+    std::vector<Seg> target;  // moves after "*", in file order; the last one
+                              // starts at the target pin
     bool hasStar = false;
     bool operator==(const WirePath&) const = default;
 };
@@ -37,8 +39,15 @@ std::vector<std::string> formatWirePath(const WirePath& path);
 // Used after editing; loaded paths are never normalized implicitly.
 WirePath normalized(const WirePath& path);
 
-// Polyline from source pin to target pin: source moves, the straight gap,
-// then the target moves in reverse. Consecutive duplicate points removed.
+// Polyline from source pin to target pin exactly as Wokwi draws it:
+//  - endpoints rounded to 2 decimals;
+//  - source moves from `from`;
+//  - without "*": the gap is closed on the axis of the last source move first
+//    (horizontal when there are no moves), then the other axis;
+//  - with "*": target moves are walked from `to` (last item first); if both
+//    axes still differ, one leg on the axis of the first move after "*" is
+//    added, then a straight line to the target-side point.
+// Consecutive duplicate points are removed.
 std::vector<Point> routePolyline(Point from, Point to, const WirePath& path);
 
 // Where the source-side moves end (the start of the auto-completed tail when

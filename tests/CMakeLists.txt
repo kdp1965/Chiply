@@ -9,6 +9,7 @@ add_executable(chiply_tests
   test_wire_path.cpp
   test_idgen.cpp
   test_wokwi_json.cpp
+  test_part_library.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_core Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
