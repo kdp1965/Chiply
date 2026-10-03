@@ -342,8 +342,8 @@ Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/S
 |---|---|
 | Mouse wheel / trackpad scroll | Zoom, centered on the cursor |
 | Shift + wheel | Pan horizontally; Ctrl/Cmd + wheel also pans vertically |
-| Left-drag on empty canvas | Marquee select (decided; 4.3) |
-| Middle-drag, Shift + left-drag, or Space + left-drag | Pan |
+| Left-drag on empty canvas, middle-drag, or Space + left-drag | Pan, as in Wokwi (changed 2026-10-03) |
+| Shift + left-drag | Marquee select, as in Wokwi (4.3) |
 | Arrow keys | With parts selected: move them one grid step (Shift: five steps), as in Wokwi. With nothing selected: move the diagram in the arrow's direction by a tenth of the viewport (Shift: a full viewport). Ctrl/Cmd+arrows always pan |
 | `+` / `-`, `F` | Zoom in/out, fit to contents |
 | `G`, Shift, Alt/Ctrl | Grid toggle, snap off, fine snap |
@@ -355,7 +355,7 @@ Selectable objects are parts (gates, flops, TT blocks, switches, displays, power
 - **Click** on an object selects it alone, except in a pin's hit region (4.5 px around the pin, where the blue pin marker shows): a click there never selects the part, it starts a new wire from that pin (4.6, milestone M5). Click on empty canvas clears the selection. `Esc` clears it too. Ctrl/Cmd+A selects everything.
 - **Shift+click** toggles an object in or out of the current selection (Wokwi's multi-select). Shift+press followed by a drag of more than 4 px pans instead, so the two never conflict.
 - **Click on a wire** selects the wire and shows its editing handles (4.6). Wires are hit-tested with a tolerance of a few screen pixels so thin wires are easy to grab at any zoom.
-- **Marquee**: press on empty canvas and drag; a translucent blue rubber-band rectangle follows the cursor. On release, every part and text annotation whose bounding box is fully inside the rectangle is selected, and every wire whose entire route is inside is selected. Alt while releasing switches to "crossing" mode (anything the rectangle touches), which is handy for grabbing long wires. Ctrl/Cmd+marquee adds the enclosed items to the selection (Shift+drag is panning, as in Wokwi). Dragging past the viewport edge auto-scrolls so a marquee can cover more than one screen.
+- **Marquee**: Shift+drag (as in Wokwi; it may start on a part), or Ctrl/Cmd+drag on empty canvas to add; a translucent blue rubber-band rectangle follows the cursor. On release, every part and text annotation whose bounding box is fully inside the rectangle is selected, and every wire whose entire route is inside is selected. Alt while releasing switches to "crossing" mode (anything the rectangle touches), which is handy for grabbing long wires. Ctrl/Cmd+marquee adds the enclosed items to the selection. A plain drag on empty canvas pans, as in Wokwi. Dragging past the viewport edge auto-scrolls so a marquee can cover more than one screen.
 - **Implicit wires**: a wire whose two ends are both on selected parts is treated as part of the selection for move, copy, delete and duplicate even if it was not explicitly selected. It is drawn highlighted so you can see what will travel with the parts. A wire with only one end on a selected part is drawn dashed to warn that it will stretch.
 - **Feedback**: selected parts get a blue outline; a single selected part also shows Wokwi's mini toolbar (rotate / edit / delete) above it; a multi-selection shows a dotted group bounding box with the item count. The Inspector shows the one part's id and attrs, or a summary ("12 parts, 9 wires") with the operations that apply to all of them (color, delete, rotate).
 - Selection survives zoom and pan, and is cleared when the document is reloaded.
@@ -507,7 +507,7 @@ Chiply simulates designs itself, like Wokwi: press Run and the circuit runs, wit
 ### 6.3 UI while running
 
 - Run / Pause / Step / Reset on the toolbar; editing is locked while running (Wokwi behaviour), selection and navigation still work.
-- Live values on the canvas: wires drawn bright when `1`, dim when `0`, red-dashed when `X` / conflict, gray-dotted when `Z`; values must not rely on colour alone, so `X`/`Z` also differ in line style. Hovering a pin or wire shows its value in the tooltip.
+- Live values on the canvas: wires drawn bright when `1`, dim when `0`, red-dashed when `X` / conflict, gray-dotted when `Z`; values must not rely on colour alone, so `X`/`Z` also differ in line style. Hovering a pin or wire shows its value in the tooltip. The **LiveWire** toolbar checkbox (on by default, saved as a preference) turns this wire colouring on or off; tooltips show values either way.
 - A status line shows simulated time, clock cycles and speed (e.g. "1.25x real time").
 
 ### 6.4 Traces and tests
@@ -638,7 +638,7 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 
 | # | Topic | Decision | Where it landed |
 |---|---|---|---|
-| 1 | Left-drag on empty canvas | Marquee select. Pan is middle-drag, Shift+drag, Space+drag, Shift+wheel, and the arrow keys, which move the diagram in the arrow's direction like Wokwi. With parts selected, arrows move them (Shift: 5 steps); otherwise arrows pan; Ctrl/Cmd+arrows always pan | 4.2, 4.3, 4.4 |
+| 1 | Left-drag on empty canvas | Pan, as in Wokwi (changed 2026-10-03 so Wokwi users need not relearn); Shift+drag is the marquee. Pan is also middle-drag, Space+drag, Shift+wheel, and the arrow keys, which move the diagram in the arrow's direction like Wokwi. With parts selected, arrows move them (Shift: 5 steps); otherwise arrows pan; Ctrl/Cmd+arrows always pan | 4.2, 4.3, 4.4 |
 | 2 | Double-click on a wire | Deletes it, as in Wokwi. Ctrl/Cmd on a segment adds a vertex, realised as Ctrl/Cmd+drag splitting the segment into a step | 4.6 |
 | 3 | Chiply-only metadata | Sidecar `name.chiply.json`; `diagram.json` stays pure Wokwi | 3.3, 3.6 |
 | 4 | Buses | Single-bit wires only for now, so any design without custom blocks pastes into Wokwi and renders. Bus wires may be added later | 7 |

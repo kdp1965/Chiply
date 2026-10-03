@@ -331,9 +331,14 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
                 auto* p = static_cast<PartItem*>(it);
                 m_simPressed = true;
                 emit simPress(QString::fromStdString(p->partId()), p->mapFromScene(mapToScene(pos)));
-                break;
+                event->accept();
+                return;
             }
         }
+        // Not on a part: a drag pans, as in edit mode.
+        m_panning = true;
+        m_lastPanPos = pos;
+        viewport()->setCursor(Qt::ClosedHandCursor);
         event->accept();
         return;
     }
@@ -377,10 +382,21 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
             return;
         }
     }
-    if (event->button() == Qt::LeftButton && !m_spaceHeld && (event->modifiers() & Qt::ShiftModifier)) {
-        // Shift+drag pans; Shift+click without moving stays a click (Wokwi's
-        // add-to-selection). Decide once the mouse moves.
-        m_shiftPending = true;
+    if (event->button() == Qt::LeftButton && !m_spaceHeld && !m_drawing && (event->modifiers() & Qt::ShiftModifier)) {
+        // Wokwi: Shift+drag is a marquee (even when it starts on a part);
+        // Shift+click without moving toggles the item under the cursor.
+        m_pressPos = pos;
+        m_lastMousePos = pos;
+        m_lastMods = event->modifiers();
+        m_pressItem = selectableAt(pos);
+        m_press = Press::Empty;
+        m_marqueeStart = mapToScene(pos);
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton && !m_spaceHeld && m_drawing && (event->modifiers() & Qt::ShiftModifier)) {
+        // While drawing a wire, Shift+drag pans.
+        m_panPending = true;
         m_pressPos = pos;
         m_lastPanPos = pos;
         event->accept();
@@ -464,6 +480,14 @@ notDrawing:
         m_lastMousePos = pos;
         m_lastMods = event->modifiers();
         m_pressItem = selectableAt(pos);
+        if (!m_pressItem && !(event->modifiers() & Qt::ControlModifier)) {
+            // Wokwi: dragging the empty canvas pans; a click without moving
+            // clears the selection. Ctrl/Cmd+drag is an additive marquee.
+            m_panPending = true;
+            m_lastPanPos = pos;
+            event->accept();
+            return;
+        }
         m_press = m_pressItem ? Press::Item : Press::Empty;
         m_marqueeStart = mapToScene(pos);
         event->accept();
@@ -475,7 +499,7 @@ notDrawing:
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
-    if (m_drawing && !m_panning && !m_shiftPending) {
+    if (m_drawing && !m_panning && !m_panPending) {
         if ((pos - m_pressPos).manhattanLength() > 6)
             m_drawPressMoved = true;
         updateWirePreview(pos, event->modifiers());
@@ -485,7 +509,7 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
     }
     if (m_placing && !m_panning) {
         emit placeMoved(mapToScene(pos));
-        if (!m_shiftPending) {
+        if (!m_panPending) {
             event->accept();
             return;
         }
@@ -525,12 +549,12 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
         event->accept();
         return;
     }
-    if (m_shiftPending && (pos - m_pressPos).manhattanLength() > 4) {
-        m_shiftPending = false;
+    if (m_panPending && (pos - m_pressPos).manhattanLength() > 4) {
+        m_panPending = false;
         m_panning = true;
         viewport()->setCursor(Qt::ClosedHandCursor);
     }
-    if (m_shiftPending) {
+    if (m_panPending) {
         event->accept();
         return;
     }
@@ -588,7 +612,7 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         event->accept();
         return;
     }
-    if (m_drawing && event->button() == Qt::LeftButton && !m_panning && !m_shiftPending) {
+    if (m_drawing && event->button() == Qt::LeftButton && !m_panning && !m_panPending) {
         // Press on a pin, drag, release on another pin: finish there too.
         if (m_drawPressMoved && m_drawPts.size() == 1)
             finishWireAt(pos);
@@ -596,8 +620,8 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         event->accept();
         return;
     }
-    if (m_shiftPending && event->button() == Qt::LeftButton) {
-        m_shiftPending = false;
+    if (m_panPending && event->button() == Qt::LeftButton) {
+        m_panPending = false;
         clickAt(m_pressPos, event->modifiers());
         event->accept();
         return;

@@ -117,6 +117,10 @@ public:
     // 0 = low, 1 = high, 2 = X, 3 = Z (chiply::sim::V).
     void setSimValue(int v);
     int simValue() const { return m_simValue; }
+    // LiveWire (toolbar): colour wires by their simulated value. When off,
+    // wires keep their file colours; tooltips still show the value.
+    static void setLiveWires(bool on);
+    static bool liveWires();
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
     QRectF boundingRect() const override;
 

@@ -11,6 +11,7 @@
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QCheckBox>
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
@@ -134,6 +135,22 @@ void MainWindow::buildMenus()
             s->stopSimulation();
     });
     m_stopAction->setObjectName("stopAction");
+    // LiveWire: colour wires by their simulated value (saved preference).
+    auto* liveWire = new QCheckBox(tr("LiveWire"), tb);
+    liveWire->setObjectName("liveWireBox");
+    liveWire->setToolTip(tr("Show simulated values on the wires"));
+    liveWire->setChecked(QSettings().value("sim/liveWire", true).toBool());
+    WireItem::setLiveWires(liveWire->isChecked());
+    connect(liveWire, &QCheckBox::toggled, this, [this](bool on) {
+        QSettings().setValue("sim/liveWire", on);
+        WireItem::setLiveWires(on);
+        for (int i = 0; i < m_tabs->count(); ++i)
+            for (QGraphicsItem* it : sessionAt(i)->view()->scene()->items())
+                if (it->type() == WireItem::Type) {
+                    static_cast<WireItem*>(it)->restyle();
+                    it->update();
+                }
+    });
     for (QAction* a : {m_playAction, m_stepAction, m_stopAction}) {
         // Icon-only (the toolbar shows text for its other buttons); the name
         // is the tooltip.
@@ -142,6 +159,7 @@ void MainWindow::buildMenus()
         b->setToolButtonStyle(Qt::ToolButtonIconOnly);
         b->setIconSize(QSize(30, 30));
     }
+    tb->addWidget(liveWire);
     tb->addSeparator();
     tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
     tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });

@@ -1,9 +1,9 @@
 #pragma once
 // The canvas. M0 provides Wokwi-style navigation (PLAN.md 4.2):
 //   wheel = zoom at cursor, Shift+wheel = horizontal pan, Ctrl/Cmd+wheel =
-//   vertical pan, middle-drag, Shift+drag or Space+drag = pan, arrow keys
-//   move the diagram in the arrow's direction,
-//   left-drag on empty canvas = marquee, +/- = zoom, F = fit, G = grid.
+//   vertical pan, left-drag on empty canvas, middle-drag or Space+drag =
+//   pan (as in Wokwi), arrow keys move the diagram in the arrow's direction,
+//   Shift+drag = marquee, +/- = zoom, F = fit, G = grid.
 //   With parts selected, arrow keys move them one grid step (Shift: five);
 //   Ctrl/Cmd+arrows always pan. Dragging a part moves the selection (Alt:
 //   half-grid snap, Ctrl/Cmd: no snap). R rotates, D duplicates, Delete
@@ -11,8 +11,8 @@
 //
 // Selection (PLAN.md 4.3): click selects one item, Shift+click (no drag) or
 // Ctrl/Cmd+click toggles, click on empty canvas or Esc clears, Ctrl/Cmd+A
-// selects all. Marquee selects items fully inside; Alt = anything touched;
-// Ctrl/Cmd = add to the current selection. Auto-scrolls at the edges.
+// selects all. Shift+drag marquee selects items fully inside; Alt = anything
+// touched; Ctrl/Cmd+drag = marquee that adds to the current selection. Auto-scrolls at the edges.
 #include "core/PartLibrary.h"
 #include "core/WirePath.h"
 
@@ -124,7 +124,7 @@ private:
     bool m_showGrid = true;
     bool m_spaceHeld = false;
     bool m_panning = false;
-    bool m_shiftPending = false; // Shift+press: pan if it moves, click if not
+    bool m_panPending = false; // press on empty canvas: pan if it moves, click if not
     QPoint m_pressPos;
     QPoint m_lastPanPos;
 

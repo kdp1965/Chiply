@@ -10,6 +10,7 @@
 #include <QMenuBar>
 #include <QTabWidget>
 #include <QTest>
+#include <QCheckBox>
 #include <QSettings>
 #include <QToolBar>
 
@@ -43,6 +44,7 @@ private slots:
     {
         QCoreApplication::setOrganizationName("ChiplyTest");
         QCoreApplication::setApplicationName("ChiplySimGuiTest");
+        QSettings().clear();
         w = new MainWindow;
         w->resize(1400, 900);
         w->show();
@@ -88,6 +90,26 @@ private slots:
                 QVERIFY(it->toolTip().endsWith(" = 1")); // value in the tooltip
             }
         QVERIFY(sawHigh);
+    }
+
+    void liveWireCheckboxTogglesWireColouring()
+    {
+        auto* box = w->findChild<QCheckBox*>("liveWireBox");
+        QVERIFY(box && box->isChecked()); // default on
+        WireItem* high = nullptr;
+        for (QGraphicsItem* it : v->scene()->items())
+            if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->simValue() == 1)
+                high = static_cast<WireItem*>(it);
+        QVERIFY(high);
+        const double liveWidth = high->pen().widthF();
+        box->setChecked(false);
+        QVERIFY(!WireItem::liveWires());
+        QVERIFY(high->pen().widthF() < liveWidth); // drawn like edit mode
+        QVERIFY(high->toolTip().endsWith(" = 1")); // value still in the tooltip
+        QCOMPARE(QSettings().value("sim/liveWire").toBool(), false);
+        box->setChecked(true);
+        QCOMPARE(high->pen().widthF(), liveWidth);
+        QCOMPARE(QSettings().value("sim/liveWire").toBool(), true);
     }
 
     void resetButtonHeldWithTheMouse()

@@ -367,6 +367,10 @@ QPainterPath WireItem::shape() const
     return hit;
 }
 
+static bool s_liveWires = true;
+void WireItem::setLiveWires(bool on) { s_liveWires = on; }
+bool WireItem::liveWires() { return s_liveWires; }
+
 void WireItem::setSimValue(int v)
 {
     if (v == m_simValue)
@@ -418,7 +422,7 @@ void WireItem::restyle()
     // Simulation values (PLAN.md 6.3): high = full colour and a bit wider,
     // low = dimmed, X = red dashed, Z = grey dotted. Line style differs too,
     // so the states do not depend on colour alone.
-    switch (m_simValue) {
+    switch (s_liveWires ? m_simValue : -1) {
     case 1:
         p.setWidthF(kWireWidth + 1.2);
         break;

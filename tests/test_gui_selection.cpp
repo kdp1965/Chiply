@@ -6,6 +6,7 @@
 #include "core/Geometry.h"
 
 #include <QGraphicsScene>
+#include <QScrollBar>
 #include <QTest>
 
 #include <algorithm>
@@ -104,6 +105,20 @@ private slots:
         QVERIFY(s->selectionSummary().empty());
     }
 
+    void plainDragOnEmptyCanvasPans()
+    {
+        click(outline("flop238").center());
+        const QPointF a = emptyNear(outline("flop238").topLeft() - QPointF(30, 30));
+        const int h = v->horizontalScrollBar()->value(), vv = v->verticalScrollBar()->value();
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, at(a));
+        const QPoint pa = at(a);
+        for (int i = 1; i <= 8; ++i)
+            QTest::mouseMove(v->viewport(), pa + QPoint(-10, -6) * i);
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, pa + QPoint(-80, -48));
+        QVERIFY(v->horizontalScrollBar()->value() != h || v->verticalScrollBar()->value() != vv);
+        QVERIFY(selected().count("flop238")); // a pan keeps the selection
+    }
+
     void escClears()
     {
         click(outline("flop238").center());
@@ -116,7 +131,7 @@ private slots:
     {
         const QRectF a = outline("flop238"), b = outline("flop239");
         QRectF box = a.united(b).adjusted(-8, -8, 8, 8);
-        drag(emptyNear(box.topLeft()), box.bottomRight());
+        drag(emptyNear(box.topLeft()), box.bottomRight(), Qt::ShiftModifier);
         const auto sel = selected();
         QVERIFY(sel.count("flop238"));
         QVERIFY(sel.count("flop239"));
@@ -147,9 +162,9 @@ private slots:
         const QRectF o = outline("flop240");
         const QPointF start = emptyNear(o.topLeft() - QPointF(20, 20));
         const QPointF end(o.center().x(), o.bottom() + 4);
-        drag(start, end);
+        drag(start, end, Qt::ShiftModifier);
         QVERIFY(!selected().count("flop240"));
-        drag(start, end, Qt::AltModifier);
+        drag(start, end, Qt::ShiftModifier | Qt::AltModifier);
         QVERIFY(selected().count("flop240"));
     }
 
@@ -208,7 +223,7 @@ private slots:
             v->clearSelection();
             v->centerOn(outline("flop238").center());
             const QRectF box = outline("flop238").united(outline("flop239")).adjusted(-8, -8, 8, 8);
-            drag(emptyNear(box.topLeft()), box.bottomRight());
+            drag(emptyNear(box.topLeft()), box.bottomRight(), Qt::ShiftModifier);
             QApplication::processEvents();
             v->grab().save(shot);
         }
