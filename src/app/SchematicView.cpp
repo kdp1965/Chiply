@@ -182,7 +182,8 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
         m_pressPos = pos;
         m_lastMousePos = pos;
         m_lastMods = event->modifiers();
-        m_press = selectableAt(pos) ? Press::Item : Press::Empty;
+        m_pressItem = selectableAt(pos);
+        m_press = m_pressItem ? Press::Item : Press::Empty;
         m_marqueeStart = mapToScene(pos);
         event->accept();
         return;
@@ -210,6 +211,28 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
     if (m_panning) {
         panBy(QPointF(m_lastPanPos - pos));
         m_lastPanPos = pos;
+        event->accept();
+        return;
+    }
+    if (m_press == Press::Item && (pos - m_pressPos).manhattanLength() > 4 && m_pressItem
+        && m_pressItem->type() != WireItem::Type) {
+        // Dragging a part moves the selection; an unselected part becomes
+        // the selection first (or joins it with Ctrl/Cmd).
+        if (!m_pressItem->isSelected()) {
+            if (m_lastMods & Qt::ControlModifier)
+                toggleSelected(m_pressItem);
+            else
+                selectOnly(m_pressItem);
+        }
+        m_press = Press::Moving;
+        viewport()->setCursor(Qt::SizeAllCursor);
+        emit moveStarted(QString::fromStdString(itemPartId(m_pressItem)));
+    }
+    if (m_press == Press::Moving) {
+        const QPointF d = mapToScene(pos) - mapToScene(m_pressPos);
+        const auto mods = event->modifiers();
+        const double grid = (mods & Qt::ControlModifier) ? 0.0 : (mods & Qt::AltModifier) ? kGrid / 2 : kGrid;
+        emit moveUpdated(d, grid);
         event->accept();
         return;
     }
@@ -251,6 +274,14 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
             emit wireRouteEdited(w->index(), m_dragResult);
         else if (w)
             w->showPreview(w->route());
+        event->accept();
+        return;
+    }
+    if (event->button() == Qt::LeftButton && m_press == Press::Moving) {
+        m_press = Press::None;
+        m_pressItem = nullptr;
+        viewport()->setCursor(Qt::ArrowCursor);
+        emit moveEnded(true);
         event->accept();
         return;
     }
@@ -442,8 +473,40 @@ void SchematicView::drawForeground(QPainter* painter, const QRectF&)
     painter->restore();
 }
 
+bool SchematicView::hasSelectedParts() const
+{
+    for (const QGraphicsItem* it : scene()->selectedItems())
+        if (!itemPartId(it).empty())
+            return true;
+    return false;
+}
+
 void SchematicView::keyPressEvent(QKeyEvent* event)
 {
+    // Editing keys act on the selected parts.
+    const bool editMods = !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+    if (hasSelectedParts() && editMods && m_press != Press::Moving) {
+        const int step = (event->modifiers() & Qt::ShiftModifier) ? 5 : 1;
+        switch (event->key()) {
+        case Qt::Key_Left: emit nudgeRequested(-step, 0, event->isAutoRepeat()); return;
+        case Qt::Key_Right: emit nudgeRequested(step, 0, event->isAutoRepeat()); return;
+        case Qt::Key_Up: emit nudgeRequested(0, -step, event->isAutoRepeat()); return;
+        case Qt::Key_Down: emit nudgeRequested(0, step, event->isAutoRepeat()); return;
+        case Qt::Key_R:
+            if (!event->isAutoRepeat())
+                emit rotateRequested();
+            return;
+        case Qt::Key_D:
+            if (!event->isAutoRepeat())
+                emit duplicateRequested();
+            return;
+        default: break;
+        }
+    }
+    if ((event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) && !scene()->selectedItems().isEmpty()) {
+        emit deleteRequested();
+        return;
+    }
     const QSize vp = viewport()->size();
     const bool big = event->modifiers() & Qt::ShiftModifier;
     const double fx = big ? vp.width() : vp.width() / 10.0;
@@ -461,7 +524,12 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_F: fitContents(); return;
     case Qt::Key_G: toggleGrid(); return;
     case Qt::Key_Escape:
-        if (m_press == Press::Handle) {
+        if (m_press == Press::Moving) {
+            m_press = Press::None;
+            m_pressItem = nullptr;
+            viewport()->setCursor(Qt::ArrowCursor);
+            emit moveEnded(false);
+        } else if (m_press == Press::Handle) {
             if (m_dragWire)
                 m_dragWire->showPreview(m_dragWire->route());
             m_dragWire = nullptr;

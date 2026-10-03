@@ -339,7 +339,7 @@ Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/S
 | Shift + wheel | Pan horizontally; Ctrl/Cmd + wheel also pans vertically |
 | Left-drag on empty canvas | Marquee select (decided; 4.3) |
 | Middle-drag, Shift + left-drag, or Space + left-drag | Pan |
-| Arrow keys | Move the diagram in the arrow's direction, as in Wokwi (Up moves the diagram up, Right moves it right), by a tenth of the viewport; Shift+arrows by a full viewport. Arrows never move parts |
+| Arrow keys | With parts selected: move them one grid step (Shift: five steps), as in Wokwi. With nothing selected: move the diagram in the arrow's direction by a tenth of the viewport (Shift: a full viewport). Ctrl/Cmd+arrows always pan |
 | `+` / `-`, `F` | Zoom in/out, fit to contents |
 | `G`, Shift, Alt/Ctrl | Grid toggle, snap off, fine snap |
 
@@ -363,7 +363,7 @@ Selectable objects are parts (gates, flops, TT blocks, switches, displays, power
 - **Cursor and feedback**: the cursor changes to a move cursor; the group box and the Inspector's position fields update while dragging; dragging near a viewport edge auto-scrolls.
 - **Cancel and commit**: `Esc` during a drag puts everything back. Release commits the move as a single undo step (one Ctrl+Z reverts the whole group), and the mini toolbar reappears if one part is selected.
 - **Alt+drag** (or Ctrl+drag on Linux/Windows) duplicates the selection and drags the copy, using the paste mechanism in 4.7 (new ids, routes preserved). This is the fastest way to build the repeated rows your reference design is made of.
-- **Keyboard moves**: arrow keys pan the view (4.2), not the selection. Nudging the selection is Ctrl/Cmd+arrows, one grid per press, with the same wire behavior and one undo step per press (held keys coalesce).
+- **Keyboard moves** (done): with parts selected, arrow keys move them one grid step and Shift+arrows five, with the same wire behavior and one undo step per press (a held key's repeats merge into one step). With nothing selected the arrows pan (4.2).
 - **What is not a move**: dragging a wire's vertex or segment handle edits that wire (4.6); dragging a wire's body does nothing in Wokwi and does nothing here, except when the wire's parts are selected and it moves with them. Dragging a pin starts a new wire (4.6), never a move; the pin hit area wins over the part body within a few pixels of the pin.
 - **Performance**: during a drag only the moving items and their attached wires are re-laid-out and repainted, incrementally per mouse-move; nothing else in the scene is touched, which keeps a 100-part group drag smooth on the 1024-part reference design.
 
@@ -534,7 +534,7 @@ Estimates are working days for one developer using Claude Code; each milestone e
 | M1 | Core model + Wokwi JSON | Load/save all three reference files with JSON-equal round trip; wire path codec incl. `"*"`; id generator | 2–3 |
 | M2 | Part library + calibration | **Done.** 30 part types in `resources/parts.json` with exact Wokwi geometry and pin directions (2.7); Chiply's own symbol artwork for all of them; wires drawn with Wokwi's completion rule; verified against the reference design | 3–4 |
 | M3 | Viewer + selection | **Done.** Wokwi-exact rendering, zoom/pan/fit/grid, hover (part outline, pin names); click / Shift+click / Ctrl+click, marquee (enclosed, Alt = touched, Ctrl = add, edge auto-scroll), Esc, Select All, implicit and stretching wires, group box and count, selection kept across theme changes; GUI tests on the reference design | 2–3 |
-| M4 | Part editing | Click-drag move of single parts and whole selections with wires following live, snapping, Esc cancel, one undo step (4.4); nudge; rotate/duplicate/delete; `+` palette; mini toolbar; Inspector; rename with validation | 3–4 |
+| M4 | Part editing | **In progress.** Done: click-drag move of a part or the whole selection with wires following live, grid snap (Alt half, Ctrl/Cmd free), Esc cancel, one undo step; arrow nudge 1 / Shift 5 grid steps; R rotate; Delete; D duplicate (ids renumbered, internal wires kept); undo/redo. To do: `+` palette, mini toolbar, Inspector, rename, show names | 3–4 |
 | M5 | Wire editing | **Segment handles done** (yellow, constant screen size, on selected wires; drag slides a segment on the grid, Alt half grid, Ctrl/Cmd free; end segments get a jog so pins stay connected; written back as a Wokwi path that reproduces the route; undo/redo). Still to do: drawing new wires (started by a click in a pin's hit region, which must then no longer select the part), vertex handles, Ctrl/Cmd+click to add a vertex, double-click delete, color keys, re-anchoring | 4–5 |
 | M6 | Copy/paste + tabs | Copy/paste/duplicate/Alt-drag with routes preserved; `IdRemapper` renumbering rules (4.7) with tests; multiple files in tabs with per-tab undo/view/selection, cross-tab paste, Save All, autosave (4.10) | 3–4 |
 | M7 | Netlist, DRC, Verilog | Netlist with directions; switchable DRC checks running live; Violations pane with click-to-snap, F8 stepping and waivers (5.2); Verilog export; equivalence test vs Wokwi's golden export passes on the reference design; TT project export; CLI | 3–4 |
@@ -591,7 +591,7 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 
 | # | Topic | Decision | Where it landed |
 |---|---|---|---|
-| 1 | Left-drag on empty canvas | Marquee select. Pan is middle-drag, Shift+drag, Space+drag, Shift+wheel, and the arrow keys, which move the diagram in the arrow's direction like Wokwi. Arrow keys never move parts; Ctrl/Cmd+arrows nudge | 4.2, 4.3, 4.4 |
+| 1 | Left-drag on empty canvas | Marquee select. Pan is middle-drag, Shift+drag, Space+drag, Shift+wheel, and the arrow keys, which move the diagram in the arrow's direction like Wokwi. With parts selected, arrows move them (Shift: 5 steps); otherwise arrows pan; Ctrl/Cmd+arrows always pan | 4.2, 4.3, 4.4 |
 | 2 | Double-click on a wire | Deletes it, as in Wokwi. Ctrl+click (Cmd+click on macOS) on a segment adds a vertex | 4.6 |
 | 3 | Chiply-only metadata | Sidecar `name.chiply.json`; `diagram.json` stays pure Wokwi | 3.3, 3.6 |
 | 4 | Buses | Single-bit wires only for now, so any design without custom blocks pastes into Wokwi and renders. Bus wires may be added later | 7 |

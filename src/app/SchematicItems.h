@@ -26,6 +26,8 @@ public:
     QPainterPath shape() const override;
     // The part's outline in scene coordinates (rotated bounds).
     QRectF outlineSceneRect() const;
+    // Follows a placement change (left/top/rotate) of the document part.
+    void setPlacement(const chiply::Part& part);
 
 protected:
     void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
@@ -104,6 +106,7 @@ public:
     void restyle();
     const std::string& partId() const { return m_id; }
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
+    void setPlacement(const chiply::Part& part);
 
 private:
     std::string m_id;

@@ -128,6 +128,15 @@ QPainterPath PartItem::shape() const
     return p;
 }
 
+void PartItem::setPlacement(const chiply::Part& part)
+{
+    m_part.left = part.left;
+    m_part.top = part.top;
+    m_part.rotate = part.rotate;
+    setPos(part.left, part.top);
+    setRotation(part.rotate);
+}
+
 QRectF PartItem::outlineSceneRect() const
 {
     return mapRectToScene(QRectF(0, 0, m_w, m_h));
@@ -327,6 +336,12 @@ void TextItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
         painter->setBrush(Qt::NoBrush);
         painter->drawRect(boundingRect().adjusted(-2, -2, 2, 2));
     }
+}
+
+void TextItem::setPlacement(const chiply::Part& part)
+{
+    setPos(part.left, part.top);
+    setRotation(part.rotate);
 }
 
 std::string itemPartId(const QGraphicsItem* item)

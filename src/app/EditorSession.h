@@ -2,6 +2,11 @@
 // One open file (PLAN.md 4.10): its document, scene, view and undo stack.
 // Tabs never share any of these; only the clipboard and preferences are global.
 #include "core/Document.h"
+#include "core/WirePath.h"
+
+#include <map>
+#include <string>
+#include <vector>
 
 #include <QGraphicsScene>
 #include <QObject>
@@ -40,6 +45,32 @@ public:
     SelectionSummary selectionSummary() const { return m_summary; }
     std::vector<std::string> selectedPartIds() const;
 
+    // ---- part editing (all undoable) ----
+    struct Placement {
+        std::string id;
+        double left = 0, top = 0;
+        int rotate = 0;
+    };
+    // Interactive drag of the selected parts: begin, preview, end.
+    void beginMove();
+    void previewMove(double dx, double dy); // raw scene delta of the grabbed part
+    void endMove(bool commit);
+    bool moving() const { return !m_moveStart.empty(); }
+    void setMoveGrab(const std::string& partId) { m_moveGrab = partId; }
+    void setSnapMode(double grid) { m_snap = grid; } // 0 = no snapping
+    // Keyboard nudge by whole grid steps; repeats of a held key merge.
+    void nudgeSelection(int gx, int gy, bool autoRepeat);
+    void rotateSelection();
+    void deleteSelection();
+    void duplicateSelection();
+
+    // Applies placements without undo (used by commands).
+    void applyPlacements(const std::vector<Placement>& ps);
+    // Replaces the document wholesale and rebuilds, selecting `select`
+    // (used by structural commands).
+    void replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select);
+    const chiply::Document& doc() const { return m_doc; }
+
     // Replaces a wire's path (undoable through the session's undo stack).
     void editWireRoute(int wireIndex, const std::vector<chiply::Point>& route);
     // Applies a path without recording undo (used by the undo command).
@@ -53,6 +84,9 @@ signals:
 private:
     void rebuildScene();
     void updateSelectionState();
+    void refreshWiresOf(const std::string& partId);
+    void selectParts(const std::vector<std::string>& ids);
+    Placement placementOf(const std::string& id) const;
 
     chiply::Document m_doc;
     QString m_path;
@@ -61,4 +95,10 @@ private:
     SchematicView* m_view = nullptr;
     QUndoStack m_undo;
     SelectionSummary m_summary;
+
+    std::map<std::string, QGraphicsItem*> m_partItems;            // id -> PartItem/TextItem
+    std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
+    std::vector<Placement> m_moveStart;
+    std::string m_moveGrab;
+    double m_snap = 9.6;
 };

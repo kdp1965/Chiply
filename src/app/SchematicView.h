@@ -4,6 +4,10 @@
 //   vertical pan, middle-drag, Shift+drag or Space+drag = pan, arrow keys
 //   move the diagram in the arrow's direction,
 //   left-drag on empty canvas = marquee, +/- = zoom, F = fit, G = grid.
+//   With parts selected, arrow keys move them one grid step (Shift: five);
+//   Ctrl/Cmd+arrows always pan. Dragging a part moves the selection (Alt:
+//   half-grid snap, Ctrl/Cmd: no snap). R rotates, D duplicates, Delete
+//   deletes.
 //
 // Selection (PLAN.md 4.3): click selects one item, Shift+click (no drag) or
 // Ctrl/Cmd+click toggles, click on empty canvas or Esc clears, Ctrl/Cmd+A
@@ -46,6 +50,15 @@ signals:
     void selectionEdited();
     // A wire segment drag finished with a new route (index into doc.wires).
     void wireRouteEdited(int wireIndex, std::vector<chiply::Point> route);
+    // Dragging selected parts. `grid` is the snap step (0 = none).
+    void moveStarted(QString grabbedPartId);
+    void moveUpdated(QPointF sceneDelta, double grid);
+    void moveEnded(bool commit);
+    // Keyboard edits on the selection.
+    void nudgeRequested(int gridX, int gridY, bool autoRepeat);
+    void rotateRequested();
+    void deleteRequested();
+    void duplicateRequested();
 
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -73,7 +86,9 @@ private:
 
     void updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods);
 
-    enum class Press { None, Item, Empty, Marquee, Handle };
+    enum class Press { None, Item, Empty, Marquee, Handle, Moving };
+    QGraphicsItem* m_pressItem = nullptr;
+    bool hasSelectedParts() const;
     WireItem* m_dragWire = nullptr;
     std::size_t m_dragSegment = 0;
     bool m_dragHorizontal = true;

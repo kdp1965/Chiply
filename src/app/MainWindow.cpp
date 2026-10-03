@@ -77,6 +77,10 @@ void MainWindow::buildMenus()
     edit->addAction(undo);
     edit->addAction(redo);
     edit->addSeparator();
+    edit->addAction(tr("&Rotate  (R)"), this, [this] { if (auto* s = current()) s->rotateSelection(); });
+    edit->addAction(tr("D&uplicate  (D)"), this, [this] { if (auto* s = current()) s->duplicateSelection(); });
+    edit->addAction(tr("&Delete  (Del)"), this, [this] { if (auto* s = current()) s->deleteSelection(); });
+    edit->addSeparator();
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, [this] {
         if (auto* s = current())
             s->view()->selectAll();
