@@ -47,6 +47,41 @@ private slots:
         QSettings().clear();
     }
 
+    void inspectorIsResizableAndSticky()
+    {
+        int chosen = 0;
+        {
+            MainWindow w;
+            w.resize(780, 600);
+            w.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&w));
+            QVERIFY(w.openFile(QStringLiteral(CHIPLY_REFERENCE_DIR "/wokwi_414123795172381697.diagram.json")));
+            QApplication::processEvents();
+            auto* dock = w.findChild<QDockWidget*>("inspector");
+            w.resizeDocks({dock}, {240}, Qt::Horizontal); // what dragging the splitter does
+            QApplication::processEvents();
+            chosen = dock->width();
+            QVERIFY2(chosen < 300, qPrintable(QString::number(chosen)));
+            // Selecting parts with wide forms must not change it.
+            auto* v = qobject_cast<SchematicView*>(w.findChild<QTabWidget*>()->currentWidget());
+            for (QGraphicsItem* it : v->scene()->items()) {
+                if (itemPartId(it) == "ttin" || itemPartId(it) == "clock1") {
+                    v->selectOnly(it);
+                    QApplication::processEvents();
+                    QCOMPARE(dock->width(), chosen);
+                }
+            }
+            QVERIFY(w.close());
+        }
+        MainWindow w2;
+        w2.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w2));
+        QApplication::processEvents();
+        QCOMPARE(w2.findChild<QDockWidget*>("inspector")->width(), chosen);
+        w2.close();
+        QSettings().clear();
+    }
+
     void selectionDoesNotShiftCanvas()
     {
         MainWindow w;

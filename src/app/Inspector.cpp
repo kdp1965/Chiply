@@ -32,13 +32,13 @@ Inspector::Inspector(QWidget* parent)
     m_scroll = new QScrollArea(this);
     m_scroll->setWidgetResizable(true);
     m_scroll->setFrameShape(QFrame::NoFrame);
-    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     auto* inner = new QWidget(m_scroll);
     m_lay = new QVBoxLayout(inner);
     m_lay->setContentsMargins(10, 10, 10, 10);
     m_scroll->setWidget(inner);
     outer->addWidget(m_scroll);
-    setFixedWidth(kWidth);
+    setMinimumWidth(kMinWidth);
     rebuild();
 }
 

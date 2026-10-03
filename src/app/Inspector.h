@@ -16,10 +16,12 @@ public:
     // Puts the cursor in the id field (F2, double-click, mini toolbar Edit).
     void focusName();
     // Constant size hints: the dock must not resize (and shift the canvas)
-    // when the selection changes. Contents scroll vertically instead.
-    QSize sizeHint() const override { return {kWidth, 400}; }
-    QSize minimumSizeHint() const override { return {kWidth, 100}; }
-    static constexpr int kWidth = 380;
+    // when the selection changes, but the user can drag its width anywhere
+    // from kMinWidth up. Contents scroll instead of pushing the dock wider.
+    QSize sizeHint() const override { return {kDefaultWidth, 400}; }
+    QSize minimumSizeHint() const override { return {kMinWidth, 100}; }
+    static constexpr int kDefaultWidth = 380;
+    static constexpr int kMinWidth = 220;
 
 private:
     void rebuild();

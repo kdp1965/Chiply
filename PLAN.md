@@ -404,7 +404,7 @@ Multi-level, unlimited undo and redo per tab (done): every model change is a `QU
 
 ### 4.8b Window layout
 
-The window's size and position, the toolbar and every dock (Inspector, Undo History; later Violations) are saved with their position, size and visibility, and restored on the next launch (done). Saved on quit and shortly after any change, so a crash does not lose it.
+The Inspector's width is set by dragging its splitter (minimum 220 px); its contents scroll, so selecting never changes it (done). The window's size and position, the toolbar and every dock (including that width) (Inspector, Undo History; later Violations) are saved with their position, size and visibility, and restored on the next launch (done). Saved on quit and shortly after any change, so a crash does not lose it.
 
 ### 4.9 Keyboard map
 
