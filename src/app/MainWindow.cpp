@@ -2,9 +2,11 @@
 
 #include "EditorSession.h"
 #include "SchematicView.h"
+#include "Theme.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QFileDialog>
@@ -63,6 +65,15 @@ void MainWindow::buildMenus()
     view->addAction(tr("Zoom &Out  (-)"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
     view->addAction(tr("&Fit  (F)"), this, [this] { if (auto* s = current()) s->view()->fitContents(); });
     view->addAction(tr("Toggle &Grid  (G)"), this, [this] { if (auto* s = current()) s->view()->toggleGrid(); });
+    QMenu* themeMenu = view->addMenu(tr("&Theme"));
+    auto* themeGroup = new QActionGroup(this);
+    for (Theme::Mode m : {Theme::Mode::System, Theme::Mode::Light, Theme::Mode::Dark}) {
+        QAction* a = themeMenu->addAction(Theme::modeName(m));
+        a->setCheckable(true);
+        a->setChecked(Theme::instance().mode() == m);
+        themeGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [m] { Theme::instance().setMode(m); });
+    }
     view->addSeparator();
     view->addAction(tr("Next Tab"), QKeySequence(Qt::CTRL | Qt::Key_Tab), this, [this] {
         if (m_tabs->count())

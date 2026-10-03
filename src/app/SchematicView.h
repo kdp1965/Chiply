@@ -18,6 +18,7 @@ public:
     void fitContents();
     void toggleGrid();
     double zoom() const { return transform().m11(); }
+    void applyTheme();
 
 signals:
     void zoomChanged(double zoom);

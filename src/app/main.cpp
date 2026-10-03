@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "Theme.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -19,10 +20,22 @@ int main(int argc, char* argv[])
         "Render the window to <file> (PNG) after loading, then exit. Works with "
         "QT_QPA_PLATFORM=offscreen for headless use.", "file");
     QCommandLineOption size("size", "Window size for --screenshot, e.g. 1400x900.", "WxH", "1400x900");
+    QCommandLineOption theme("theme", "Color theme for this run: system, light or dark "
+        "(does not change the saved preference).", "mode");
+    cli.addOption(theme);
     cli.addOption(shot);
     cli.addOption(size);
     cli.addPositionalArgument("files", "Diagram files to open, one tab each.", "[files...]");
     cli.process(app);
+
+    if (cli.isSet(theme)) {
+        Theme::Mode m;
+        if (!Theme::parseMode(cli.value(theme), &m)) {
+            qWarning("unknown theme \"%s\"", qPrintable(cli.value(theme)));
+            return 2;
+        }
+        Theme::instance().setModeForSession(m);
+    }
 
     MainWindow w;
     if (cli.isSet(shot)) {

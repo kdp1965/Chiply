@@ -1,5 +1,7 @@
 #include "SchematicView.h"
 
+#include "Theme.h"
+
 #include <QKeyEvent>
 #include <QPainter>
 #include <QScrollBar>
@@ -21,8 +23,9 @@ SchematicView::SchematicView(QGraphicsScene* scene, QWidget* parent)
     setTransformationAnchor(QGraphicsView::NoAnchor);
     setResizeAnchor(QGraphicsView::AnchorViewCenter);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-    setBackgroundBrush(Qt::white);
     setFocusPolicy(Qt::StrongFocus);
+    applyTheme();
+    connect(&Theme::instance(), &Theme::changed, this, &SchematicView::applyTheme);
 }
 
 void SchematicView::drawBackground(QPainter* painter, const QRectF& rect)
@@ -36,7 +39,7 @@ void SchematicView::drawBackground(QPainter* painter, const QRectF& rect)
         step *= 5.0;
     const double x0 = std::floor(rect.left() / step) * step;
     const double y0 = std::floor(rect.top() / step) * step;
-    QPen pen(QColor(0xd0, 0xd0, 0xd0));
+    QPen pen(Theme::instance().canvas().gridDot);
     pen.setWidthF(std::max(1.5 / zoom(), 0.5));
     pen.setCapStyle(Qt::RoundCap);
     painter->setPen(pen);
@@ -45,6 +48,18 @@ void SchematicView::drawBackground(QPainter* painter, const QRectF& rect)
         for (double y = y0; y <= rect.bottom(); y += step)
             dots.append(QPointF(x, y));
     painter->drawPoints(dots.constData(), int(dots.size()));
+}
+
+void SchematicView::applyTheme()
+{
+    const CanvasColors& c = Theme::instance().canvas();
+    setBackgroundBrush(c.background);
+    // Rubber band follows the theme's selection color.
+    QPalette p = palette();
+    p.setColor(QPalette::Highlight, c.selection);
+    setPalette(p);
+    resetCachedContent();
+    viewport()->update();
 }
 
 void SchematicView::zoomBy(double factor, QPoint anchorViewPos)

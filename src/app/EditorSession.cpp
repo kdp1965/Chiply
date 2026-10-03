@@ -1,6 +1,7 @@
 #include "EditorSession.h"
 
 #include "SchematicView.h"
+#include "Theme.h"
 #include "core/IdGen.h"
 #include "core/WokwiJson.h"
 
@@ -15,6 +16,7 @@ EditorSession::EditorSession(QObject* parent)
     m_scene.setItemIndexMethod(QGraphicsScene::BspTreeIndex);
     m_view = new SchematicView(&m_scene);
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
+    connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
 }
 
 void EditorSession::load(const QString& path)
@@ -60,8 +62,9 @@ void EditorSession::rebuildScene()
     // Placeholder rendering until the part library lands (milestone M2):
     // each part is a small box at its top/left labelled with its id, so a
     // loaded design can already be navigated. Wires are not drawn yet.
-    const QPen pen(QColor(0x9e, 0x9e, 0x9e), 0);
-    const QBrush brush(QColor(0xf3, 0xe5, 0xf5));
+    const CanvasColors& colors = Theme::instance().canvas();
+    const QPen pen(colors.partStroke, 0);
+    const QBrush brush(colors.partFill);
     const double s = SchematicView::kGrid * 4;
     for (const chiply::Part& p : m_doc.parts) {
         auto* box = m_scene.addRect(QRectF(0, 0, s, s), pen, brush);
@@ -71,6 +74,7 @@ void EditorSession::rebuildScene()
         QFont f = label->font();
         f.setPointSizeF(5);
         label->setFont(f);
+        label->setBrush(colors.partText);
         label->setPos(1, 1);
     }
     m_scene.setSceneRect(m_scene.itemsBoundingRect().adjusted(-2000, -2000, 2000, 2000));

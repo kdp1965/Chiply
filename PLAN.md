@@ -312,6 +312,8 @@ Calibrated numbers replace the placeholders. Physical parts reference an SVG fro
 - `PartItem` paints from the cached `QPainterPath`s of its symbol; `ItemCoordinateCache` makes 1k parts cheap. `WireItem` is a path item whose bounding rect is the route; the scene's BSP index handles hit testing.
 - Hover: pin halo (blue circle) and pin-name tooltip, as in Wokwi. Selected part: blue outline plus the floating mini toolbar (rotate / edit / delete).
 - Wire colors are the CSS names from the file, mapped through `QColor(name)` (Qt knows the SVG color names, so `limegreen`, `gold`, `violet` just work).
+- **Themes**: View → Theme offers System (follow macOS), Light and Dark, remembered in preferences; `--theme` overrides it for one run. Light is the Wokwi look (white canvas, magenta symbols, black leads). Dark uses a near-black canvas, dim grid dots, lighter magenta symbols and light-gray leads. The window chrome follows the same choice. All canvas colors come from one `CanvasColors` table, so every item type added later (symbols, wires, handles, violation highlights) reads its colors there instead of hard-coding them.
+- In dark mode, wire colors too dark to see on the canvas (`black` GND wires, `brown`, navy) are drawn lighter with the same hue. This is display only; the file keeps the color you chose, so Wokwi shows it unchanged.
 - While dragging, only the moving items and their attached wires repaint; everything else is static. Target: 60 fps panning at the reference size on your machine.
 
 ---
