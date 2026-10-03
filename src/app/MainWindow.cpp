@@ -346,6 +346,8 @@ bool MainWindow::closeTab(int index)
 
 void MainWindow::saveLayout()
 {
+    if (!s_persistLayout)
+        return;
     QSettings s;
     s.setValue("window/geometry", saveGeometry());
     s.setValue("window/state", saveState(kLayoutVersion));
@@ -353,6 +355,8 @@ void MainWindow::saveLayout()
 
 void MainWindow::restoreLayout()
 {
+    if (!s_persistLayout)
+        return;
     QSettings s;
     restoreGeometry(s.value("window/geometry").toByteArray());
     restoreState(s.value("window/state").toByteArray(), kLayoutVersion);

@@ -37,6 +37,8 @@ int main(int argc, char* argv[])
         Theme::instance().setModeForSession(m);
     }
 
+    if (cli.isSet(shot))
+        MainWindow::setPersistLayout(false); // leave the user's layout alone
     MainWindow w;
     if (cli.isSet(shot)) {
         const QStringList wh = cli.value(size).split('x');

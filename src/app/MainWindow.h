@@ -20,6 +20,9 @@ public:
     void saveLayout();
     void restoreLayout();
     static constexpr int kLayoutVersion = 1;
+    // Off for headless --screenshot runs: never read or write the user's
+    // saved layout. Must be set before constructing the window.
+    static void setPersistLayout(bool on) { s_persistLayout = on; }
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -42,6 +45,7 @@ private:
 
     QTabWidget* m_tabs = nullptr;
     QTimer m_saveLayout;
+    static inline bool s_persistLayout = true;
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;
     QLabel* m_zoomLabel = nullptr;

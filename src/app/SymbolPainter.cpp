@@ -75,10 +75,20 @@ QPainterPath andBody()
     return b;
 }
 
+constexpr double kOrBulge = 2.6; // control-point offset of the OR back curve
+
 void orBack(QPainterPath& b, double x)
 {
     b.moveTo(x, 0.4);
-    b.quadTo(x + 2.6, 5.08, x, 9.76);
+    b.quadTo(x + kOrBulge, 5.08, x, 9.76);
+}
+
+// x of the OR back curve starting at x0, at height y. The quadratic runs
+// from (x0, 0.4) via (x0 + bulge, 5.08) to (x0, 9.76); its y is linear in t.
+double orBackX(double x0, double y)
+{
+    const double t = (y - 0.4) / 9.36;
+    return x0 + 2 * t * (1 - t) * kOrBulge;
 }
 
 QPainterPath orBody(double x0)
@@ -105,7 +115,10 @@ void gate(const Ctx& k, const std::string& kind)
             orBack(b, x0 - 1.2);
         k.body(b);
         outX = x0 + 11.2;
-        inEnd = (kind == "xor" || kind == "xnor") ? 7.9 : 8.6;
+        // Leads end exactly on the (outer) back curve; both inputs sit at
+        // the same height from the curve's ends, so one x serves both.
+        const double backX = (kind == "xor" || kind == "xnor") ? x0 - 1.2 : x0;
+        inEnd = orBackX(backX, 2.54);
     }
     if (inv) {
         k.bubble(outX + 0.75, 5.08);
