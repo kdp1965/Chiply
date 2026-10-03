@@ -175,4 +175,81 @@ std::vector<Point> routePolyline(Point from, Point to, const WirePath& path)
     return pts;
 }
 
+std::vector<Point> simplifyPolyline(const std::vector<Point>& in)
+{
+    auto near = [](double a, double b) { return std::fabs(a - b) < 0.005; };
+    std::vector<Point> pts;
+    for (const Point& p : in)
+        if (pts.empty() || !(near(pts.back().x, p.x) && near(pts.back().y, p.y)))
+            pts.push_back(p);
+    bool changed = true;
+    while (changed && pts.size() > 2) {
+        changed = false;
+        for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+            const Point& a = pts[i - 1];
+            const Point& b = pts[i];
+            const Point& c = pts[i + 1];
+            if ((near(a.x, b.x) && near(b.x, c.x)) || (near(a.y, b.y) && near(b.y, c.y))) {
+                pts.erase(pts.begin() + static_cast<long>(i));
+                changed = true;
+                break;
+            }
+        }
+    }
+    return pts;
+}
+
+std::vector<Point> moveSegment(std::vector<Point> pts, std::size_t seg, double coord)
+{
+    if (seg + 1 >= pts.size())
+        return pts;
+    const bool horizontal = std::fabs(pts[seg].y - pts[seg + 1].y) < 0.005;
+    if (seg == 0) {
+        pts.insert(pts.begin(), pts.front()); // keep the source pin fixed
+        ++seg;
+    }
+    if (seg + 2 == pts.size())
+        pts.push_back(pts.back()); // keep the target pin fixed
+    for (std::size_t k : {seg, seg + 1}) {
+        if (horizontal)
+            pts[k].y = coord;
+        else
+            pts[k].x = coord;
+    }
+    return simplifyPolyline(pts);
+}
+
+WirePath pathFromPolyline(const std::vector<Point>& in)
+{
+    const std::vector<Point> pts = simplifyPolyline(in);
+    auto segs = [&](std::size_t count) {
+        WirePath p;
+        for (std::size_t i = 0; i < count && i + 1 < pts.size(); ++i) {
+            const double dx = round2(pts[i + 1].x - pts[i].x);
+            const double dy = round2(pts[i + 1].y - pts[i].y);
+            if (std::fabs(dx) >= 0.005)
+                p.source.push_back({Axis::H, dx});
+            else if (std::fabs(dy) >= 0.005)
+                p.source.push_back({Axis::V, dy});
+        }
+        return p;
+    };
+    if (pts.size() < 2)
+        return {};
+    auto matches = [&](const WirePath& p) {
+        const auto r = simplifyPolyline(routePolyline(pts.front(), pts.back(), p));
+        if (r.size() != pts.size())
+            return false;
+        for (std::size_t i = 0; i < r.size(); ++i)
+            if (std::fabs(r[i].x - pts[i].x) > 0.02 || std::fabs(r[i].y - pts[i].y) > 0.02)
+                return false;
+        return true;
+    };
+    // Leave the last leg implicit when Wokwi's gap rule recreates it.
+    WirePath shortForm = segs(pts.size() - 2);
+    if (matches(shortForm))
+        return shortForm;
+    return segs(pts.size() - 1);
+}
+
 } // namespace chiply

@@ -19,6 +19,88 @@ constexpr double kUnknownSize = 38.4;
 constexpr double kWireWidth = 2.0; // scene px, Wokwi's stroke width
 constexpr double kCornerRadius = 4.0;
 constexpr double kPinHitRadius = 4.5; // px around a pin that counts as "on the pin"
+constexpr double kHandleRadius = 6.0; // screen px; large for easy grabbing
+}
+
+namespace {
+// Corners rounded with a 4 px radius, as Wokwi draws them; a corner on a
+// short segment uses at most half of that segment.
+QPainterPath roundedPath(const std::vector<chiply::Point>& route)
+{
+    QPainterPath path;
+    if (!route.empty()) {
+        auto P = [&](std::size_t i) { return QPointF(route[i].x, route[i].y); };
+        path.moveTo(P(0));
+        for (std::size_t i = 1; i + 1 < route.size(); ++i) {
+            const QPointF a = P(i - 1), c = P(i), b = P(i + 1);
+            const QLineF in(c, a), out(c, b);
+            const double r = std::min({kCornerRadius, in.length() / 2, out.length() / 2});
+            if (r < 0.05) {
+                path.lineTo(c);
+                continue;
+            }
+            const QPointF p1 = c + (a - c) * (r / in.length());
+            const QPointF p2 = c + (b - c) * (r / out.length());
+            path.lineTo(p1);
+            path.quadTo(c, p2);
+        }
+        if (route.size() > 1)
+            path.lineTo(P(route.size() - 1));
+    }
+    return path;
+}
+} // namespace
+
+SegmentHandle::SegmentHandle(QGraphicsItem* parent, std::size_t segment, bool horizontal)
+    : QGraphicsEllipseItem(QRectF(-kHandleRadius, -kHandleRadius, 2 * kHandleRadius, 2 * kHandleRadius), parent)
+    , m_segment(segment)
+    , m_horizontal(horizontal)
+{
+    setFlag(QGraphicsItem::ItemIgnoresTransformations); // same size at any zoom
+    setBrush(QColor(0xff, 0xd6, 0x00));
+    QPen pen(QColor(0x30, 0x30, 0x30), 1.5);
+    setPen(pen);
+    setZValue(10);
+    setCursor(horizontal ? Qt::SizeVerCursor : Qt::SizeHorCursor);
+    setAcceptHoverEvents(true);
+    setToolTip(QString());
+}
+
+void WireItem::setRoute(const std::vector<chiply::Point>& route)
+{
+    m_route = route;
+    showPreview(route);
+}
+
+void WireItem::showPreview(const std::vector<chiply::Point>& route)
+{
+    prepareGeometryChange();
+    setPath(roundedPath(route));
+    rebuildHandles(route);
+}
+
+void WireItem::setHandlesVisible(bool on)
+{
+    if (on == m_handlesOn)
+        return;
+    m_handlesOn = on;
+    rebuildHandles(m_route);
+}
+
+void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
+{
+    for (SegmentHandle* h : m_handles)
+        delete h;
+    m_handles.clear();
+    if (!m_handlesOn)
+        return;
+    const std::vector<chiply::Point> r = chiply::simplifyPolyline(routeIn);
+    for (std::size_t i = 0; i + 1 < r.size(); ++i) {
+        const bool horizontal = std::fabs(r[i].y - r[i + 1].y) < 0.005;
+        auto* h = new SegmentHandle(this, i, horizontal);
+        h->setPos((r[i].x + r[i + 1].x) / 2, (r[i].y + r[i + 1].y) / 2);
+        m_handles.push_back(h);
+    }
 }
 
 PartItem::PartItem(const chiply::Part& part, const chiply::PartDef* def)
@@ -146,29 +228,7 @@ WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& r
     , m_toPart(wire.to.part)
 {
     setFlag(QGraphicsItem::ItemIsSelectable);
-    // Corners rounded with a 4 px radius, as Wokwi draws them; a corner on a
-    // short segment uses at most half of that segment.
-    QPainterPath path;
-    if (!route.empty()) {
-        auto P = [&](std::size_t i) { return QPointF(route[i].x, route[i].y); };
-        path.moveTo(P(0));
-        for (std::size_t i = 1; i + 1 < route.size(); ++i) {
-            const QPointF a = P(i - 1), c = P(i), b = P(i + 1);
-            const QLineF in(c, a), out(c, b);
-            const double r = std::min({kCornerRadius, in.length() / 2, out.length() / 2});
-            if (r < 0.05) {
-                path.lineTo(c);
-                continue;
-            }
-            const QPointF p1 = c + (a - c) * (r / in.length());
-            const QPointF p2 = c + (b - c) * (r / out.length());
-            path.lineTo(p1);
-            path.quadTo(c, p2);
-        }
-        if (route.size() > 1)
-            path.lineTo(P(route.size() - 1));
-    }
-    setPath(path);
+    setRoute(route);
     m_fileColor = QColor(QString::fromStdString(wire.color));
     if (wire.color.empty())
         setVisible(false); // Wokwi hides wires with an empty color

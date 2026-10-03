@@ -2,6 +2,7 @@
 
 #include "SchematicItems.h"
 #include "Theme.h"
+#include "core/JsonFormat.h"
 
 #include <QKeyEvent>
 #include <QSignalBlocker>
@@ -145,6 +146,22 @@ QGraphicsItem* SchematicView::selectableAt(QPoint viewPos) const
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (event->button() == Qt::LeftButton && !m_spaceHeld) {
+        for (QGraphicsItem* it : items(pos)) {
+            if (it->type() != SegmentHandle::Type)
+                continue;
+            auto* h = static_cast<SegmentHandle*>(it);
+            m_dragWire = static_cast<WireItem*>(h->parentItem());
+            m_dragSegment = h->segment();
+            m_dragHorizontal = h->horizontal();
+            m_dragRoute = chiply::simplifyPolyline(m_dragWire->route());
+            m_dragResult = m_dragRoute;
+            m_press = Press::Handle;
+            m_pressPos = pos;
+            event->accept();
+            return;
+        }
+    }
     if (event->button() == Qt::LeftButton && !m_spaceHeld && (event->modifiers() & Qt::ShiftModifier)) {
         // Shift+drag pans; Shift+click without moving stays a click (Wokwi's
         // add-to-selection). Decide once the mouse moves.
@@ -176,6 +193,11 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_press == Press::Handle) {
+        updateHandleDrag(pos, event->modifiers());
+        event->accept();
+        return;
+    }
     if (m_shiftPending && (pos - m_pressPos).manhattanLength() > 4) {
         m_shiftPending = false;
         m_panning = true;
@@ -221,6 +243,17 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         event->accept();
         return;
     }
+    if (event->button() == Qt::LeftButton && m_press == Press::Handle) {
+        m_press = Press::None;
+        WireItem* w = m_dragWire;
+        m_dragWire = nullptr;
+        if (w && m_dragResult != m_dragRoute)
+            emit wireRouteEdited(w->index(), m_dragResult);
+        else if (w)
+            w->showPreview(w->route());
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && m_press != Press::None) {
         const Press p = m_press;
         m_press = Press::None;
@@ -236,6 +269,22 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     QGraphicsView::mouseReleaseEvent(event);
+}
+
+void SchematicView::updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods)
+{
+    if (!m_dragWire)
+        return;
+    const QPointF sp = mapToScene(viewPos);
+    double coord = m_dragHorizontal ? sp.y() : sp.x();
+    // Snap the segment to the 0.1 inch grid; Alt = half grid; Ctrl/Cmd = free.
+    if (!(mods & Qt::ControlModifier)) {
+        const double g = (mods & Qt::AltModifier) ? kGrid / 2 : kGrid;
+        coord = std::round(coord / g) * g;
+    }
+    coord = chiply::round2(coord);
+    m_dragResult = chiply::moveSegment(m_dragRoute, m_dragSegment, coord);
+    m_dragWire->showPreview(m_dragResult);
 }
 
 void SchematicView::clickAt(QPoint viewPos, Qt::KeyboardModifiers mods)
@@ -412,7 +461,12 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_F: fitContents(); return;
     case Qt::Key_G: toggleGrid(); return;
     case Qt::Key_Escape:
-        if (m_press == Press::Marquee) {
+        if (m_press == Press::Handle) {
+            if (m_dragWire)
+                m_dragWire->showPreview(m_dragWire->route());
+            m_dragWire = nullptr;
+            m_press = Press::None;
+        } else if (m_press == Press::Marquee) {
             m_press = Press::None;
             m_autoScroll.stop();
             viewport()->update();

@@ -9,8 +9,12 @@
 // Ctrl/Cmd+click toggles, click on empty canvas or Esc clears, Ctrl/Cmd+A
 // selects all. Marquee selects items fully inside; Alt = anything touched;
 // Ctrl/Cmd = add to the current selection. Auto-scrolls at the edges.
+#include "core/WirePath.h"
+
 #include <QGraphicsView>
 #include <QTimer>
+
+class WireItem;
 
 class SchematicView : public QGraphicsView {
     Q_OBJECT
@@ -40,6 +44,8 @@ public:
 signals:
     void zoomChanged(double zoom);
     void selectionEdited();
+    // A wire segment drag finished with a new route (index into doc.wires).
+    void wireRouteEdited(int wireIndex, std::vector<chiply::Point> route);
 
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -65,7 +71,14 @@ private:
     QPoint m_pressPos;
     QPoint m_lastPanPos;
 
-    enum class Press { None, Item, Empty, Marquee };
+    void updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods);
+
+    enum class Press { None, Item, Empty, Marquee, Handle };
+    WireItem* m_dragWire = nullptr;
+    std::size_t m_dragSegment = 0;
+    bool m_dragHorizontal = true;
+    std::vector<chiply::Point> m_dragRoute; // simplified route at drag start
+    std::vector<chiply::Point> m_dragResult;
     Press m_press = Press::None;
     QPointF m_marqueeStart;   // scene
     QPoint m_lastMousePos;    // viewport

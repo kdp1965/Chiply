@@ -39,6 +39,11 @@ public:
     };
     SelectionSummary selectionSummary() const { return m_summary; }
     std::vector<std::string> selectedPartIds() const;
+
+    // Replaces a wire's path (undoable through the session's undo stack).
+    void editWireRoute(int wireIndex, const std::vector<chiply::Point>& route);
+    // Applies a path without recording undo (used by the undo command).
+    void applyWirePath(int wireIndex, const chiply::WirePath& path);
     std::vector<int> selectedWireIndices() const;
 
 signals:

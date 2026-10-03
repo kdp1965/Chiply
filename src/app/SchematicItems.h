@@ -42,6 +42,20 @@ private:
     const chiply::PinDef* m_hoverPin = nullptr;
 };
 
+// Yellow drag handle at the middle of a wire segment (constant screen size).
+class SegmentHandle : public QGraphicsEllipseItem {
+public:
+    SegmentHandle(QGraphicsItem* parent, std::size_t segment, bool horizontal);
+    static constexpr int Type = UserType + 4;
+    int type() const override { return Type; }
+    std::size_t segment() const { return m_segment; }
+    bool horizontal() const { return m_horizontal; }
+
+private:
+    std::size_t m_segment;
+    bool m_horizontal;
+};
+
 class WireItem : public QGraphicsPathItem {
 public:
     // Implicit: not selected itself, but both ends are on selected parts, so
@@ -59,6 +73,11 @@ public:
     void setLink(Link l);
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
     QRectF boundingRect() const override;
+
+    const std::vector<chiply::Point>& route() const { return m_route; }
+    void setRoute(const std::vector<chiply::Point>& route); // committed route
+    void showPreview(const std::vector<chiply::Point>& route); // during a drag
+    void setHandlesVisible(bool on);
     // Hit area is the drawn line plus a few pixels, not the area the route
     // encloses (QGraphicsPathItem's default), so wires never steal hover or
     // clicks from the parts they loop around; the pins at both ends are left
@@ -66,7 +85,12 @@ public:
     QPainterPath shape() const override;
 
 private:
+    void rebuildHandles(const std::vector<chiply::Point>& route);
+
     QColor m_fileColor;
+    std::vector<chiply::Point> m_route;
+    std::vector<SegmentHandle*> m_handles;
+    bool m_handlesOn = false;
     int m_index;
     std::string m_fromPart, m_toPart;
     Link m_link = Link::None;

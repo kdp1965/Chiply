@@ -52,6 +52,21 @@ WirePath normalized(const WirePath& path);
 // Verified against every wire of the reference design as rendered by Wokwi.
 std::vector<Point> routePolyline(Point from, Point to, const WirePath& path);
 
+// Removes consecutive duplicate points and interior points that lie on a
+// straight line between their neighbours.
+std::vector<Point> simplifyPolyline(const std::vector<Point>& pts);
+
+// Moves segment `seg` (between pts[seg] and pts[seg+1]) of an orthogonal
+// polyline perpendicular to itself so that it lies at `coord` (its new y if
+// horizontal, x if vertical). Neighbouring segments stretch; a segment that
+// touches an endpoint gets a new connecting segment so the ends stay put.
+std::vector<Point> moveSegment(std::vector<Point> pts, std::size_t seg, double coord);
+
+// A source-anchored Wokwi path whose routePolyline() from pts.front() to
+// pts.back() reproduces `pts` (an orthogonal polyline). Moves are rounded to
+// 2 decimals; the final leg is left implicit, as Wokwi's editor writes it.
+WirePath pathFromPolyline(const std::vector<Point>& pts);
+
 // Where the source-side moves end (the start of the auto-completed tail when
 // there are no target-side moves).
 Point sourceRouteEnd(Point from, const WirePath& path);

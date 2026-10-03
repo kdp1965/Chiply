@@ -32,5 +32,6 @@ private:
     void openDialog();
 
     QTabWidget* m_tabs = nullptr;
+    class QUndoGroup* m_undoGroup = nullptr;
     QLabel* m_zoomLabel = nullptr;
 };

@@ -11,6 +11,10 @@
 
 #include <set>
 
+namespace {
+constexpr int kMaxWiresWithHandles = 40;
+}
+
 EditorSession::EditorSession(QObject* parent)
     : QObject(parent)
 {
@@ -19,6 +23,7 @@ EditorSession::EditorSession(QObject* parent)
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
+    connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
 }
 
 void EditorSession::load(const QString& path)
@@ -58,6 +63,56 @@ QString EditorSession::displayName() const
     return m_path.isEmpty() ? tr("Untitled") : QFileInfo(m_path).fileName();
 }
 
+namespace {
+
+class SetWirePathCommand : public QUndoCommand {
+public:
+    SetWirePathCommand(EditorSession* s, int index, chiply::WirePath before, chiply::WirePath after)
+        : QUndoCommand(QObject::tr("Reroute wire"))
+        , m_s(s)
+        , m_index(index)
+        , m_before(std::move(before))
+        , m_after(std::move(after))
+    {
+    }
+    void undo() override { m_s->applyWirePath(m_index, m_before); }
+    void redo() override { m_s->applyWirePath(m_index, m_after); }
+
+private:
+    EditorSession* m_s;
+    int m_index;
+    chiply::WirePath m_before, m_after;
+};
+
+} // namespace
+
+void EditorSession::editWireRoute(int wireIndex, const std::vector<chiply::Point>& route)
+{
+    if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
+        return;
+    chiply::WirePath after = chiply::pathFromPolyline(route);
+    m_undo.push(new SetWirePathCommand(this, wireIndex, m_doc.wires[size_t(wireIndex)].path, after));
+}
+
+void EditorSession::applyWirePath(int wireIndex, const chiply::WirePath& path)
+{
+    chiply::Wire& w = m_doc.wires[size_t(wireIndex)];
+    w.path = path;
+    w.rawPath.reset();
+    w.hasPathElement = true;
+    const chiply::PartLibrary& lib = chiply::PartLibrary::builtin();
+    auto a = chiply::pinPosition(m_doc, lib, w.from);
+    auto b = chiply::pinPosition(m_doc, lib, w.to);
+    if (!a || !b)
+        return;
+    for (QGraphicsItem* it : m_scene.items()) {
+        if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->index() == wireIndex) {
+            static_cast<WireItem*>(it)->setRoute(chiply::routePolyline(*a, *b, w.path));
+            break;
+        }
+    }
+}
+
 std::vector<std::string> EditorSession::selectedPartIds() const
 {
     std::vector<std::string> ids;
@@ -95,6 +150,8 @@ void EditorSession::updateSelectionState()
         if (it->type() != WireItem::Type)
             continue;
         auto* w = static_cast<WireItem*>(it);
+        // Segment handles on explicitly selected wires (not on mass selections).
+        w->setHandlesVisible(w->isSelected() && s.wires <= kMaxWiresWithHandles);
         WireItem::Link link = WireItem::Link::None;
         if (!w->isSelected()) {
             const bool a = parts.count(w->fromPart()), b = parts.count(w->toPart());

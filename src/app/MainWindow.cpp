@@ -17,17 +17,23 @@
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QUndoGroup>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    m_undoGroup = new QUndoGroup(this);
     m_tabs = new QTabWidget(this);
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
     m_tabs->setDocumentMode(true);
     setCentralWidget(m_tabs);
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, [this](int i) { closeTab(i); });
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this] { updateStatus(); });
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this] {
+        if (auto* s = current())
+            m_undoGroup->setActiveStack(s->undoStack());
+        updateStatus();
+    });
 
     m_zoomLabel = new QLabel(this);
     QFont sf = m_zoomLabel->font();
@@ -64,6 +70,13 @@ void MainWindow::buildMenus()
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
+    QAction* undo = m_undoGroup->createUndoAction(this, tr("&Undo"));
+    undo->setShortcut(QKeySequence::Undo);
+    QAction* redo = m_undoGroup->createRedoAction(this, tr("&Redo"));
+    redo->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
+    edit->addAction(undo);
+    edit->addAction(redo);
+    edit->addSeparator();
     edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, [this] {
         if (auto* s = current())
             s->view()->selectAll();
@@ -130,6 +143,7 @@ EditorSession* MainWindow::current() const
 int MainWindow::addSession(EditorSession* s)
 {
     s->setParent(this);
+    m_undoGroup->addStack(s->undoStack());
     s->view()->setProperty("session", QVariant::fromValue(s));
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });

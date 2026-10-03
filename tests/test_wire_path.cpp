@@ -102,3 +102,46 @@ TEST_CASE("an overshoot followed by the closing step merges into one move")
     CHECK(routePolyline({-2524.8, -67.2}, {-2496, 240}, *p)
           == std::vector<Point>{{-2524.8, -67.2}, {-2496, -67.2}, {-2496, 240}});
 }
+
+TEST_CASE("simplify drops duplicates and collinear points")
+{
+    CHECK(simplifyPolyline({{0, 0}, {0, 0}, {10, 0}, {20, 0}, {20, 5}})
+          == std::vector<Point>{{0, 0}, {20, 0}, {20, 5}});
+}
+
+TEST_CASE("moving a middle segment stretches its neighbours")
+{
+    std::vector<Point> pts{{0, 0}, {10, 0}, {10, 50}, {40, 50}};
+    // The vertical segment at x=10 moves to x=28.8.
+    CHECK(moveSegment(pts, 1, 28.8) == std::vector<Point>{{0, 0}, {28.8, 0}, {28.8, 50}, {40, 50}});
+}
+
+TEST_CASE("moving an end segment keeps the pin and adds a jog")
+{
+    std::vector<Point> pts{{0, 0}, {30, 0}, {30, 40}};
+    // First (horizontal) segment moves down to y=9.6: pin stays at (0,0).
+    CHECK(moveSegment(pts, 0, 9.6) == std::vector<Point>{{0, 0}, {0, 9.6}, {30, 9.6}, {30, 40}});
+    // A straight wire becomes a dog-leg.
+    CHECK(moveSegment({{0, 0}, {50, 0}}, 0, -19.2)
+          == std::vector<Point>{{0, 0}, {0, -19.2}, {50, -19.2}, {50, 0}});
+}
+
+TEST_CASE("pathFromPolyline reproduces the polyline through Wokwi's rules")
+{
+    const std::vector<std::vector<Point>> cases{
+        {{0, 0}, {50, 0}},
+        {{0, 0}, {0, 30}},
+        {{0, 0}, {28.8, 0}, {28.8, 50}, {40, 50}},
+        {{0, 0}, {0, 9.6}, {30, 9.6}, {30, 40}},
+        {{0, 0}, {0, -19.2}, {50, -19.2}, {50, 0}},
+        {{5, 5}, {-20, 5}, {-20, 80}, {60, 80}, {60, 40}, {90, 40}},
+    };
+    for (const auto& pts : cases) {
+        WirePath p = pathFromPolyline(pts);
+        CHECK(simplifyPolyline(routePolyline(pts.front(), pts.back(), p)) == pts);
+        CHECK_FALSE(p.hasStar);
+    }
+    // The last leg is left implicit, like Wokwi's editor writes paths.
+    CHECK(formatWirePath(pathFromPolyline({{0, 0}, {28.8, 0}, {28.8, 50}, {40, 50}}))
+          == std::vector<std::string>{"h28.8", "v50"});
+}
