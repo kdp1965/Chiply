@@ -35,6 +35,8 @@ public:
     double zoom() const { return transform().m11(); }
     void applyTheme();
 
+    void setPlacing(bool on);
+
     // Selection operations (each emits selectionEdited once).
     void clearSelection();
     void selectAll();
@@ -54,6 +56,11 @@ signals:
     void moveStarted(QString grabbedPartId);
     void moveUpdated(QPointF sceneDelta, double grid);
     void moveEnded(bool commit);
+    // Placing a new part.
+    void placeMoved(QPointF scenePos);
+    void placeClicked(QPointF scenePos);
+    void placeCancelled();
+    void addPartRequested();
     // Keyboard edits on the selection.
     void nudgeRequested(int gridX, int gridY, bool autoRepeat);
     void rotateRequested();
@@ -88,6 +95,7 @@ private:
 
     enum class Press { None, Item, Empty, Marquee, Handle, Moving };
     QGraphicsItem* m_pressItem = nullptr;
+    bool m_placing = false;
     bool hasSelectedParts() const;
     WireItem* m_dragWire = nullptr;
     std::size_t m_dragSegment = 0;

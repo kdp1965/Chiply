@@ -64,6 +64,13 @@ public:
     void deleteSelection();
     void duplicateSelection();
 
+    // Adding parts: a translucent preview follows the cursor until placed.
+    void startPlacing(const std::string& type);
+    void placingMoved(QPointF scenePos);
+    void placeAt(QPointF scenePos); // adds the part (undoable) and ends placing
+    void cancelPlacing();
+    bool placing() const { return m_ghost != nullptr; }
+
     // Applies placements without undo (used by commands).
     void applyPlacements(const std::vector<Placement>& ps);
     // Replaces the document wholesale and rebuilds, selecting `select`
@@ -98,6 +105,8 @@ private:
 
     std::map<std::string, QGraphicsItem*> m_partItems;            // id -> PartItem/TextItem
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
+    QGraphicsItem* m_ghost = nullptr;
+    std::string m_placeType;
     std::vector<Placement> m_moveStart;
     std::string m_moveGrab;
     double m_snap = 9.6;

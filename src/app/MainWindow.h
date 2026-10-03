@@ -29,6 +29,7 @@ private:
     void updateStatus();
 
     void newFile();
+    void addPart();
     void openDialog();
 
     QTabWidget* m_tabs = nullptr;

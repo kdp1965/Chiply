@@ -399,7 +399,7 @@ Selectable objects are parts (gates, flops, TT blocks, switches, displays, power
 
 ### 4.8 Undo / redo
 
-Every model change is a `QUndoCommand`; drags coalesce into one command on release. Ctrl+Z / Ctrl+Y / Cmd+Shift+Z.
+Multi-level, unlimited undo and redo per tab (done): every model change is a `QUndoCommand`; a drag is one step, a held arrow key's repeats merge into one step. Ctrl+Z / Ctrl+Y / Cmd+Shift+Z. View → Undo History lists every step of the active tab; clicking an entry jumps back or forward to that point.
 
 ### 4.9 Keyboard map
 

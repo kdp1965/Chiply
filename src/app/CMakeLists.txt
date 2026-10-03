@@ -9,6 +9,7 @@ qt_add_library(chiply_ui STATIC
   Theme.cpp Theme.h
   SymbolPainter.cpp SymbolPainter.h
   SchematicItems.cpp SchematicItems.h
+  PartPalette.cpp PartPalette.h
 )
 target_include_directories(chiply_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chiply_ui PUBLIC chiply_core Qt6::Widgets)

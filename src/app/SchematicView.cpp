@@ -143,9 +143,23 @@ QGraphicsItem* SchematicView::selectableAt(QPoint viewPos) const
     return nullptr;
 }
 
+void SchematicView::setPlacing(bool on)
+{
+    m_placing = on;
+    viewport()->setCursor(on ? Qt::CrossCursor : Qt::ArrowCursor);
+}
+
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_placing) {
+        if (event->button() == Qt::LeftButton)
+            emit placeClicked(mapToScene(pos));
+        else if (event->button() == Qt::RightButton)
+            emit placeCancelled();
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && !m_spaceHeld) {
         for (QGraphicsItem* it : items(pos)) {
             if (it->type() != SegmentHandle::Type)
@@ -194,6 +208,13 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    if (m_placing && !m_panning) {
+        emit placeMoved(mapToScene(pos));
+        if (!m_shiftPending) {
+            event->accept();
+            return;
+        }
+    }
     if (m_press == Press::Handle) {
         updateHandleDrag(pos, event->modifiers());
         event->accept();
@@ -523,8 +544,14 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Minus: zoomOut(); return;
     case Qt::Key_F: fitContents(); return;
     case Qt::Key_G: toggleGrid(); return;
+    case Qt::Key_A:
+        if (!event->isAutoRepeat() && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier)))
+            emit addPartRequested();
+        return;
     case Qt::Key_Escape:
-        if (m_press == Press::Moving) {
+        if (m_placing) {
+            emit placeCancelled();
+        } else if (m_press == Press::Moving) {
             m_press = Press::None;
             m_pressItem = nullptr;
             viewport()->setCursor(Qt::ArrowCursor);

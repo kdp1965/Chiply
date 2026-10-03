@@ -4,10 +4,12 @@
 #include "Theme.h"
 #include "SchematicItems.h"
 #include "core/Edit.h"
+#include "core/IdGen.h"
 #include "core/Geometry.h"
 #include "core/JsonFormat.h"
 #include "core/WokwiJson.h"
 
+#include <QCursor>
 #include <QFileInfo>
 #include <QSignalBlocker>
 
@@ -36,6 +38,9 @@ EditorSession::EditorSession(QObject* parent)
         previewMove(d.x(), d.y());
     });
     connect(m_view, &SchematicView::moveEnded, this, &EditorSession::endMove);
+    connect(m_view, &SchematicView::placeMoved, this, &EditorSession::placingMoved);
+    connect(m_view, &SchematicView::placeClicked, this, &EditorSession::placeAt);
+    connect(m_view, &SchematicView::placeCancelled, this, &EditorSession::cancelPlacing);
     connect(m_view, &SchematicView::nudgeRequested, this, &EditorSession::nudgeSelection);
     connect(m_view, &SchematicView::rotateRequested, this, &EditorSession::rotateSelection);
     connect(m_view, &SchematicView::deleteRequested, this, &EditorSession::deleteSelection);
@@ -333,6 +338,84 @@ void EditorSession::duplicateSelection()
     m_undo.push(new DocumentCommand(this, tr("Duplicate"), m_doc, after, ids, newIds));
 }
 
+namespace {
+chiply::Part newPart(const std::string& type, const chiply::Document& doc)
+{
+    const chiply::PartDef* def = chiply::PartLibrary::builtin().find(type);
+    chiply::Part p;
+    p.type = type;
+    p.id = chiply::nextFreeId(def ? def->prefix : chiply::idPrefixForType(type), chiply::usedIds(doc));
+    if (def)
+        p.attrs = def->attrs;
+    if (type == "wokwi-text")
+        p.attrs["text"] = "Text";
+    return p;
+}
+
+// Top-left that puts the part's center under `c`, snapped to the grid.
+QPointF placementOrigin(const chiply::Part& p, QPointF c)
+{
+    const chiply::PartDef* def = chiply::PartLibrary::builtin().find(p.type);
+    const double w = def ? def->width : 38.4, h = def ? def->height : 38.4;
+    const double g = SchematicView::kGrid;
+    return QPointF(chiply::round2(std::round((c.x() - w / 2) / g) * g),
+                   chiply::round2(std::round((c.y() - h / 2) / g) * g));
+}
+} // namespace
+
+void EditorSession::startPlacing(const std::string& type)
+{
+    cancelPlacing();
+    m_placeType = type;
+    chiply::Part p = newPart(type, m_doc);
+    if (type == "wokwi-text")
+        m_ghost = new TextItem(p);
+    else
+        m_ghost = new PartItem(p, chiply::PartLibrary::builtin().find(type));
+    m_ghost->setOpacity(0.55);
+    m_ghost->setFlag(QGraphicsItem::ItemIsSelectable, false);
+    m_ghost->setAcceptHoverEvents(false);
+    m_ghost->setZValue(20);
+    m_scene.addItem(m_ghost);
+    m_view->setPlacing(true);
+    const QPoint cur = m_view->viewport()->mapFromGlobal(QCursor::pos());
+    placingMoved(m_view->mapToScene(m_view->viewport()->rect().contains(cur) ? cur : m_view->viewport()->rect().center()));
+}
+
+void EditorSession::placingMoved(QPointF scenePos)
+{
+    if (!m_ghost)
+        return;
+    chiply::Part p;
+    p.type = m_placeType;
+    m_ghost->setPos(placementOrigin(p, scenePos));
+}
+
+void EditorSession::placeAt(QPointF scenePos)
+{
+    if (!m_ghost)
+        return;
+    chiply::Part p = newPart(m_placeType, m_doc);
+    const QPointF o = placementOrigin(p, scenePos);
+    p.left = o.x();
+    p.top = o.y();
+    cancelPlacing();
+    chiply::Document after = m_doc;
+    after.parts.push_back(p);
+    m_undo.push(new DocumentCommand(this, tr("Add %1").arg(QString::fromStdString(p.id)), m_doc, after,
+                                    selectedPartIds(), {p.id}));
+}
+
+void EditorSession::cancelPlacing()
+{
+    if (m_ghost) {
+        m_scene.removeItem(m_ghost);
+        delete m_ghost;
+        m_ghost = nullptr;
+    }
+    m_view->setPlacing(false);
+}
+
 void EditorSession::replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select)
 {
     m_doc = doc;
@@ -417,6 +500,10 @@ void EditorSession::updateSelectionState()
 
 void EditorSession::rebuildScene()
 {
+    if (m_ghost) { // the scene is about to be cleared
+        m_ghost = nullptr;
+        m_view->setPlacing(false);
+    }
     // Keep the selection across rebuilds (theme change, reload of items).
     const std::vector<std::string> keepParts = selectedPartIds();
     const std::vector<int> keepWires = selectedWireIndices();

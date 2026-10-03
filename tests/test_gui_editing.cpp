@@ -172,6 +172,31 @@ private slots:
         QCOMPARE(s->document().parts.size(), parts);
     }
 
+    void placeANewPart()
+    {
+        v->clearSelection();
+        const QPointF where = outline("flop238").center() + QPointF(-200, 0);
+        s->startPlacing("wokwi-gate-and-2");
+        QVERIFY(s->placing());
+        QTest::mouseMove(v->viewport(), at(where));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(where));
+        QVERIFY(!s->placing());
+        const Part* p = s->document().findPart("and326"); // next free AND id
+        QVERIFY(p);
+        QCOMPARE(p->type, std::string("wokwi-gate-and-2"));
+        // Centered under the cursor, origin on the grid.
+        QCOMPARE(std::fmod(std::fabs(p->left), 9.6) < 0.01 || std::fabs(std::fmod(std::fabs(p->left), 9.6) - 9.6) < 0.01, true);
+        QVERIFY(std::fabs(p->left + 48 - where.x()) <= 4.8 + 1);
+        QCOMPARE(s->selectedPartIds(), std::vector<std::string>{"and326"});
+        s->undoStack()->undo();
+        QVERIFY(!s->document().findPart("and326"));
+        // Esc cancels placing without changing anything.
+        s->startPlacing("wokwi-mux-2");
+        QTest::keyClick(v, Qt::Key_Escape);
+        QVERIFY(!s->placing());
+        QVERIFY(!s->document().findPart("mux63"));
+    }
+
     void undoEverythingRestoresTheFile()
     {
         while (s->undoStack()->canUndo())

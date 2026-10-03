@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "EditorSession.h"
+#include "PartPalette.h"
 #include "SchematicView.h"
 #include "Theme.h"
 #include "core/WokwiJson.h"
@@ -17,6 +18,9 @@
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QToolBar>
+#include <QDockWidget>
+#include <QUndoView>
 #include <QUndoGroup>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -69,6 +73,20 @@ void MainWindow::buildMenus()
     file->addAction(tr("&Close Tab"), QKeySequence::Close, this, [this] { closeTab(m_tabs->currentIndex()); });
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
 
+    QToolBar* tb = addToolBar(tr("Main"));
+    tb->setObjectName("mainToolbar");
+    tb->setMovable(false);
+    tb->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    QFont tbf = tb->font();
+    tbf.setPointSize(16);
+    tb->setFont(tbf);
+    QAction* addPart = tb->addAction(tr("+  Add Part"), this, &MainWindow::addPart);
+    addPart->setToolTip(tr("Add a part (A)"));
+    tb->addSeparator();
+    tb->addAction(tr("Fit"), this, [this] { if (auto* s = current()) s->view()->fitContents(); });
+    tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
+    tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
+
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
     QAction* undo = m_undoGroup->createUndoAction(this, tr("&Undo"));
     undo->setShortcut(QKeySequence::Undo);
@@ -77,6 +95,7 @@ void MainWindow::buildMenus()
     edit->addAction(undo);
     edit->addAction(redo);
     edit->addSeparator();
+    edit->addAction(tr("Add &Part...  (A)"), this, &MainWindow::addPart);
     edit->addAction(tr("&Rotate  (R)"), this, [this] { if (auto* s = current()) s->rotateSelection(); });
     edit->addAction(tr("D&uplicate  (D)"), this, [this] { if (auto* s = current()) s->duplicateSelection(); });
     edit->addAction(tr("&Delete  (Del)"), this, [this] { if (auto* s = current()) s->deleteSelection(); });
@@ -125,6 +144,20 @@ void MainWindow::buildMenus()
             m_tabs->setCurrentIndex((m_tabs->currentIndex() + m_tabs->count() - 1) % m_tabs->count());
     });
 
+    // Undo history: every step of the active tab; click one to jump there.
+    auto* historyDock = new QDockWidget(tr("Undo History"), this);
+    historyDock->setObjectName("undoHistory");
+    auto* history = new QUndoView(m_undoGroup, historyDock);
+    history->setEmptyLabel(tr("<opened file>"));
+    QFont hf = history->font();
+    hf.setPointSize(15);
+    history->setFont(hf);
+    historyDock->setWidget(history);
+    addDockWidget(Qt::RightDockWidgetArea, historyDock);
+    historyDock->hide();
+    view->addSeparator();
+    view->addAction(historyDock->toggleViewAction());
+
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("&About Chiply"), this, [this] {
         QMessageBox::about(this, tr("About Chiply"),
@@ -151,6 +184,7 @@ int MainWindow::addSession(EditorSession* s)
     s->view()->setProperty("session", QVariant::fromValue(s));
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
+    connect(s->view(), &SchematicView::addPartRequested, this, &MainWindow::addPart);
     connect(s, &EditorSession::selectionChanged, this, [this, s] {
         if (s == current())
             updateStatus();
@@ -159,6 +193,17 @@ int MainWindow::addSession(EditorSession* s)
     m_tabs->setCurrentIndex(i);
     updateTitles();
     return i;
+}
+
+void MainWindow::addPart()
+{
+    EditorSession* s = current();
+    if (!s)
+        return;
+    PartPalette dlg(this);
+    if (dlg.exec() == QDialog::Accepted)
+        s->startPlacing(dlg.chosenType().toStdString());
+    s->view()->setFocus();
 }
 
 void MainWindow::newFile()
