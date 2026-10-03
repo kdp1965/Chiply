@@ -529,6 +529,37 @@ For very large designs, or designs with Verilog custom blocks, the same netlist 
 
 ## 7. Custom blocks
 
+### 7.1 Wokwi mode and Extended mode (decided 2026-10-03)
+
+Chiply has two modes, so a design never stops loading in Wokwi by accident:
+
+- **Wokwi mode** (default): only Wokwi's own parts are offered. Every design you make loads, renders and simulates on wokwi.com and exports through Wokwi's `cells.v`.
+- **Extended mode**: a checkable **Edit > Chiply Extensions** (a saved preference) adds Chiply's own parts to the palette: the extended cells below, and later custom blocks (7.2), RAM/ROM and sub-sheets. A design that uses any of them is no longer Wokwi-loadable (Wokwi shows such parts as unknown), so the status bar always shows the mode, saving such a design says so, and in Wokwi mode a DRC check (`extension-part`, warning) lists every extension part, so it is impossible to miss.
+- Opening a design that contains extension parts always works (they render, simulate and export); in Wokwi mode Chiply suggests turning the extensions on to add more.
+- Extension parts are saved in `diagram.json` like any part (`"type": "chiply-..."`), single-bit wires as always.
+
+**Extended cells** (part type, pins, function, Verilog cell in Chiply's `chiply_cells.v`), aimed at denser designs, named after the usual standard-cell functions:
+
+| Part | Pins | OUT = | Cell |
+|---|---|---|---|
+| `chiply-gate-and-3` / `-and-4` | A, B, C, (D) | A·B·C(·D) | `and3_cell`, `and4_cell` |
+| `chiply-gate-nand-3` / `-nand-4` | A, B, C, (D) | !(A·B·C(·D)) | `nand3_cell`, `nand4_cell` |
+| `chiply-gate-or-3` / `-or-4` | A, B, C, (D) | A+B+C(+D) | `or3_cell`, `or4_cell` |
+| `chiply-gate-nor-3` / `-nor-4` | A, B, C, (D) | !(A+B+C(+D)) | `nor3_cell`, `nor4_cell` |
+| `chiply-gate-xor-3` | A, B, C | A^B^C (full-adder sum) | `xor3_cell` |
+| `chiply-maj-3` | A, B, C | majority (full-adder carry) | `maj3_cell` |
+| `chiply-mux-4` | A, B, C, D, S0, S1 | S1 ? (S0 ? D : C) : (S0 ? B : A) | `mux4_cell` |
+| `chiply-a21oi` | A1, A2, B1 | !((A1·A2)+B1) | `a21oi_cell` |
+| `chiply-a21o` | A1, A2, B1 | (A1·A2)+B1 | `a21o_cell` |
+| `chiply-o21ai` | A1, A2, B1 | !((A1+A2)·B1) | `o21ai_cell` |
+| `chiply-o21a` | A1, A2, B1 | (A1+A2)·B1 | `o21a_cell` |
+| `chiply-a22oi` | A1, A2, B1, B2 | !((A1·A2)+(B1·B2)) | `a22oi_cell` |
+| `chiply-o22ai` | A1, A2, B1, B2 | !((A1+A2)·(B1+B2)) | `o22ai_cell` |
+
+They simulate natively (built-in and Verilator), take part in DRC like any gate, and export as instances of the cells above; the Verilog and Tiny Tapeout exports add `chiply_cells.v` (written by Chiply, same style as `cells.v`) to the sources only when the design uses one. Symbols follow Wokwi's gate style: 3- and 4-input gates are taller versions of the 2-input shapes; AOI/OAI cells draw their AND/OR input stage feeding the NOR/NAND (or OR/AND) output stage inside one part.
+
+### 7.2 Custom blocks
+
 A custom block is a folder:
 
 ```
@@ -560,6 +591,7 @@ blocks/sram_16x8/
 - Simulation of custom blocks without external tools: (a) blocks whose implementation is another Chiply schematic (sub-sheets) simulate natively in the built-in simulator; (b) common blocks are built-in behavioural primitives with parameters, starting with RAM and ROM (width, depth, init file) since memories are the main need; (c) blocks backed only by arbitrary Verilog simulate through the optional Verilator backend (M9).
 - Wokwi cannot load a file containing `chiply-block-*` parts. Chiply warns on save ("this design is no longer Wokwi-loadable") and the TT export path (section 5.5) is the way to tape it out.
 - Later: hierarchical blocks whose implementation is another Chiply schematic (sub-sheets).
+- Custom blocks, RAM/ROM and sub-sheets are extension parts: offered only in Extended mode (7.1).
 
 ---
 
@@ -584,8 +616,13 @@ Estimates are working days for one developer using Claude Code; each milestone e
 | M7e | Traces | **Done.** The simulator logs changes of watched nets with their time; `sim/Trace` records every `wokwi-logic-analyzer` (channels D0..D7 per its `channels` attr, file name from its `filename` attr, as Wokwi) and probed nets, merges changes within one time step, and writes VCD (1 ps timescale, one scope per analyzer plus `probes`). GUI: right-click a pin or wire, Probe (a wire is named after its driver, e.g. `flop30:Q`); probes are remembered per file in the app settings; a Waveforms pane (bottom dock, opens with the first probe or when the design has an analyzer) shows the run live and keeps it after Stop: 1 = top line with a shaded band, 0 = bottom line, X = red hatched, Z = dashed middle, large labels with the value at the hover cursor; wheel zoom at the cursor, drag pans, F fits, End follows; the pane scrolls when there are many rows. Simulation menu: Play/Step/Stop, Save Trace as VCD (defaults to the analyzer file name next to the diagram), Open Trace in GTKWave (shown when GTKWave is installed). CLI: `chiply-cli truthtable` runs Tiny Tapeout's `truthtable.md` (tt-support-tools semantics: `t` toggles, `c` expands to setup + full clock pulse + row, `x`/`-` unchanged or don't care, 10 ns per step, chip only with CLK/RST_N floating unless `--set`) and yosys-style tables, `--vcd` records ui_in/uo_out; sim scripts gain `trace` and `vcd`. Not done: the logic analyzer's trigger modes | 1–2 |
 | M8 | Netlist, DRC, Verilog | **Done.** `core/Drc`: the 11 checks of 5.2 on the chip side (board parts are the testbench; an input fed through a switch or resistor from a driver counts as driven). **Incremental**: each update compares the new document with the last one checked and re-checks only touched parts (added, removed, changed, re-wired) plus the parts sharing their nets before and after, looking through switches and resistors; violations remember which parts reproduce them; loops that lose or gain cells are re-checked as a whole; a route or colour change checks nothing. A randomized test applies 300 edits to the reference design and requires incremental == full after each (also run on 20 seeds x 600 edits). Reference design: exactly the known mux1..9 loops and ttio5/ttio8 bit 5. GUI: live DRC 100 ms after each edit, Full DRC button / Check menu (Ctrl+Shift+D), Live checkbox (preference), Violations pane below the Inspector (counts with shapes, what the last check covered, filter, groups per check, waived group), click / F8 / Shift+F8 snap with a pulsing orange highlight of pins, net or loop wires, per-design check switches and waivers with reasons in `<name>.chiply.json` saved with the design, DRC counts in the status bar. `core/Verilog`: export byte-identical to Wokwi's for the reference design (same net numbering); Icarus on Chiply's export of the fixed reference design matches Chiply's simulator for 2000 random cycles; the exported template passes all 256 inputs; Verilator lint clean on the fixed design. File > Export Verilog and Export Tiny Tapeout Project (writes `src/<top>.v` and `src/cells.v`, sets language/top_module/source_files in info.yaml keeping its layout, comments out wokwi_id, updates test/Makefile PROJECT_SOURCES). Exports run a full DRC first: errors offer Show Violations / Export Anyway, warnings ask. CLI: `check`, `check --list`, `export-verilog`, `export-tt` (non-zero exit on DRC errors unless `--force`). Differences from 5.2: simulation warns about DRC errors and shows the pane instead of refusing (Wokwi simulates such designs); check switches are per design (no global Preferences page yet) | 3–4 |
 | M9 | Optional Verilator backend | **Done.** `sim/ChipBackend`: another engine computes the chip; the built-in simulator keeps the board (pads, switches, buttons, clock, displays) and one chip primitive hands the backend clk/rst_n/ui_in/uio_in and drives every chip net with the backend's values, so wires, flip-flop squares, tooltips, probes and the logic analyzer stay live. `vl/VerilatorChip`: exports the chip (core/Verilog, net map included), runs `verilator --cc --public-flat-rw --x-initial unique`, generates a C wrapper, compiles the generated C++ and the Verilator runtime in parallel with the system compiler for this machine's architecture (so the Intel Verilator in /usr/local works on Apple silicon), links a shared library and loads it with dlopen. Builds are cached by content hash in ~/Library/Caches/Chiply/verilator (runtime objects shared), built in a private directory and moved into place so concurrent builds are safe; about 2-4 s for the reference design, instant from the cache. Flip-flops start random (seeded) or zero, as in the built-in engine. GUI: Simulation > Engine (Built-in / Verilator, a preference, disabled with the reason when Verilator or a compiler is missing); Play builds with a cancellable progress dialog, failures show the compiler log and offer the built-in simulator; the status line names the engine. CLI: `option verilator` in sim scripts, `truthtable --verilator`. Tests (skipped without Verilator): every chip net of the fixed reference design equals the built-in simulator for 1500 random cycles (over a million comparisons); the template truth table; Tiny Snake runs on the board; cache hit; GUI run through the Verilator chip. On the 1024-part reference design the built-in engine is about 3x faster (Verilator copies every net back for the live view); Verilator is for much larger designs and, with M10, Verilog-only blocks | 2–3 |
-| M10 | Custom blocks | `block.json` loader, auto symbols, bit-expanded pins; built-in RAM/ROM primitives; schematic sub-sheets simulate natively; Verilog-backed blocks via M9; TT export with extra sources | 3–5 |
+| M10 | Extended mode and custom blocks (section 7) | Staged: | 4–6 |
+| M10a | Extended mode and cells | Wokwi / Extended mode switch (preference, status bar, palette filter, `extension-part` DRC check, save warning); the extended cells of 7.1 with symbols, simulation (built-in and Verilator), DRC, Verilog export with `chiply_cells.v`, Tiny Tapeout export adding it to the sources; tests against Icarus | 1–2 |
+| M10b | Custom blocks | `block.json` loader, auto symbols, bit-expanded pins, Verilog included verbatim in exports; simulated through Verilator (M9) | 1–2 |
+| M10c | RAM and ROM | Built-in behavioural primitives (width, depth, init file) that simulate natively and export as Verilog | 1 |
+| M10d | Sub-sheets | Blocks whose implementation is another Chiply schematic; simulate natively, flattened on export | 1–2 |
 | M11 | Polish and packaging | Preferences, key remap, recent files, autosave, crash-safe save, `.app` bundle and Linux AppImage, user docs | 2–3 |
+| M12 | Web version (section 13) | Engine API; core + simulator + DRC in WebAssembly with the test suite under Node; TypeScript canvas front end; static hosting | 6–10 |
 
 Total roughly 40–55 days. M0–M6 (done) give a Wokwi-compatible editor; M7 makes it simulate on its own like Wokwi; M8 adds checks and export for tapeout; M9–M10 go beyond Wokwi.
 
@@ -648,8 +685,21 @@ Only `qtbase` and `qtsvg` are installed, not the full `qt`, which would also pul
 | 8 | Keys | Pure Wokwi keys, plus the additions in decisions 1 and 2 | 4.9 |
 | 9 | Simulation (2026-10-03) | Built-in event-driven simulator, no PDK, gate-level netlists or external tools; Verilator only as an optional backend | 6, M7, M9 |
 | 10 | CI (2026-10-03) | Every change verified locally with the full test suite; GitHub CI runs only on request | 9 |
+| 11 | Modes (2026-10-03) | Wokwi mode by default; Chiply's own parts (extended cells, custom blocks, RAM/ROM, sub-sheets) only in Extended mode, switched by a saved preference | 7.1, M10 |
+| 12 | Web version (2026-10-03) | Option A: the C++ engine compiled to WebAssembly in a Web Worker, with a TypeScript front end; no server on the interactive path; the Qt app stays and shares the engine | 13, M12 |
 
 Repository: <https://github.com/kdp1965/Chiply> (public, BSD 3-Clause, `main`). The Pico is agreed to be a future full-emulation backend and a project of its own; this plan only keeps the simulation interface ready for it (6.5). Nothing remains open.
+
+## 13. Web version (option A, decided 2026-10-03)
+
+Goal: the Chiply experience in a browser, with nothing to install, keeping the C++ engine's speed.
+
+- **What runs where.** The engine (`core`, `sim`, DRC, Verilog export, truth tables) is plain C++ with no Qt; Emscripten compiles it to WebAssembly, which runs in a Web Worker at roughly 1.2-2x native time. On the reference design the native simulator runs 3 simulated seconds in 35 ms (about 85x real time), so the browser keeps a wide margin. The page itself is a TypeScript front end drawing on a canvas (or WebGL), which also avoids the SVG/DOM cost that slows Wokwi on large designs; part art can follow Wokwi's MIT-licensed `wokwi-elements`, whose geometry Chiply already matches.
+- **Engine API.** One message protocol (JSON) for everything the UI needs: load/save documents, edit commands with undo/redo, selection queries, netlist and DRC results, simulation control (play, pause, step, press, switch) and compact value updates (changed net bits, about 60 per second; roughly 125 bytes per frame for the reference design). The Qt app moves onto the same API in-process, so desktop and web share one engine and one test suite.
+- **What changes for the web build.** No `popen`/`dlopen` (the Verilator backend and GTKWave stay desktop features), files through browser upload/download and the File System Access API, threads only where the site sends COOP/COEP headers (the engine works single-threaded).
+- **Hosting.** Static files (e.g. GitHub Pages), working offline once loaded. No server on the interactive path; a server is only an optional extra for heavy batch jobs (Verilator runs, long regressions), sandboxed, behind the same API.
+- **First steps.** Compile core + sim + DRC to WebAssembly and run the existing Catch2 tests under Node; measure the reference design against native; then build the front end. A Qt-for-WebAssembly build of the whole app is a cheap way to preview, not the product (20-30 MB download, browser shortcut clashes such as Ctrl+W/Ctrl+N).
+- **Licensing.** The engine is BSD and Chiply's own code; option A does not ship Qt to the browser.
 
 ---
 
