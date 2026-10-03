@@ -11,9 +11,13 @@
 #include "Theme.h"
 #include "WaveformView.h"
 #include "ViolationsPane.h"
+#include "core/Verilog.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QInputDialog>
 #include <QScrollArea>
 #include <QDir>
 #include <QProcess>
@@ -112,6 +116,10 @@ void MainWindow::buildMenus()
             if (sessionAt(i)->isModified() && !saveSession(sessionAt(i), false))
                 return;
     });
+    file->addSeparator();
+    file->addAction(tr("Export &Verilog..."), this, &MainWindow::exportVerilog)->setObjectName("exportVerilogAction");
+    file->addAction(tr("Export &Tiny Tapeout Project..."), this, &MainWindow::exportTtProject)
+        ->setObjectName("exportTtAction");
     file->addSeparator();
     file->addAction(tr("&Close Tab"), QKeySequence::Close, this, [this] { closeTab(m_tabs->currentIndex()); });
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
@@ -579,6 +587,106 @@ QString findGtkWave()
     return exe;
 }
 } // namespace
+
+bool MainWindow::exportPreflight(EditorSession* s, const QString& what)
+{
+    s->runDrc(true);
+    const int errors = s->unwaivedCount(chiply::drc::Severity::Error);
+    const int warnings = s->unwaivedCount(chiply::drc::Severity::Warning);
+    if (errors) {
+        QMessageBox box(QMessageBox::Critical, what,
+                        tr("The design has %1. The exported Verilog would not behave like the schematic.")
+                            .arg(countOf(errors, "DRC error", "DRC errors")),
+                        QMessageBox::NoButton, this);
+        QPushButton* show = box.addButton(tr("Show Violations"), QMessageBox::AcceptRole);
+        QPushButton* anyway = box.addButton(tr("Export Anyway"), QMessageBox::DestructiveRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(show);
+        box.exec();
+        if (box.clickedButton() == show) {
+            m_violDock->show();
+            m_violations->next();
+        }
+        return box.clickedButton() == anyway;
+    }
+    if (warnings)
+        return QMessageBox::question(this, what,
+                                     tr("The design has %1. Export anyway?").arg(countOf(warnings, "DRC warning", "DRC warnings")))
+            == QMessageBox::Yes;
+    return true;
+}
+
+void MainWindow::exportVerilog()
+{
+    EditorSession* s = current();
+    if (!s || !exportPreflight(s, tr("Export Verilog")))
+        return;
+    const QFileInfo fi(s->filePath().isEmpty() ? QStringLiteral("untitled.json") : s->filePath());
+    QString stem = fi.completeBaseName();
+    if (stem.endsWith(QStringLiteral(".diagram")))
+        stem.chop(8);
+    const QString module = QString::fromStdString(chiply::defaultModuleName(stem.toStdString()));
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export Verilog"), QDir(fi.absolutePath()).filePath(module + ".v"),
+                                                      tr("Verilog (*.v)"));
+    if (path.isEmpty())
+        return;
+    try {
+        chiply::VerilogOptions o;
+        o.moduleName = QFileInfo(path).completeBaseName().toStdString();
+        if (!chiply::drc::isValidVerilogId(o.moduleName))
+            o.moduleName = module.toStdString();
+        o.sourceName = fi.fileName().toStdString();
+        const std::string v = chiply::writeVerilog(s->document(), chiply::PartLibrary::builtin(), o);
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate) || f.write(v.data(), qint64(v.size())) != qint64(v.size()))
+            throw std::runtime_error(tr("Cannot write %1: %2").arg(path, f.errorString()).toStdString());
+        statusBar()->showMessage(tr("Exported module %1 to %2 (needs cells.v)").arg(QString::fromStdString(o.moduleName), path), 8000);
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Export Verilog"), QString::fromUtf8(e.what()));
+    }
+}
+
+void MainWindow::exportTtProject()
+{
+    EditorSession* s = current();
+    if (!s || !exportPreflight(s, tr("Export Tiny Tapeout Project")))
+        return;
+    const QString start = s->filePath().isEmpty() ? QDir::homePath() : QFileInfo(s->filePath()).absolutePath();
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Tiny Tapeout project folder (with info.yaml)"), start);
+    if (dir.isEmpty())
+        return;
+    QString module;
+    QFile yaml(QDir(dir).filePath(QStringLiteral("info.yaml")));
+    if (yaml.open(QIODevice::ReadOnly))
+        module = QString::fromStdString(chiply::infoYamlTopModule(yaml.readAll().toStdString()));
+    if (module.isEmpty()) {
+        QString stem = QFileInfo(s->filePath()).completeBaseName();
+        if (stem.endsWith(QStringLiteral(".diagram")))
+            stem.chop(8);
+        bool ok = false;
+        module = QInputDialog::getText(this, tr("Top Module"),
+                                       tr("Top module name (must start with tt_um_; include your GitHub name to make it unique):"),
+                                       QLineEdit::Normal, QString::fromStdString(chiply::defaultModuleName(stem.toStdString())), &ok);
+        if (!ok)
+            return;
+    }
+    if (!module.startsWith(QStringLiteral("tt_um_")) || !chiply::drc::isValidVerilogId(module.toStdString())) {
+        QMessageBox::warning(this, tr("Export Tiny Tapeout Project"),
+                             tr("\"%1\" is not a valid top module name: it must start with tt_um_ and be a Verilog identifier.").arg(module));
+        return;
+    }
+    try {
+        chiply::VerilogOptions o;
+        o.moduleName = module.toStdString();
+        o.sourceName = QFileInfo(s->filePath()).fileName().toStdString();
+        QString report;
+        for (const std::string& line : chiply::exportTtProject(s->document(), chiply::PartLibrary::builtin(), dir.toStdString(), o))
+            report += QString::fromStdString(line) + QLatin1Char('\n');
+        QMessageBox::information(this, tr("Export Tiny Tapeout Project"), report);
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Export Tiny Tapeout Project"), QString::fromUtf8(e.what()));
+    }
+}
 
 void MainWindow::updateDrcStatus()
 {

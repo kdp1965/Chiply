@@ -19,7 +19,7 @@ Status: early development. The design and milestones are in
 | M5 Wire editing: draw from pins, segment/corner/end handles, split, colors, delete | done |
 | M6 Copy/paste across tabs with id renumbering, Alt+drag duplicate | done |
 | M7 Built-in event-driven simulator, board parts, live UI, waveforms, VCD, truth tables | done |
-| M8 Netlist DRC with Violations pane, Verilog export | next |
+| M8 Incremental DRC with Violations pane, Verilog and Tiny Tapeout project export | done |
 
 ## Building
 
@@ -66,11 +66,16 @@ chiply-cli format diagram.json out.json  # load and save
 chiply-cli check-roundtrip diagram.json  # verify byte-exact round trip
 chiply-cli netlist diagram.json          # connectivity summary
 chiply-cli sim diagram.json script.sim   # scripted stimulus and checks (see --help)
+chiply-cli check diagram.json            # design rule checks (exit 1 on errors)
+chiply-cli export-verilog diagram.json -o tt_um_name.v
+chiply-cli export-tt diagram.json path/to/tt-project   # src/*.v, cells.v, info.yaml
 chiply-cli truthtable diagram.json truthtable.md [--vcd out.vcd]
                                          # Tiny Tapeout truth table on the chip
 ```
 
 ## License
 
-BSD 3-Clause, see [LICENSE](LICENSE). Reference files under `reference/` keep
+BSD 3-Clause, see [LICENSE](LICENSE). `resources/cells.v`, built into Chiply
+for the Tiny Tapeout export, is Tiny Tapeout's Wokwi cell library
+(`ttsky-wokwi-template`, Apache-2.0), unchanged. Reference files under `reference/` keep
 their own origins and licenses, listed in [reference/README.md](reference/README.md).

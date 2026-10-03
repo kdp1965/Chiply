@@ -6,16 +6,20 @@
 //   chiply-cli netlist <diagram.json> [--nets]  connectivity summary (or every net)
 //   chiply-cli sim <diagram.json> <script>      run a stimulus script (see simScript)
 //   chiply-cli check <diagram.json> [--enable/--disable <check>]...  design rule checks
+//   chiply-cli export-verilog <diagram.json> [-o out.v] [--module name] [--header text]
+//   chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]
 //   chiply-cli truthtable <diagram.json> <truthtable.md> [options]
 //                                                check a Tiny Tapeout truth table
 #include "core/Drc.h"
 #include "core/Netlist.h"
+#include "core/Verilog.h"
 #include "core/WokwiJson.h"
 #include "sim/Simulator.h"
 #include "sim/Trace.h"
 #include "sim/TruthTable.h"
 
 #include <chrono>
+#include <cstring>
 
 #include <fstream>
 #include <iostream>
@@ -263,6 +267,9 @@ int usage()
                  "  chiply-cli netlist <diagram.json> [--nets]\n"
                  "  chiply-cli check <diagram.json> [--enable <check>] [--disable <check>]...\n"
                  "  chiply-cli check --list\n"
+                 "  chiply-cli export-verilog <diagram.json> [-o out.v] [--module name] [--header text] [--force]\n"
+                 "  chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]\n"
+                 "     writes src/<module>.v and src/cells.v, updates info.yaml and test/Makefile\n"
                  "  chiply-cli sim <diagram.json> <script>\n"
                  "  chiply-cli truthtable <diagram.json> <truthtable.md> [--set part:PIN=0|1]... [--vcd out.vcd]\n"
                  "             [--verilog] [--zero-start|--x-start] [--seed n]\n"
@@ -342,6 +349,90 @@ int main(int argc, char** argv)
         }
         if (cmd == "check")
             return drcCheck(argc, argv);
+        if (cmd == "export-tt") {
+            if (argc < 4)
+                return usage();
+            VerilogOptions vo;
+            bool force = false;
+            for (int i = 4; i < argc; ++i) {
+                const std::string a = argv[i];
+                if (a == "--module" && i + 1 < argc)
+                    vo.moduleName = argv[++i];
+                else if (a == "--force")
+                    force = true;
+                else
+                    throw std::runtime_error("unknown option " + a);
+            }
+            const std::string dir = argv[3];
+            const LoadResult r = loadWokwiFile(path);
+            if (vo.moduleName.empty()) {
+                std::ifstream yf(dir + "/info.yaml");
+                std::stringstream ys;
+                ys << yf.rdbuf();
+                vo.moduleName = infoYamlTopModule(ys.str());
+            }
+            if (vo.moduleName.empty())
+                throw std::runtime_error("no top_module in info.yaml: give --module tt_um_<name>");
+            vo.sourceName = path.substr(path.find_last_of('/') + 1);
+            drc::Engine e;
+            e.runFull(r.doc);
+            if (const auto errors = e.count(drc::Severity::Error); errors && !force) {
+                for (const drc::Violation& v : e.violations())
+                    if (v.severity == drc::Severity::Error)
+                        std::cerr << "error: [" << v.check << "] " << v.message << "\n";
+                std::cerr << errors << " DRC error(s): not exported (use --force to export anyway)\n";
+                return 1;
+            }
+            for (const std::string& line : exportTtProject(r.doc, PartLibrary::builtin(), dir, vo))
+                std::cout << line << "\n";
+            return 0;
+        }
+        if (cmd == "export-verilog") {
+            VerilogOptions vo;
+            std::string out;
+            bool force = false;
+            for (int i = 3; i < argc; ++i) {
+                const std::string a = argv[i];
+                if (a == "-o" && i + 1 < argc)
+                    out = argv[++i];
+                else if (a == "--module" && i + 1 < argc)
+                    vo.moduleName = argv[++i];
+                else if (a == "--header" && i + 1 < argc)
+                    vo.headerComment = argv[++i];
+                else if (a == "--force")
+                    force = true;
+                else
+                    throw std::runtime_error("unknown option " + a);
+            }
+            const LoadResult r = loadWokwiFile(path);
+            std::string stem = path.substr(path.find_last_of('/') + 1);
+            for (const char* ext : {".json", ".diagram"})
+                if (stem.size() > std::strlen(ext) && stem.compare(stem.size() - std::strlen(ext), std::string::npos, ext) == 0)
+                    stem.resize(stem.size() - std::strlen(ext));
+            if (vo.moduleName.empty())
+                vo.moduleName = defaultModuleName(stem);
+            vo.sourceName = path.substr(path.find_last_of('/') + 1);
+            // A full DRC first: errors stop the export (--force overrides).
+            drc::Engine e;
+            e.runFull(r.doc);
+            if (const auto errors = e.count(drc::Severity::Error); errors && !force) {
+                for (const drc::Violation& v : e.violations())
+                    if (v.severity == drc::Severity::Error)
+                        std::cerr << "error: [" << v.check << "] " << v.message << "\n";
+                std::cerr << errors << " DRC error(s): not exported (use --force to export anyway)\n";
+                return 1;
+            }
+            const std::string v = writeVerilog(r.doc, PartLibrary::builtin(), vo);
+            if (out.empty()) {
+                std::cout << v;
+            } else {
+                std::ofstream f(out, std::ios::binary);
+                if (!f)
+                    throw std::runtime_error("cannot write " + out);
+                f << v;
+            }
+            return 0;
+        }
         if (cmd == "truthtable") {
             if (argc < 4)
                 return usage();

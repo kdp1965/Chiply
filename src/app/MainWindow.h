@@ -35,6 +35,11 @@ private:
     EditorSession* sessionAt(int index) const;
     int addSession(EditorSession* s);
     bool saveSession(EditorSession* s, bool saveAs);
+    // Full DRC before an export: errors stop it unless the user insists,
+    // warnings ask. True to go ahead.
+    bool exportPreflight(EditorSession* s, const QString& what);
+    void exportVerilog();
+    void exportTtProject();
     bool closeTab(int index);
     void updateTitles();
     void updateStatus();

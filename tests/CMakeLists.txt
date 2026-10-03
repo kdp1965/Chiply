@@ -17,6 +17,7 @@ add_executable(chiply_tests
   test_sim_board.cpp
   test_trace.cpp
   test_drc.cpp
+  test_verilog.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE

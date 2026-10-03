@@ -3,6 +3,9 @@
 file(READ ${PROJECT_SOURCE_DIR}/resources/parts.json CHIPLY_PARTS_JSON)
 configure_file(PartsData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/parts.json)
+file(READ ${PROJECT_SOURCE_DIR}/resources/cells.v CHIPLY_CELLS_V)
+configure_file(CellsData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/cells.v)
 
 add_library(chiply_core STATIC
   Document.cpp
@@ -11,8 +14,10 @@ add_library(chiply_core STATIC
   IdGen.cpp
   Netlist.cpp
   Drc.cpp
+  Verilog.cpp
   PartLibrary.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp
   JsonFormat.cpp
   WirePath.cpp
   WokwiJson.cpp
