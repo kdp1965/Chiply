@@ -10,7 +10,18 @@
 namespace chiply {
 
 extern const char* const kTtCellsV;
+extern const char* const kChiplyCellsV;
 const char* ttCellsV() { return kTtCellsV; }
+const char* chiplyCellsV() { return kChiplyCellsV; }
+
+bool usesChiplyCells(const Document& doc)
+{
+    for (const Part& p : doc.parts)
+        if (isExtensionType(p.type))
+            if (const PartDef* def = PartLibrary::builtin().find(p.type); def && def->verilog.contains("cell"))
+                return true;
+    return false;
+}
 
 namespace {
 
@@ -303,6 +314,11 @@ std::vector<std::string> exportTtProject(const Document& doc, const PartLibrary&
     const std::string vName = opt.moduleName + ".v";
     write(root / "src" / vName, verilog);
     write(root / "src" / "cells.v", ttCellsV());
+    std::vector<std::string> sources{vName, "cells.v"};
+    if (usesChiplyCells(doc)) {
+        write(root / "src" / "chiply_cells.v", chiplyCellsV());
+        sources.push_back("chiply_cells.v");
+    }
     auto readText = [](const fs::path& p) {
         std::ifstream f(p, std::ios::binary);
         std::stringstream ss;
@@ -312,7 +328,7 @@ std::vector<std::string> exportTtProject(const Document& doc, const PartLibrary&
     const fs::path info = root / "info.yaml";
     if (fs::exists(info)) {
         const std::string before = readText(info);
-        const std::string after = patchInfoYaml(before, opt.moduleName, {vName, "cells.v"});
+        const std::string after = patchInfoYaml(before, opt.moduleName, sources);
         if (after != before)
             write(info, after);
     } else {
@@ -322,7 +338,10 @@ std::vector<std::string> exportTtProject(const Document& doc, const PartLibrary&
     if (fs::exists(mk)) {
         std::string text = readText(mk);
         static const std::regex re(R"((^|\n)(PROJECT_SOURCES\s*=)[^\n]*)");
-        const std::string patched = std::regex_replace(text, re, "$1$2 " + vName + " cells.v");
+        std::string list;
+        for (const std::string& src : sources)
+            list += " " + src;
+        const std::string patched = std::regex_replace(text, re, "$1$2" + list);
         if (patched != text)
             write(mk, patched);
     }

@@ -73,12 +73,24 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         {"wokwi-gate-not", Kind::Not},     {"wokwi-gate-buffer", Kind::Buf},  {"wokwi-mux-2", Kind::Mux},
         {"wokwi-flip-flop-d", Kind::Dff},  {"wokwi-flip-flop-dr", Kind::Dffr}, {"wokwi-flip-flop-dsr", Kind::Dffsr},
         {"wokwi-flip-flop-sr", Kind::Srff}, {"wokwi-vcc", Kind::Const},       {"wokwi-gnd", Kind::Const},
+        {"chiply-gate-and-3", Kind::And3},   {"chiply-gate-and-4", Kind::And4},   {"chiply-gate-nand-3", Kind::Nand3},
+        {"chiply-gate-nand-4", Kind::Nand4}, {"chiply-gate-or-3", Kind::Or3},     {"chiply-gate-or-4", Kind::Or4},
+        {"chiply-gate-nor-3", Kind::Nor3},   {"chiply-gate-nor-4", Kind::Nor4},   {"chiply-gate-xor-3", Kind::Xor3},
+        {"chiply-maj-3", Kind::Maj3},        {"chiply-mux-4", Kind::Mux4},        {"chiply-a21oi", Kind::A21oi},
+        {"chiply-a21o", Kind::A21o},         {"chiply-o21ai", Kind::O21ai},       {"chiply-o21a", Kind::O21a},
+        {"chiply-a22oi", Kind::A22oi},       {"chiply-o22ai", Kind::O22ai},
     };
     static const std::map<Kind, std::vector<const char*>> inputs = {
         {Kind::And, {"A", "B"}},  {Kind::Or, {"A", "B"}},   {Kind::Xor, {"A", "B"}},         {Kind::Nand, {"A", "B"}},
         {Kind::Nor, {"A", "B"}},  {Kind::Xnor, {"A", "B"}}, {Kind::Not, {"IN"}},             {Kind::Buf, {"IN"}},
         {Kind::Mux, {"A", "B", "SEL"}}, {Kind::Dff, {"D", "CLK"}}, {Kind::Dffr, {"D", "CLK", "R"}},
         {Kind::Dffsr, {"D", "CLK", "S", "R"}}, {Kind::Srff, {"S", "CLK", "R"}}, {Kind::Const, {}},
+        {Kind::And3, {"A", "B", "C"}},  {Kind::And4, {"A", "B", "C", "D"}},  {Kind::Nand3, {"A", "B", "C"}},
+        {Kind::Nand4, {"A", "B", "C", "D"}}, {Kind::Or3, {"A", "B", "C"}},  {Kind::Or4, {"A", "B", "C", "D"}},
+        {Kind::Nor3, {"A", "B", "C"}},  {Kind::Nor4, {"A", "B", "C", "D"}},  {Kind::Xor3, {"A", "B", "C"}},
+        {Kind::Maj3, {"A", "B", "C"}},  {Kind::Mux4, {"A", "B", "C", "D", "S0", "S1"}},
+        {Kind::A21oi, {"A1", "A2", "B1"}}, {Kind::A21o, {"A1", "A2", "B1"}}, {Kind::O21ai, {"A1", "A2", "B1"}},
+        {Kind::O21a, {"A1", "A2", "B1"}}, {Kind::A22oi, {"A1", "A2", "B1", "B2"}}, {Kind::O22ai, {"A1", "A2", "B1", "B2"}},
     };
 
     std::vector<int> padPulls; // nets with a pad pull-down
@@ -94,7 +106,7 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             Prim p;
             p.kind = k;
             const int idx = int(m_prims.size());
-            for (std::size_t i = 0; i < ins.size() && i < 4; ++i) {
+            for (std::size_t i = 0; i < ins.size() && i < 6; ++i) {
                 p.in[i] = ins[i];
                 if (ins[i] >= 0)
                     m_fanout[size_t(ins[i])].push_back(idx);
@@ -436,6 +448,23 @@ void Simulator::evaluate(int idx)
     case Kind::Not: out(vnot(val(0))); return;
     case Kind::Buf: out(in(val(0))); return;
     case Kind::Mux: out(vmux(val(0), val(1), val(2))); return;
+    case Kind::And3: out(vand(vand(val(0), val(1)), val(2))); return;
+    case Kind::And4: out(vand(vand(val(0), val(1)), vand(val(2), val(3)))); return;
+    case Kind::Nand3: out(vnot(vand(vand(val(0), val(1)), val(2)))); return;
+    case Kind::Nand4: out(vnot(vand(vand(val(0), val(1)), vand(val(2), val(3))))); return;
+    case Kind::Or3: out(vor(vor(val(0), val(1)), val(2))); return;
+    case Kind::Or4: out(vor(vor(val(0), val(1)), vor(val(2), val(3)))); return;
+    case Kind::Nor3: out(vnot(vor(vor(val(0), val(1)), val(2)))); return;
+    case Kind::Nor4: out(vnot(vor(vor(val(0), val(1)), vor(val(2), val(3))))); return;
+    case Kind::Xor3: out(vxor(vxor(val(0), val(1)), val(2))); return;
+    case Kind::Maj3: out(vor(vor(vand(val(0), val(1)), vand(val(0), val(2))), vand(val(1), val(2)))); return;
+    case Kind::Mux4: out(vmux(vmux(val(0), val(1), val(4)), vmux(val(2), val(3), val(4)), val(5))); return;
+    case Kind::A21oi: out(vnot(vor(vand(val(0), val(1)), val(2)))); return;
+    case Kind::A21o: out(vor(vand(val(0), val(1)), val(2))); return;
+    case Kind::O21ai: out(vnot(vand(vor(val(0), val(1)), val(2)))); return;
+    case Kind::O21a: out(vand(vor(val(0), val(1)), val(2))); return;
+    case Kind::A22oi: out(vnot(vor(vand(val(0), val(1)), vand(val(2), val(3))))); return;
+    case Kind::O22ai: out(vnot(vand(vor(val(0), val(1)), vor(val(2), val(3))))); return;
     case Kind::Const: setSlot(p.out[0], p.q); return;
     case Kind::TtIn: { // a floating pad reads 0, as on Wokwi
         const V v = val(0);

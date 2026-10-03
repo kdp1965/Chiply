@@ -131,6 +131,163 @@ void gate(const Ctx& k, const std::string& kind)
     k.leads({QLineF(0, 2.54, inEnd, 2.54), QLineF(0, 7.62, inEnd, 7.62), QLineF(outX, 5.08, 25.4, 5.08)});
 }
 
+// ---- Chiply extended cells (PLAN.md 7.1): any height, same style ----
+
+// AND outline with its flat back at x0, spanning top..bot; returns the x of
+// its front.
+double andShape(const Ctx& k, double x0, double top, double bot, double flat)
+{
+    const double r = (bot - top) / 2, mid = (top + bot) / 2;
+    QPainterPath b;
+    b.moveTo(x0, top);
+    b.lineTo(x0 + flat, top);
+    b.arcTo(QRectF(x0 + flat - r, mid - r, 2 * r, 2 * r), 90, -180);
+    b.lineTo(x0, bot);
+    b.closeSubpath();
+    k.body(b);
+    return x0 + flat + r;
+}
+
+double orBulge(double top, double bot) { return kOrBulge * (bot - top) / 9.36; }
+
+// x of an OR back curve (back at x0, spanning top..bot) at height y.
+double orBackXAt(double x0, double top, double bot, double y)
+{
+    const double t = (y - top) / (bot - top);
+    return x0 + 2 * t * (1 - t) * orBulge(top, bot);
+}
+
+// OR outline (XOR adds a second back curve 1.2 behind); returns its front x.
+double orShape(const Ctx& k, double x0, double top, double bot, double len, bool xorBack)
+{
+    const double mid = (top + bot) / 2, bulge = orBulge(top, bot);
+    QPainterPath b;
+    b.moveTo(x0, top);
+    b.quadTo(x0 + bulge, mid, x0, bot);
+    b.moveTo(x0, top);
+    b.quadTo(x0 + len * 0.67, top, x0 + len, mid);
+    b.quadTo(x0 + len * 0.67, bot, x0, bot);
+    if (xorBack) {
+        b.moveTo(x0 - 1.2, top);
+        b.quadTo(x0 - 1.2 + bulge, mid, x0 - 1.2, bot);
+    }
+    k.body(b);
+    return x0 + len;
+}
+
+// AND/NAND/OR/NOR/XOR with 3 inputs (A B C at 2.54/5.08/7.62, OUT 5.08) or
+// 4 inputs (A B at 2.54/5.08, C D at 10.16/12.7, OUT 7.62).
+void gateN(const Ctx& k, const std::string& kind, int n)
+{
+    const double top = 0.4, bot = n == 3 ? 9.76 : 14.84, mid = (top + bot) / 2;
+    const std::vector<double> ys = n == 3 ? std::vector<double>{2.54, 5.08, 7.62} : std::vector<double>{2.54, 5.08, 10.16, 12.7};
+    const bool inv = kind == "nand" || kind == "nor";
+    const bool isAnd = kind == "and" || kind == "nand";
+    const bool isXor = kind == "xor";
+    double outX;
+    std::vector<QLineF> leads;
+    if (isAnd) {
+        outX = andShape(k, 7.62, top, bot, 5.08);
+        for (double y : ys)
+            leads.push_back(QLineF(0, y, 7.62, y));
+    } else {
+        const double x0 = isXor ? 8.4 : 7.2;
+        outX = orShape(k, x0, top, bot, n == 3 ? 11.2 : 13.0, isXor);
+        const double back = isXor ? x0 - 1.2 : x0;
+        for (double y : ys)
+            leads.push_back(QLineF(0, y, orBackXAt(back, top, bot, y), y));
+    }
+    if (inv) {
+        k.bubble(outX + 0.75, mid);
+        outX += 1.5;
+    }
+    leads.push_back(QLineF(outX, mid, 25.4, mid));
+    k.p->setPen(k.leadPen());
+    for (const QLineF& l : leads)
+        k.p->drawLine(l);
+}
+
+// Majority of three: a box marked MAJ.
+void maj3(const Ctx& k)
+{
+    QPainterPath b;
+    b.addRoundedRect(QRectF(7.62, 0.4, 10.16, 9.36), 0.8, 0.8);
+    k.body(b);
+    k.text(12.7, 5.08, "MAJ", 2.4);
+    k.leads({QLineF(0, 2.54, 7.62, 2.54), QLineF(0, 5.08, 7.62, 5.08), QLineF(0, 7.62, 7.62, 7.62),
+             QLineF(17.78, 5.08, 25.4, 5.08)});
+}
+
+// Four-input MUX: inputs 0..3 at 2.54/7.62/12.7/17.78, S0 and S1 enter from
+// below at x 10.16 and 15.24, OUT at 10.16.
+void mux4(const Ctx& k)
+{
+    const double xl = 8.89, xr = 16.51, yb = 20.12, slope = 3.0 / (xr - xl);
+    QPainterPath t;
+    t.moveTo(xl, 0.2);
+    t.lineTo(xr, 3.2);
+    t.lineTo(xr, 17.12);
+    t.lineTo(xl, yb);
+    t.closeSubpath();
+    k.body(t);
+    auto bottomAt = [&](double x) { return yb - (x - xl) * slope; };
+    k.leads({QLineF(0, 2.54, xl, 2.54), QLineF(0, 7.62, xl, 7.62), QLineF(0, 12.7, xl, 12.7), QLineF(0, 17.78, xl, 17.78),
+             QLineF(xr, 10.16, 25.4, 10.16), QLineF(10.16, 20.32, 10.16, bottomAt(10.16)),
+             QLineF(15.24, 20.32, 15.24, bottomAt(15.24))});
+    const char* labels[] = {"0", "1", "2", "3"};
+    for (int i = 0; i < 4; ++i)
+        k.text(10.0, 2.54 + 5.08 * i, labels[i], 1.9, Qt::AlignLeft);
+    k.text(13.3, 14.6, "S", 1.6);
+}
+
+// AND-OR / OR-AND cells (a21oi, a21o, o21ai, o21a, a22oi, o22ai): a small
+// input stage for A1/A2 (and B1/B2) feeding the output stage, all in one
+// part 15.24 mm high, OUT at 7.62.
+void aoi(const Ctx& k, const std::string& kind)
+{
+    const bool andFirst = kind[0] == 'a';             // a..: AND inputs, OR output
+    const bool two = kind.compare(1, 2, "22") == 0;   // two input pairs
+    const bool inv = kind.size() > 3 && kind.back() == 'i';
+    const double sx = 3.4;                            // stage back
+    auto stage = [&](double y1, double y2) {          // returns (front x, y)
+        const double top = y1 - 1.7, bot = y2 + 1.7;
+        double fx;
+        if (andFirst) {
+            fx = andShape(k, sx, top, bot, 1.4);
+            k.leads({QLineF(0, y1, sx, y1), QLineF(0, y2, sx, y2)});
+        } else {
+            fx = orShape(k, sx, top, bot, 4.6, false);
+            k.leads({QLineF(0, y1, orBackXAt(sx, top, bot, y1), y1), QLineF(0, y2, orBackXAt(sx, top, bot, y2), y2)});
+        }
+        return std::pair<double, double>{fx, (y1 + y2) / 2};
+    };
+    const auto a = stage(2.54, 5.08);
+    // Output stage: OR (for a..) or AND (for o..), back at x 11.0.
+    const double ox = 11.0, top = 1.6, bot = 13.64, mid = 7.62;
+    double outX;
+    auto inputEnd = [&](double y) { return andFirst ? orBackXAt(ox, top, bot, y) : ox; };
+    if (andFirst)
+        outX = orShape(k, ox, top, bot, 9.2, false);
+    else
+        outX = andShape(k, ox, top, bot, 3.0);
+    std::vector<QLineF> wires;
+    wires.push_back(QLineF(a.first, a.second, inputEnd(a.second), a.second));
+    if (two) {
+        const auto b = stage(10.16, 12.7);
+        wires.push_back(QLineF(b.first, b.second, inputEnd(b.second), b.second));
+    } else {
+        wires.push_back(QLineF(0, 10.16, inputEnd(10.16), 10.16));
+    }
+    if (inv) {
+        k.bubble(outX + 0.75, mid);
+        outX += 1.5;
+    }
+    wires.push_back(QLineF(outX, mid, 25.4, mid));
+    k.p->setPen(k.leadPen());
+    for (const QLineF& l : wires)
+        k.p->drawLine(l);
+}
+
 void inverter(const Ctx& k, bool bubble)
 {
     QPainterPath t;
@@ -529,12 +686,24 @@ void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors
         {"and", true}, {"nand", true}, {"or", true}, {"nor", true}, {"xor", true}, {"xnor", true},
         {"not", true}, {"buffer", true}, {"mux", true}, {"dff", true}, {"dff-r", true}, {"dff-sr", true},
         {"sr", true}, {"vcc", true}, {"gnd", true}, {"clock", true}, {"tt-input", true}, {"tt-input-8", true},
-        {"tt-output", true}, {"tt-bidir", true}, {"junction", true}};
+        {"tt-output", true}, {"tt-bidir", true}, {"junction", true},
+        {"and3", true}, {"and4", true}, {"nand3", true}, {"nand4", true}, {"or3", true}, {"or4", true},
+        {"nor3", true}, {"nor4", true}, {"xor3", true}, {"maj3", true}, {"mux4", true}, {"a21oi", true},
+        {"a21o", true}, {"o21ai", true}, {"o21a", true}, {"a22oi", true}, {"o22ai", true}};
     if (mmSymbols.count(s))
         p->scale(kMm, kMm);
 
     if (s == "and" || s == "nand" || s == "or" || s == "nor" || s == "xor" || s == "xnor")
         gate(k, s);
+    else if (s == "and3" || s == "nand3" || s == "or3" || s == "nor3" || s == "xor3" || s == "and4" || s == "nand4"
+             || s == "or4" || s == "nor4")
+        gateN(k, s.substr(0, s.size() - 1), s.back() - '0');
+    else if (s == "maj3")
+        maj3(k);
+    else if (s == "mux4")
+        mux4(k);
+    else if (s == "a21oi" || s == "a21o" || s == "o21ai" || s == "o21a" || s == "a22oi" || s == "o22ai")
+        aoi(k, s);
     else if (s == "not")
         inverter(k, true);
     else if (s == "buffer")

@@ -63,6 +63,11 @@ class Engine {
 public:
     explicit Engine(const PartLibrary& lib = PartLibrary::builtin());
 
+    // Extended mode (PLAN.md 7.1): extension parts are fine. In Wokwi mode
+    // the extension-part check lists them. Changing it re-checks everything.
+    void setExtensionsAllowed(bool on);
+    bool extensionsAllowed() const { return m_extensionsAllowed; }
+
     // Which checks run. Turning a check on re-checks the whole design for it.
     bool enabled(const std::string& check) const { return m_enabled.count(check) > 0; }
     void setEnabled(const std::string& check, bool on);
@@ -100,6 +105,7 @@ private:
 
     const PartLibrary& m_lib;
     std::set<std::string> m_enabled;
+    bool m_extensionsAllowed = false;
     Document m_doc;  // last checked
     Netlist m_nl;    // its netlist (devices point into m_doc)
     bool m_have = false;

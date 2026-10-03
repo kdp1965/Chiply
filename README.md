@@ -21,6 +21,8 @@ Status: early development. The design and milestones are in
 | M7 Built-in event-driven simulator, board parts, live UI, waveforms, VCD, truth tables | done |
 | M8 Incremental DRC with Violations pane, Verilog and Tiny Tapeout project export | done |
 | M9 Optional Verilator engine for the chip (Simulation > Engine), built and cached at run time | done |
+| M10a Wokwi / Extended mode; extended cells (3/4-input gates, XOR3, MAJ3, MUX4, AOI/OAI) | done |
+| M10b-d Custom blocks, RAM/ROM, sub-sheets | next |
 
 ## Building
 

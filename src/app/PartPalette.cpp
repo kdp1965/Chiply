@@ -1,5 +1,6 @@
 #include "PartPalette.h"
 
+#include "EditorSession.h"
 #include "Theme.h"
 #include "core/PartLibrary.h"
 
@@ -44,9 +45,12 @@ void PartPalette::refill(const QString& filter)
 {
     m_list->clear();
     // Category order roughly as in Wokwi's Logic-first palette.
-    static const QStringList order{"Logic", "Tiny Tapeout", "Input", "Output", "Power", "Annotation", "Passive", "Misc", "Boards"};
+    static const QStringList order{"Logic", "Chiply cells", "Tiny Tapeout", "Input", "Output", "Power", "Annotation", "Passive", "Misc", "Boards"};
     std::map<int, std::vector<const chiply::PartDef*>> groups;
+    const bool extensions = EditorSession::extensionsEnabled();
     for (const chiply::PartDef& d : chiply::PartLibrary::builtin().parts()) {
+        if (!extensions && chiply::isExtensionType(d.type))
+            continue; // Wokwi mode: only Wokwi's parts (PLAN.md 7.1)
         const QString hay = QString::fromStdString(d.label + " " + d.type + " " + d.category + " " + d.prefix);
         if (!filter.isEmpty() && !hay.contains(filter, Qt::CaseInsensitive))
             continue;

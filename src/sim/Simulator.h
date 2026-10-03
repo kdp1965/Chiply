@@ -126,14 +126,17 @@ private:
         TtOut,    // output pad: pass through
         TtTri,    // bidirectional pad driver: OUT when OE is 1, else Z
         Res,      // resistor: weak copy of each side's strong value onto the other
-        Chip      // the chip in a ChipBackend (one primitive; see m_chip*)
+        Chip,     // the chip in a ChipBackend (one primitive; see m_chip*)
+        // Chiply extended cells (PLAN.md 7.1); inputs in pin order.
+        And3, And4, Nand3, Nand4, Or3, Or4, Nor3, Nor4, Xor3, Maj3, Mux4,
+        A21oi, A21o, O21ai, O21a, A22oi, O22ai
     };
     // Pad < Weak < Strong: a Tiny Tapeout input pad's built-in pull-down
     // loses to a resistor, which loses to any driver.
     enum class Strength : std::uint8_t { None, Pad, Weak, Strong };
     struct Prim {
         Kind kind;
-        int in[4] = {-1, -1, -1, -1};  // input nets (meaning per kind)
+        int in[6] = {-1, -1, -1, -1, -1, -1}; // input nets (meaning per kind)
         int out[2] = {-1, -1};         // driver slots
         V q = V::L;                    // flip-flop state / constant value
         V nq = V::L;                   // flip-flop next state (applied in the update phase)

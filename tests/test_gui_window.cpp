@@ -2,6 +2,7 @@
 #include "EditorSession.h"
 #include "Inspector.h"
 #include "MainWindow.h"
+#include "PartPalette.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
 #include <QGraphicsScene>
@@ -10,6 +11,8 @@
 #include "Theme.h"
 
 #include <QDockWidget>
+#include <QLabel>
+#include <QListWidget>
 #include <QToolButton>
 #include <QSettings>
 #include <QTabWidget>
@@ -124,6 +127,55 @@ private slots:
         // A second one opens in its own tab.
         w.findChild<QAction*>("newFromTemplateAction")->trigger();
         QCOMPARE(tabs->count(), 2);
+    }
+
+    void extensionsModeSwitch()
+    {
+        QSettings().remove("extensions/enabled");
+        MainWindow w;
+        w.show();
+        auto paletteTypes = [] {
+            PartPalette pal;
+            QStringList types;
+            auto* list = pal.findChild<QListWidget*>();
+            for (int i = 0; i < list->count(); ++i)
+                types << list->item(i)->data(Qt::UserRole).toString();
+            return types;
+        };
+        QVERIFY(!EditorSession::extensionsEnabled()); // Wokwi mode by default
+        QVERIFY(w.findChild<QLabel*>("modeStatus")->text().startsWith("WOKWI MODE"));
+        QVERIFY(paletteTypes().contains("wokwi-gate-and-2"));
+        QVERIFY(!paletteTypes().contains("chiply-a21oi"));
+
+        // A design with an extension part: DRC flags it in Wokwi mode only.
+        auto* s = qobject_cast<EditorSession*>(w.findChild<QTabWidget*>()->currentWidget()->property("session").value<QObject*>());
+        chiply::Document d = s->document();
+        chiply::Part p;
+        p.type = "chiply-a21oi";
+        p.id = "aoi1";
+        d.parts.push_back(p);
+        s->replaceDocument(d, {});
+        s->runDrc(false);
+        auto hasExt = [&] {
+            for (const auto& v : s->violations())
+                if (v.check == "extension-part")
+                    return true;
+            return false;
+        };
+        QVERIFY(hasExt());
+        QVERIFY(s->usesExtensionParts());
+
+        w.findChild<QAction*>("extensionsAction")->trigger();
+        QVERIFY(EditorSession::extensionsEnabled());
+        QVERIFY(w.findChild<QLabel*>("modeStatus")->text().startsWith("EXTENDED MODE"));
+        QVERIFY(paletteTypes().contains("chiply-a21oi"));
+        QVERIFY(paletteTypes().contains("chiply-mux-4"));
+        QVERIFY(!hasExt());
+
+        w.findChild<QAction*>("extensionsAction")->trigger();
+        QVERIFY(!EditorSession::extensionsEnabled());
+        QVERIFY(hasExt());
+        QSettings().remove("extensions/enabled");
     }
 
     void selectionDoesNotShiftCanvas()

@@ -48,9 +48,14 @@ std::string defaultModuleName(const std::string& fileStem);
 
 // Tiny Tapeout's cells.v (Apache-2.0), the cell library the export uses.
 const char* ttCellsV();
+// Chiply's chiply_cells.v: the extended cells (PLAN.md 7.1). Needed only
+// when usesChiplyCells(doc).
+const char* chiplyCellsV();
+bool usesChiplyCells(const Document& doc);
 
 // Export as a Tiny Tapeout Verilog project (PLAN.md 5.5): writes
-// <dir>/src/<module>.v and <dir>/src/cells.v; if <dir>/info.yaml exists,
+// <dir>/src/<module>.v and <dir>/src/cells.v (and src/chiply_cells.v when
+// the design uses extended cells); if <dir>/info.yaml exists,
 // sets language "Verilog", top_module and source_files (and comments out
 // wokwi_id); if <dir>/test/Makefile has PROJECT_SOURCES, updates it.
 // Returns what it did, one line each. Throws ExportError / std::runtime_error.

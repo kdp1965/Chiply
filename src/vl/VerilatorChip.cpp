@@ -306,7 +306,7 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
     const std::string flagKey = joinArgs(arch) + joinArgs(cflags) + tools.cxx;
 
     const fs::path cache = opt.cacheDir.empty() ? fs::path(defaultCacheDir()) : fs::path(opt.cacheDir);
-    const std::string key = hex(fnv(verilog + wrapper + tools.version + tools.root + flagKey + std::to_string(kAbi)));
+    const std::string key = hex(fnv(verilog + wrapper + chiplyCellsV() + tools.version + tools.root + flagKey + std::to_string(kAbi)));
     const fs::path dir = cache / key;
     const fs::path lib = dir / (std::string("libchip") + kLibExt);
     const std::string name = "Verilator " + tools.version;
@@ -332,6 +332,7 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
         fs::create_directories(work / "obj");
         writeFile(work / "chip.v", verilog);
         writeFile(work / "cells.v", ttCellsV());
+        writeFile(work / "chiply_cells.v", chiplyCellsV());
         writeFile(work / "wrapper.cpp", wrapper);
 
         status("Verilating the chip");
@@ -341,7 +342,7 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
             + " --prefix Vchip -Wno-fatal -Wno-lint -Wno-style --public-flat-rw --x-assign unique --x-initial unique"
               " -O3 --Mdir "
             + quote((work / "obj").string()) + " " + quote((work / "chip.v").string()) + " "
-            + quote((work / "cells.v").string());
+            + quote((work / "cells.v").string()) + " " + quote((work / "chiply_cells.v").string());
         if (run(vcmd, &log) != 0) {
             BuildError e("Verilator failed");
             e.log = log;

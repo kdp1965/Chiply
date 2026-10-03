@@ -38,6 +38,7 @@ EditorSession::EditorSession(QObject* parent)
     m_scene.setItemIndexMethod(QGraphicsScene::BspTreeIndex);
     m_view = new SchematicView(&m_scene);
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
+    m_drc.setExtensionsAllowed(extensionsEnabled());
     // Live DRC: re-check what an edit touched, ~100 ms after the last one.
     m_drcTimer.setSingleShot(true);
     m_drcTimer.setInterval(100);
@@ -799,6 +800,25 @@ void EditorSession::stopSimulation()
 }
 
 // ---- design rule checks ----
+
+bool EditorSession::extensionsEnabled() { return QSettings().value("extensions/enabled", false).toBool(); }
+void EditorSession::setExtensionsEnabled(bool on) { QSettings().setValue("extensions/enabled", on); }
+
+void EditorSession::setExtensionsAllowed(bool on)
+{
+    if (m_drc.extensionsAllowed() == on)
+        return;
+    m_drc.setExtensionsAllowed(on);
+    refreshViolations();
+}
+
+bool EditorSession::usesExtensionParts() const
+{
+    for (const chiply::Part& p : m_doc.parts)
+        if (chiply::isExtensionType(p.type))
+            return true;
+    return false;
+}
 
 bool EditorSession::drcLive() { return QSettings().value("drc/live", true).toBool(); }
 void EditorSession::setDrcLive(bool on) { QSettings().setValue("drc/live", on); }

@@ -182,7 +182,9 @@ int drcCheck(int argc, char** argv)
     drc::Engine e;
     for (int i = 3; i < argc; ++i) {
         const std::string a = argv[i];
-        if ((a == "--enable" || a == "--disable") && i + 1 < argc) {
+        if (a == "--extensions") {
+            e.setExtensionsAllowed(true); // Extended mode: Chiply parts are fine
+        } else if ((a == "--enable" || a == "--disable") && i + 1 < argc) {
             const std::string id = argv[++i];
             if (!drc::findCheck(id))
                 throw std::runtime_error("unknown check \"" + id + "\" (see chiply-cli check --list)");
@@ -293,7 +295,7 @@ int usage()
                  "  chiply-cli format <diagram.json> [out.json]\n"
                  "  chiply-cli check-roundtrip <diagram.json>\n"
                  "  chiply-cli netlist <diagram.json> [--nets]\n"
-                 "  chiply-cli check <diagram.json> [--enable <check>] [--disable <check>]...\n"
+                 "  chiply-cli check <diagram.json> [--enable <check>] [--disable <check>]... [--extensions]\n"
                  "  chiply-cli check --list\n"
                  "  chiply-cli export-verilog <diagram.json> [-o out.v] [--module name] [--header text] [--force]\n"
                  "  chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]\n"
@@ -454,11 +456,18 @@ int main(int argc, char** argv)
             const std::string v = writeVerilog(r.doc, PartLibrary::builtin(), vo);
             if (out.empty()) {
                 std::cout << v;
+                if (usesChiplyCells(r.doc))
+                    std::cerr << "note: this design uses Chiply extended cells: it also needs chiply_cells.v\n";
             } else {
                 std::ofstream f(out, std::ios::binary);
                 if (!f)
                     throw std::runtime_error("cannot write " + out);
                 f << v;
+                if (usesChiplyCells(r.doc)) {
+                    const std::string cells = out.substr(0, out.find_last_of('/') + 1) + "chiply_cells.v";
+                    std::ofstream(cells, std::ios::binary) << chiplyCellsV();
+                    std::cerr << "wrote " << cells << " (Chiply extended cells used by the design)\n";
+                }
             }
             return 0;
         }

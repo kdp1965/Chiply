@@ -30,6 +30,8 @@ const std::vector<CheckInfo> kChecks = {
      "A flip-flop clock driven by a gate instead of a clock input or a flip-flop."},
     {"stacked-parts", "Stacked parts", Severity::Warning, true,
      "Two parts of the same type at the same position (an invisible duplicate)."},
+    {"extension-part", "Chiply extension part", Severity::Warning, true,
+     "A Chiply-only part (Wokwi cannot load the design). Reported in Wokwi mode only."},
     {"unconnected-output", "Unconnected output", Severity::Info, false, "An output that drives nothing."},
 };
 
@@ -112,7 +114,7 @@ bool isFlipFlop(const PartDef* def) { return def && def->type.rfind("wokwi-flip-
 
 bool isCombinational(const PartDef* def)
 {
-    return def && (def->type.rfind("wokwi-gate-", 0) == 0 || def->type == "wokwi-mux-2");
+    return isLogicCell(def) && !isFlipFlop(def);
 }
 
 bool isValidVerilogId(const std::string& id)
@@ -177,6 +179,17 @@ void Engine::clear()
     m_have = false;
     m_doc = Document();
     m_nl = Netlist();
+}
+
+void Engine::setExtensionsAllowed(bool on)
+{
+    if (on == m_extensionsAllowed)
+        return;
+    m_extensionsAllowed = on;
+    if (m_have) {
+        const Document doc = m_doc;
+        runFull(doc);
+    }
 }
 
 void Engine::resetChecks()
@@ -295,6 +308,9 @@ void Engine::checkPart(int di)
              "unknown-part:" + d.partId});
         return;
     }
+    if (!m_extensionsAllowed && isExtensionType(d.type))
+        add({"extension-part", {}, d.partId + " (" + d.def->label + ") is a Chiply extension: Wokwi cannot load this design",
+             {d.partId}, {}, "extension-part:" + d.partId});
     if (isLogicCell(d.def) && !isValidVerilogId(d.partId))
         add({"invalid-id", {}, "\"" + d.partId + "\" is not usable as a Verilog instance name", {d.partId}, {},
              "invalid-id:" + d.partId});

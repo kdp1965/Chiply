@@ -6,6 +6,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_
 file(READ ${PROJECT_SOURCE_DIR}/resources/cells.v CHIPLY_CELLS_V)
 configure_file(CellsData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/cells.v)
+file(READ ${PROJECT_SOURCE_DIR}/resources/chiply_cells.v CHIPLY_CHIPLY_CELLS_V)
+configure_file(ChiplyCellsData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/ChiplyCellsData.cpp @ONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/chiply_cells.v)
 file(READ ${PROJECT_SOURCE_DIR}/resources/tt_template.diagram.json CHIPLY_TT_TEMPLATE)
 configure_file(TemplateData.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/TemplateData.cpp @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/tt_template.diagram.json)
@@ -22,6 +25,7 @@ add_library(chiply_core STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/TemplateData.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/ChiplyCellsData.cpp
   JsonFormat.cpp
   WirePath.cpp
   WokwiJson.cpp

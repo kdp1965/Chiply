@@ -81,6 +81,10 @@ MainWindow::MainWindow(QWidget* parent)
     QFont sf = m_zoomLabel->font();
     sf.setPointSize(14); // readable status line
     m_zoomLabel->setFont(sf);
+    m_modeLabel = new QLabel(this);
+    m_modeLabel->setObjectName("modeStatus");
+    m_modeLabel->setFont(sf);
+    statusBar()->addPermanentWidget(m_modeLabel);
     m_drcLabel = new QLabel(this);
     m_drcLabel->setObjectName("drcStatus");
     m_drcLabel->setFont(sf);
@@ -250,6 +254,16 @@ void MainWindow::buildMenus()
         if (auto* s = current())
             s->view()->clearSelection();
     });
+
+    // Wokwi mode / Extended mode (PLAN.md 7.1).
+    edit->addSeparator();
+    m_extensionsAction = edit->addAction(tr("Chiply E&xtensions (extra cells, not Wokwi-loadable)"));
+    m_extensionsAction->setObjectName("extensionsAction");
+    m_extensionsAction->setCheckable(true);
+    m_extensionsAction->setChecked(EditorSession::extensionsEnabled());
+    m_extensionsAction->setToolTip(tr("Offer Chiply's own parts (3/4-input gates, MUX4, AOI/OAI cells...). "
+                                      "Designs that use them no longer load in Wokwi."));
+    connect(m_extensionsAction, &QAction::toggled, this, &MainWindow::setExtensions);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Zoom &In  (+)"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
@@ -766,7 +780,16 @@ void MainWindow::exportVerilog()
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate) || f.write(v.data(), qint64(v.size())) != qint64(v.size()))
             throw std::runtime_error(tr("Cannot write %1: %2").arg(path, f.errorString()).toStdString());
-        statusBar()->showMessage(tr("Exported module %1 to %2 (needs cells.v)").arg(QString::fromStdString(o.moduleName), path), 8000);
+        QString needs = tr("needs cells.v");
+        if (chiply::usesChiplyCells(s->document())) {
+            const QString cells = QFileInfo(path).dir().filePath(QStringLiteral("chiply_cells.v"));
+            QFile cf(cells);
+            const std::string text = chiply::chiplyCellsV();
+            if (!cf.open(QIODevice::WriteOnly | QIODevice::Truncate) || cf.write(text.data(), qint64(text.size())) != qint64(text.size()))
+                throw std::runtime_error(tr("Cannot write %1: %2").arg(cells, cf.errorString()).toStdString());
+            needs = tr("needs cells.v; chiply_cells.v written beside it");
+        }
+        statusBar()->showMessage(tr("Exported module %1 to %2 (%3)").arg(QString::fromStdString(o.moduleName), path, needs), 8000);
     } catch (const std::exception& e) {
         QMessageBox::critical(this, tr("Export Verilog"), QString::fromUtf8(e.what()));
     }
@@ -814,8 +837,27 @@ void MainWindow::exportTtProject()
     }
 }
 
+void MainWindow::setExtensions(bool on)
+{
+    EditorSession::setExtensionsEnabled(on);
+    for (int i = 0; i < m_tabs->count(); ++i)
+        sessionAt(i)->setExtensionsAllowed(on);
+    if (m_extensionsAction && m_extensionsAction->isChecked() != on)
+        m_extensionsAction->setChecked(on);
+    updateDrcStatus();
+    statusBar()->showMessage(on ? tr("Extended mode: Chiply's own parts are in Add Part. Designs using them do not load in Wokwi.")
+                                : tr("Wokwi mode: only Wokwi's parts are offered."),
+                             6000);
+}
+
 void MainWindow::updateDrcStatus()
 {
+    if (m_modeLabel) {
+        const bool ext = EditorSession::extensionsEnabled();
+        m_modeLabel->setText(ext ? tr("EXTENDED MODE   |") : tr("WOKWI MODE   |"));
+        m_modeLabel->setToolTip(ext ? tr("Chiply Extensions are on (Edit menu): extra cells are offered")
+                                    : tr("Only Wokwi's parts are offered (turn on Edit > Chiply Extensions for more)"));
+    }
     EditorSession* s = current();
     if (!m_drcLabel)
         return;
@@ -895,7 +937,8 @@ void MainWindow::updateSimControls()
     // No editing while simulating.
     if (m_editMenu)
         for (QAction* a : m_editMenu->actions())
-            if (!a->isSeparator() && !a->text().startsWith(tr("&Copy")) && !a->text().startsWith(tr("Select")))
+            if (!a->isSeparator() && !a->text().startsWith(tr("&Copy")) && !a->text().startsWith(tr("Select"))
+                && a != m_extensionsAction)
                 a->setEnabled(!active);
     if (m_addPartAction)
         m_addPartAction->setEnabled(!active);
@@ -1022,6 +1065,8 @@ bool MainWindow::openFile(const QString& path)
         return false;
     }
     addReplacingBlank(s);
+    if (s->usesExtensionParts() && !EditorSession::extensionsEnabled())
+        statusBar()->showMessage(tr("This design uses Chiply extension parts. Turn on Edit > Chiply Extensions to add more."), 10000);
     if (!s->loadWarnings().isEmpty())
         statusBar()->showMessage(tr("%1 while loading: %2").arg(countOf(int(s->loadWarnings().size()), "warning", "warnings"))
                                      .arg(s->loadWarnings().first()), 10000);
@@ -1049,7 +1094,10 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
         QMessageBox::critical(this, tr("Save failed"), QString::fromUtf8(e.what()));
         return false;
     }
-    statusBar()->showMessage(tr("Saved %1").arg(path), 4000);
+    if (s->usesExtensionParts())
+        statusBar()->showMessage(tr("Saved %1 (uses Chiply extension parts: Wokwi cannot load it)").arg(path), 8000);
+    else
+        statusBar()->showMessage(tr("Saved %1").arg(path), 4000);
     return true;
 }
 

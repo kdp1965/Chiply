@@ -41,6 +41,10 @@ struct PartDef {
     const PinDef* findPin(const std::string& name) const;
 };
 
+// Chiply's own parts (type "chiply-..."), offered only in Extended mode
+// (PLAN.md 7.1): Wokwi cannot load a design that uses them.
+inline bool isExtensionType(const std::string& type) { return type.rfind("chiply-", 0) == 0; }
+
 class PartLibrary {
 public:
     // Throws std::runtime_error on malformed input.

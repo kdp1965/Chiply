@@ -19,6 +19,7 @@ add_executable(chiply_tests
   test_drc.cpp
   test_verilog.cpp
   test_verilator.cpp
+  test_extended.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_vl Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE

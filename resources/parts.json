@@ -1757,6 +1757,885 @@
     }
    ],
    "source": "Wokwi diagram editor part definition; placed and wired only (no firmware simulation)"
+  },
+  {
+   "type": "chiply-gate-and-3",
+   "label": "AND gate, 3 inputs",
+   "category": "Chiply cells",
+   "prefix": "and",
+   "symbol": "and3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "and3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-and-4",
+   "label": "AND gate, 4 inputs",
+   "category": "Chiply cells",
+   "prefix": "and",
+   "symbol": "and4",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "and4_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "D": "d",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-nand-3",
+   "label": "NAND gate, 3 inputs",
+   "category": "Chiply cells",
+   "prefix": "nand",
+   "symbol": "nand3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nand3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-nand-4",
+   "label": "NAND gate, 4 inputs",
+   "category": "Chiply cells",
+   "prefix": "nand",
+   "symbol": "nand4",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nand4_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "D": "d",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-or-3",
+   "label": "OR gate, 3 inputs",
+   "category": "Chiply cells",
+   "prefix": "or",
+   "symbol": "or3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "or3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-or-4",
+   "label": "OR gate, 4 inputs",
+   "category": "Chiply cells",
+   "prefix": "or",
+   "symbol": "or4",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "or4_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "D": "d",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-nor-3",
+   "label": "NOR gate, 3 inputs",
+   "category": "Chiply cells",
+   "prefix": "nor",
+   "symbol": "nor3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nor3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-nor-4",
+   "label": "NOR gate, 4 inputs",
+   "category": "Chiply cells",
+   "prefix": "nor",
+   "symbol": "nor4",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "nor4_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "D": "d",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-gate-xor-3",
+   "label": "XOR gate, 3 inputs (sum)",
+   "category": "Chiply cells",
+   "prefix": "xor",
+   "symbol": "xor3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "xor3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-maj-3",
+   "label": "Majority of 3 (carry)",
+   "category": "Chiply cells",
+   "prefix": "maj",
+   "symbol": "maj3",
+   "units": "mm",
+   "size": [
+    25.4,
+    10
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 5.08,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "maj3_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-mux-4",
+   "label": "MUX, 4 inputs",
+   "category": "Chiply cells",
+   "prefix": "mux",
+   "symbol": "mux4",
+   "units": "mm",
+   "size": [
+    25.4,
+    20.32
+   ],
+   "pins": [
+    {
+     "name": "A",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "B",
+     "x": 0,
+     "y": 7.62,
+     "dir": "in"
+    },
+    {
+     "name": "C",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "D",
+     "x": 0,
+     "y": 17.78,
+     "dir": "in"
+    },
+    {
+     "name": "S0",
+     "x": 10.16,
+     "y": 20.32,
+     "dir": "in"
+    },
+    {
+     "name": "S1",
+     "x": 15.24,
+     "y": 20.32,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 10.16,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "mux4_cell",
+    "ports": {
+     "A": "a",
+     "B": "b",
+     "C": "c",
+     "D": "d",
+     "S0": "s0",
+     "S1": "s1",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-a21oi",
+   "label": "AND-OR-invert (a21oi)",
+   "category": "Chiply cells",
+   "prefix": "a21oi",
+   "symbol": "a21oi",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "a21oi_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-a21o",
+   "label": "AND-OR (a21o)",
+   "category": "Chiply cells",
+   "prefix": "a21o",
+   "symbol": "a21o",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "a21o_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-o21ai",
+   "label": "OR-AND-invert (o21ai)",
+   "category": "Chiply cells",
+   "prefix": "o21ai",
+   "symbol": "o21ai",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "o21ai_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-o21a",
+   "label": "OR-AND (o21a)",
+   "category": "Chiply cells",
+   "prefix": "o21a",
+   "symbol": "o21a",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "o21a_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-a22oi",
+   "label": "AND-OR-invert (a22oi)",
+   "category": "Chiply cells",
+   "prefix": "a22oi",
+   "symbol": "a22oi",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "B2",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "a22oi_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "B2": "b2",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-o22ai",
+   "label": "OR-AND-invert (o22ai)",
+   "category": "Chiply cells",
+   "prefix": "o22ai",
+   "symbol": "o22ai",
+   "units": "mm",
+   "size": [
+    25.4,
+    15.24
+   ],
+   "pins": [
+    {
+     "name": "A1",
+     "x": 0,
+     "y": 2.54,
+     "dir": "in"
+    },
+    {
+     "name": "A2",
+     "x": 0,
+     "y": 5.08,
+     "dir": "in"
+    },
+    {
+     "name": "B1",
+     "x": 0,
+     "y": 10.16,
+     "dir": "in"
+    },
+    {
+     "name": "B2",
+     "x": 0,
+     "y": 12.7,
+     "dir": "in"
+    },
+    {
+     "name": "OUT",
+     "x": 25.4,
+     "y": 7.62,
+     "dir": "out"
+    }
+   ],
+   "verilog": {
+    "cell": "o22ai_cell",
+    "ports": {
+     "A1": "a1",
+     "A2": "a2",
+     "B1": "b1",
+     "B2": "b2",
+     "OUT": "out"
+    }
+   },
+   "source": "Chiply extended cell (PLAN.md 7.1)"
   }
  ]
 }

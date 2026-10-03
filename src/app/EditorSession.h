@@ -170,6 +170,12 @@ public:
     // ---- design rule checks (PLAN.md 5.2) ----
     // Live: every edit re-checks what it touched (debounced); otherwise only
     // runDrc(true) checks. A global preference.
+    // Extended mode (PLAN.md 7.1): Chiply's own parts are offered. A global
+    // preference; also tells DRC whether to flag extension parts.
+    static bool extensionsEnabled();
+    static void setExtensionsEnabled(bool on);
+    void setExtensionsAllowed(bool on); // this session's DRC
+    bool usesExtensionParts() const;
     static bool drcLive();
     static void setDrcLive(bool on);
     void runDrc(bool full);
