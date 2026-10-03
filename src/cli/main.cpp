@@ -5,9 +5,13 @@
 //   chiply-cli check-roundtrip <diagram.json>   exit 0 if save == input bytes
 //   chiply-cli netlist <diagram.json> [--nets]  connectivity summary (or every net)
 //   chiply-cli sim <diagram.json> <script>      run a stimulus script (see simScript)
+//   chiply-cli truthtable <diagram.json> <truthtable.md> [options]
+//                                                check a Tiny Tapeout truth table
 #include "core/Netlist.h"
 #include "core/WokwiJson.h"
 #include "sim/Simulator.h"
+#include "sim/Trace.h"
+#include "sim/TruthTable.h"
 
 #include <chrono>
 
@@ -56,6 +60,8 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
         return true;
     };
     int failures = 0;
+    Trace trace;
+    trace.addLogicAnalyzers(sim);
     for (std::size_t n = 0; n < lines.size(); ++n) {
         std::istringstream in(lines[n].substr(0, lines[n].find('#')));
         std::string cmd;
@@ -115,6 +121,17 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
                 std::cout << where << "expected segments of " << a << " = " << std::hex << want << ", got " << *got
                           << std::dec << "\n";
             }
+        } else if (cmd == "trace" && in >> a) {
+            std::string name;
+            in >> name;
+            trace.add(sim, "probes", name.empty() ? a : name, sim.netOf(pin(a)));
+        } else if (cmd == "vcd" && in >> a) {
+            trace.collect(sim);
+            std::ofstream f(a, std::ios::binary);
+            if (!f)
+                throw std::runtime_error(where + "cannot write " + a);
+            trace.writeVcd(f, sim.now());
+            std::cout << "wrote " << a << " (" << trace.signals().size() << " signals)\n";
         } else if (cmd == "print") {
             while (in >> a)
                 std::cout << a << " = " << toChar(sim.value(pin(a))) << "  ";
@@ -122,10 +139,92 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
         } else {
             throw std::runtime_error(where + "cannot parse \"" + lines[n] + "\"");
         }
+        trace.collect(sim);
     }
     if (failures)
         std::cout << failures << " expectation(s) failed\n";
     return failures ? 1 : 0;
+}
+
+std::string readFile(const std::string& path);
+
+int truthTable(int argc, char** argv)
+{
+    using namespace chiply::sim;
+    const std::string diagram = argv[2], tablePath = argv[3];
+    Options opt;
+    opt.board = false; // like tt-support-tools: the testbench drives ui_in directly
+    std::vector<std::pair<std::string, V>> sets;
+    std::string vcdPath;
+    for (int i = 4; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--verilog")
+            opt.wokwiLogic = false;
+        else if (a == "--zero-start")
+            opt.flopStart = FlopStart::Zero;
+        else if (a == "--x-start")
+            opt.flopStart = FlopStart::Unknown;
+        else if (a == "--seed" && i + 1 < argc)
+            opt.seed = std::stoull(argv[++i]);
+        else if (a == "--vcd" && i + 1 < argc)
+            vcdPath = argv[++i];
+        else if (a == "--set" && i + 1 < argc) {
+            const std::string kv = argv[++i];
+            const auto eq = kv.find('=');
+            const std::string v = eq == std::string::npos ? "" : kv.substr(eq + 1);
+            if (v != "0" && v != "1")
+                throw std::runtime_error("--set wants part:PIN=0 or part:PIN=1, got \"" + kv + "\"");
+            sets.push_back({kv.substr(0, eq), v == "1" ? V::H : V::L});
+        } else
+            throw std::runtime_error("unknown option " + a);
+    }
+    LoadResult r = loadWokwiFile(diagram);
+    const Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
+    Simulator sim(nl, opt);
+    std::vector<int> in(8, -1), out(8, -1);
+    std::string inId, outId;
+    for (const Device& d : nl.devices) {
+        if (inId.empty() && (d.type == "board-tt-block-input" || d.type == "board-tt-block-input-8"))
+            inId = d.partId;
+        if (outId.empty() && d.type == "board-tt-block-output")
+            outId = d.partId;
+    }
+    if (inId.empty() || outId.empty())
+        throw std::runtime_error("the design needs a Tiny Tapeout input block and output block");
+    for (int b = 0; b < 8; ++b) {
+        in[size_t(b)] = sim.netOf(PinRef{inId, "IN" + std::to_string(b)});
+        out[size_t(b)] = sim.netOf(PinRef{outId, "OUT" + std::to_string(b)});
+    }
+    for (const auto& [pinName, v] : sets) {
+        auto ref = PinRef::parse(pinName);
+        if (!ref || sim.netOf(*ref) < 0)
+            throw std::runtime_error("unknown pin \"" + pinName + "\"");
+        sim.drive(*ref, v);
+    }
+    sim.settle();
+    Trace trace;
+    if (!vcdPath.empty()) {
+        for (int b = 0; b < 8; ++b) {
+            trace.add(sim, "tt", "ui_in" + std::to_string(b), in[size_t(b)]);
+            trace.add(sim, "tt", "uo_out" + std::to_string(b), out[size_t(b)]);
+        }
+        trace.addLogicAnalyzers(sim);
+    }
+    const TruthTable table = parseTruthTable(readFile(tablePath));
+    for (const std::string& w : table.warnings)
+        std::cerr << tablePath << ": warning: " << w << "\n";
+    if (table.steps.empty())
+        throw std::runtime_error(tablePath + ": no truth table rows found");
+    const TruthResult res = runTruthTable(sim, table, in, out);
+    for (const std::string& f : res.failures)
+        std::cout << tablePath << ":" << f.substr(5) << "\n"; // "line N: ..." -> "path:N: ..."
+    if (!vcdPath.empty()) {
+        trace.collect(sim);
+        std::ofstream f(vcdPath, std::ios::binary);
+        trace.writeVcd(f, sim.now());
+    }
+    std::cout << res.steps << " steps, " << res.checked << " checked, " << res.failures.size() << " failed\n";
+    return res.failures.empty() ? 0 : 1;
 }
 
 int usage()
@@ -136,6 +235,11 @@ int usage()
                  "  chiply-cli check-roundtrip <diagram.json>\n"
                  "  chiply-cli netlist <diagram.json> [--nets]\n"
                  "  chiply-cli sim <diagram.json> <script>\n"
+                 "  chiply-cli truthtable <diagram.json> <truthtable.md> [--set part:PIN=0|1]... [--vcd out.vcd]\n"
+                 "             [--verilog] [--zero-start|--x-start] [--seed n]\n"
+                 "     Tiny Tapeout truthtable.md: rows | ui_in | uo_out | comment |, 8 chars MSB first;\n"
+                 "     inputs 0 1 t(oggle) c(lock) x/- (unchanged), outputs 0 1 x/- (don't care).\n"
+                 "     Chip only: ui_in drives the input block's IN pins; CLK and RST_N float unless --set.\n"
                  "\n"
                  "sim script, one command per line (# comments):\n"
                  "  option x-start        flip-flops start unknown (default: random, like Wokwi)\n"
@@ -150,7 +254,9 @@ int usage()
                  "  press <button> / release <button>\n"
                  "  switch <part> <index> <0|1>   DIP switch index 0..7; slide switch index 0\n"
                  "  segments <7seg> <hex>          expect lit segments (bit 0 = A .. bit 7 = DP)\n"
-                 "  print <part:PIN>...\n";
+                 "  print <part:PIN>...\n"
+                 "  trace <part:PIN> [name]       record a net (logic analyzers are recorded too)\n"
+                 "  vcd <file>                    write what was recorded so far as VCD\n";
     return 2;
 }
 
@@ -198,6 +304,11 @@ int main(int argc, char** argv)
             if (argc < 4)
                 return usage();
             return simScript(path, argv[3]);
+        }
+        if (cmd == "truthtable") {
+            if (argc < 4)
+                return usage();
+            return truthTable(argc, argv);
         }
         if (cmd == "netlist") {
             LoadResult r = loadWokwiFile(path);

@@ -15,10 +15,12 @@ add_executable(chiply_tests
   test_sim.cpp
   test_sim_cosim.cpp
   test_sim_board.cpp
+  test_trace.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
-  CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference")
+  CHIPLY_REFERENCE_DIR="${PROJECT_SOURCE_DIR}/reference"
+  CHIPLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 
 include(Catch)
 catch_discover_tests(chiply_tests)
@@ -102,6 +104,9 @@ add_test(NAME cli_sim_template
 add_test(NAME cli_sim_template_board
   COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
           ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_board.sim)
+add_test(NAME cli_truthtable_template
+  COMMAND chiply-cli truthtable ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
+          ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_truthtable.md)
 
 if(CHIPLY_BUILD_GUI)
   add_executable(chiply_gui_sim_tests test_gui_sim.cpp)

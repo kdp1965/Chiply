@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "author": "Chiply tests",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-clock-generator", "id": "clock1", "top": 0, "left": 0, "attrs": { "frequency": "1k" } },
+    { "type": "wokwi-gate-not", "id": "not1", "top": 76.8, "left": 96, "attrs": {} },
+    {
+      "type": "wokwi-logic-analyzer",
+      "id": "logic1",
+      "top": 0,
+      "left": 240,
+      "attrs": { "channels": "3", "filename": "my-trace" }
+    }
+  ],
+  "connections": [
+    [ "clock1:CLK", "logic1:D0", "green", [] ],
+    [ "clock1:CLK", "not1:IN", "green", [] ],
+    [ "not1:OUT", "logic1:D1", "green", [] ]
+  ],
+  "dependencies": {}
+}

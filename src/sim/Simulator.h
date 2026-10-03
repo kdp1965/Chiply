@@ -17,6 +17,7 @@
 #include <queue>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace chiply::sim {
@@ -72,6 +73,21 @@ public:
 
     // Flip-flops back to their start state; re-evaluates everything.
     void reset();
+
+    // ---- traces (PLAN.md 6.4) ----
+    // Every change of a watched net's value is logged with its time; the
+    // first entry is the value when watching starts. Changes within one
+    // time step are all logged (Trace keeps the last).
+    struct Change {
+        Time t;
+        int net;
+        V v;
+    };
+    void watch(int net);
+    void unwatchAll();
+    bool watching(int net) const { return net >= 0 && size_t(net) < m_watched.size() && m_watched[size_t(net)]; }
+    // Returns the changes logged since the last call.
+    std::vector<Change> takeChanges() { return std::exchange(m_changes, {}); }
 
     // ---- board (PLAN.md 6.2) ----
     // Pushbuttons: pressed connects the 1.x and 2.x contacts.
@@ -155,6 +171,8 @@ private:
     void enqueue(int prim);
     void flush();
     V strongValue(int net) const;
+    void noteWatched(int group);
+    void noteAllWatched();
 
     const Netlist& m_nl;
     Options m_opt;
@@ -180,6 +198,10 @@ private:
     Time m_now = 0;
     std::uint64_t m_evals = 0;
     std::mt19937_64 m_rng;
+    std::vector<char> m_watched;                // net -> watched
+    std::vector<V> m_watchLast;                 // net -> last logged value
+    std::vector<Change> m_changes;
+    bool m_anyWatched = false;
     bool m_initialising = false;
     std::vector<std::string> m_warnings;
     std::string m_error;

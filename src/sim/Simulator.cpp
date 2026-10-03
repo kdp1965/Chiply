@@ -239,10 +239,64 @@ void Simulator::resolveGroup(int g, bool notify)
         return;
     m_groupValue[size_t(g)] = v;
     m_groupStrength[size_t(g)] = st;
+    if (m_anyWatched)
+        noteWatched(g);
     if (notify)
         for (int net : m_groupNets[size_t(g)])
             for (int p : m_fanout[size_t(net)])
                 enqueue(p);
+}
+
+void Simulator::noteWatched(int g)
+{
+    for (int net : m_groupNets[size_t(g)]) {
+        if (!m_watched[size_t(net)])
+            continue;
+        const V v = m_groupValue[size_t(g)];
+        if (v != m_watchLast[size_t(net)]) {
+            m_watchLast[size_t(net)] = v;
+            m_changes.push_back({m_now, net, v});
+        }
+    }
+}
+
+void Simulator::noteAllWatched()
+{
+    if (!m_anyWatched)
+        return;
+    for (std::size_t net = 0; net < m_watched.size(); ++net) {
+        if (!m_watched[net])
+            continue;
+        const V v = value(int(net));
+        if (v != m_watchLast[net]) {
+            m_watchLast[net] = v;
+            m_changes.push_back({m_now, int(net), v});
+        }
+    }
+}
+
+void Simulator::watch(int net)
+{
+    if (net < 0 || size_t(net) >= m_groupOf.size())
+        return;
+    if (m_watched.size() != m_groupOf.size()) {
+        m_watched.assign(m_groupOf.size(), 0);
+        m_watchLast.assign(m_groupOf.size(), V::Z);
+    }
+    if (m_watched[size_t(net)])
+        return;
+    m_watched[size_t(net)] = 1;
+    m_anyWatched = true;
+    m_watchLast[size_t(net)] = value(net);
+    m_changes.push_back({m_now, net, m_watchLast[size_t(net)]});
+}
+
+void Simulator::unwatchAll()
+{
+    m_watched.clear();
+    m_watchLast.clear();
+    m_changes.clear();
+    m_anyWatched = false;
 }
 
 void Simulator::flush()
@@ -298,6 +352,7 @@ void Simulator::regroup()
             resolveGroup(int(g), false);
     }
     m_dirtyGroups.clear();
+    noteAllWatched(); // a node that went back to Z resolves without a change
     for (std::size_t n = 0; n < nets; ++n) {
         const int g = m_groupOf[n];
         if (m_groupValue[size_t(g)] != oldV[n] || m_groupStrength[size_t(g)] != oldS[n])
