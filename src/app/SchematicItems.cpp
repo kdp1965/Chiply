@@ -5,14 +5,19 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QGraphicsSceneHoverEvent>
+#include <QPainterPathStroker>
 #include <QPen>
+#include <QToolTip>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 constexpr double kUnknownSize = 38.4;
 constexpr double kWireWidth = 2.0; // scene px, Wokwi's stroke width
 constexpr double kCornerRadius = 4.0;
+constexpr double kPinHitRadius = 4.5; // px around a pin that counts as "on the pin"
 }
 
 PartItem::PartItem(const chiply::Part& part, const chiply::PartDef* def)
@@ -22,11 +27,65 @@ PartItem::PartItem(const chiply::Part& part, const chiply::PartDef* def)
     , m_h(def ? def->height : kUnknownSize)
 {
     setPos(part.left, part.top);
-    setTransformOriginPoint(m_w / 2, m_h / 2);
+    // Same pivot as chiply::partToDiagram: the whole-pixel layout box center.
+    setTransformOriginPoint(std::round(m_w) / 2, std::round(m_h) / 2);
     setRotation(part.rotate);
     setCacheMode(QGraphicsItem::DeviceCoordinateCache);
-    setToolTip(QString::fromStdString(part.id + "  (" + part.type + ")"));
+    setToolTip(QString::fromStdString(part.id));
+    setAcceptHoverEvents(true);
     setZValue(0);
+}
+
+const chiply::PinDef* PartItem::pinAt(QPointF local) const
+{
+    if (!m_def)
+        return nullptr;
+    const chiply::PinDef* best = nullptr;
+    double bestD = kPinHitRadius * kPinHitRadius;
+    for (const chiply::PinDef& pin : m_def->pins) {
+        const double dx = local.x() - pin.x, dy = local.y() - pin.y;
+        const double d = dx * dx + dy * dy;
+        if (d <= bestD) {
+            bestD = d;
+            best = &pin;
+        }
+    }
+    return best;
+}
+
+void PartItem::hoverEnterEvent(QGraphicsSceneHoverEvent* event)
+{
+    m_hovered = true;
+    hoverMoveEvent(event);
+    update();
+}
+
+void PartItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
+{
+    const chiply::PinDef* pin = pinAt(event->pos());
+    if (pin != m_hoverPin) {
+        m_hoverPin = pin;
+        if (pin) {
+            // Pin names show immediately, like Wokwi's pin overlay.
+            const QString label = QString::fromStdString(m_part.id + ":" + pin->name);
+            QToolTip::showText(event->screenPos() + QPoint(12, 12), label);
+            setToolTip(label);
+        } else {
+            QToolTip::hideText();
+            setToolTip(QString::fromStdString(m_part.id));
+        }
+        update();
+    }
+}
+
+void PartItem::hoverLeaveEvent(QGraphicsSceneHoverEvent*)
+{
+    m_hovered = false;
+    if (m_hoverPin)
+        QToolTip::hideText();
+    m_hoverPin = nullptr;
+    setToolTip(QString::fromStdString(m_part.id));
+    update();
 }
 
 QRectF PartItem::boundingRect() const
@@ -42,6 +101,22 @@ void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
         SymbolPainter::paint(painter, *m_def, m_part, c);
     else
         SymbolPainter::paintUnknown(painter, m_w, m_h, QString::fromStdString(m_part.type), c);
+
+    if (m_hovered) {
+        // Wokwi's dotted "you are on this part" outline.
+        QPen pen(c.partText, 0, Qt::DotLine);
+        pen.setCosmetic(true);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(QRectF(0, 0, m_w, m_h).adjusted(-1, -1, 1, 1));
+    }
+    if (m_hoverPin) {
+        QColor fill = c.selection;
+        fill.setAlpha(110);
+        painter->setPen(QPen(c.selection, 0));
+        painter->setBrush(fill);
+        painter->drawEllipse(QPointF(m_hoverPin->x, m_hoverPin->y), 3.5, 3.5);
+    }
 }
 
 WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& route)
@@ -77,6 +152,25 @@ WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& r
     setToolTip(QString::fromStdString(wire.from.str() + "  →  " + wire.to.str()));
     setZValue(1); // wires draw above parts, as in Wokwi
     restyle();
+}
+
+QPainterPath WireItem::shape() const
+{
+    QPainterPathStroker stroker;
+    stroker.setWidth(kWireWidth + 4);
+    stroker.setCapStyle(Qt::RoundCap);
+    stroker.setJoinStyle(Qt::RoundJoin);
+    QPainterPath hit = stroker.createStroke(path());
+    // Leave the pins at both ends to the part underneath, so hovering a pin
+    // shows "part:PIN" even though the wire draws on top of it.
+    QPainterPath ends;
+    const QPainterPath& p = path();
+    if (p.elementCount() > 1) {
+        ends.addEllipse(p.pointAtPercent(0), kPinHitRadius, kPinHitRadius);
+        ends.addEllipse(p.pointAtPercent(1), kPinHitRadius, kPinHitRadius);
+        hit = hit.subtracted(ends);
+    }
+    return hit;
 }
 
 void WireItem::restyle()

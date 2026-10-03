@@ -21,10 +21,19 @@ public:
     static constexpr int Type = UserType + 1;
     int type() const override { return Type; }
 
+protected:
+    void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override;
+    void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
+
 private:
+    const chiply::PinDef* pinAt(QPointF local) const;
+
     chiply::Part m_part;              // snapshot for painting
     const chiply::PartDef* m_def;     // null for unknown types
     double m_w, m_h;
+    bool m_hovered = false;
+    const chiply::PinDef* m_hoverPin = nullptr;
 };
 
 class WireItem : public QGraphicsPathItem {
@@ -33,6 +42,11 @@ public:
     static constexpr int Type = UserType + 2;
     int type() const override { return Type; }
     void restyle();
+    // Hit area is the drawn line plus a few pixels, not the area the route
+    // encloses (QGraphicsPathItem's default), so wires never steal hover or
+    // clicks from the parts they loop around; the pins at both ends are left
+    // to the parts.
+    QPainterPath shape() const override;
 
 private:
     QColor m_fileColor;
