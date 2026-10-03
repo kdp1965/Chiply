@@ -342,7 +342,8 @@ WireItem::WireItem(const chiply::Wire& wire, const std::vector<chiply::Point>& r
         setVisible(false); // Wokwi hides wires with an empty color
     if (!m_fileColor.isValid())
         m_fileColor = QColor("green");
-    setToolTip(QString::fromStdString(wire.from.str() + "  →  " + wire.to.str()));
+    m_tip = QString::fromStdString(wire.from.str() + "  \u2192  " + wire.to.str());
+    setToolTip(m_tip);
     setZValue(1); // wires draw above parts, as in Wokwi
     restyle();
 }

@@ -83,8 +83,10 @@ private slots:
         // The wire into the first inverter now shows a high value.
         bool sawHigh = false;
         for (QGraphicsItem* it : v->scene()->items())
-            if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->simValue() == 1)
+            if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->simValue() == 1) {
                 sawHigh = true;
+                QVERIFY(it->toolTip().endsWith(" = 1")); // value in the tooltip
+            }
         QVERIFY(sawHigh);
     }
 

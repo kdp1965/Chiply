@@ -146,6 +146,7 @@ private:
     std::string m_fromPart, m_toPart;
     Link m_link = Link::None;
     int m_simValue = -1;
+    QString m_tip;
 };
 
 class TextItem : public QGraphicsSimpleTextItem {
