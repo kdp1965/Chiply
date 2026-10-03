@@ -130,6 +130,15 @@ void SchematicView::wheelEvent(QWheelEvent* event)
 
 void SchematicView::mousePressEvent(QMouseEvent* event)
 {
+    if (event->button() == Qt::LeftButton && !m_spaceHeld && (event->modifiers() & Qt::ShiftModifier)) {
+        // Shift+drag pans; Shift+click without moving stays a click (Wokwi's
+        // add-to-selection). Decide once the mouse moves.
+        m_shiftPending = true;
+        m_pressPos = event->position().toPoint();
+        m_lastPanPos = m_pressPos;
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::MiddleButton || (event->button() == Qt::LeftButton && m_spaceHeld)) {
         m_panning = true;
         m_lastPanPos = event->position().toPoint();
@@ -142,6 +151,15 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
 
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
+    if (m_shiftPending && (event->position().toPoint() - m_pressPos).manhattanLength() > 4) {
+        m_shiftPending = false;
+        m_panning = true;
+        viewport()->setCursor(Qt::ClosedHandCursor);
+    }
+    if (m_shiftPending) {
+        event->accept();
+        return;
+    }
     if (m_panning) {
         const QPoint p = event->position().toPoint();
         panBy(QPointF(m_lastPanPos - p));
@@ -154,6 +172,15 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
 
 void SchematicView::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_shiftPending && event->button() == Qt::LeftButton) {
+        // No drag happened: deliver it as an ordinary Shift+click.
+        m_shiftPending = false;
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(m_pressPos), mapToGlobal(m_pressPos),
+                          Qt::LeftButton, Qt::LeftButton, event->modifiers());
+        QGraphicsView::mousePressEvent(&press);
+        QGraphicsView::mouseReleaseEvent(event);
+        return;
+    }
     if (m_panning && (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
         m_panning = false;
         viewport()->setCursor(m_spaceHeld ? Qt::OpenHandCursor : Qt::ArrowCursor);
@@ -170,10 +197,12 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     const double fx = big ? vp.width() : vp.width() / 10.0;
     const double fy = big ? vp.height() : vp.height() / 10.0;
     switch (event->key()) {
-    case Qt::Key_Left: panBy(QPointF(-fx, 0)); return;
-    case Qt::Key_Right: panBy(QPointF(fx, 0)); return;
-    case Qt::Key_Up: panBy(QPointF(0, -fy)); return;
-    case Qt::Key_Down: panBy(QPointF(0, fy)); return;
+    // As in Wokwi, the arrow moves the diagram: Up moves it up (the view
+    // travels down), Right moves it right (the view travels left).
+    case Qt::Key_Left: panBy(QPointF(fx, 0)); return;
+    case Qt::Key_Right: panBy(QPointF(-fx, 0)); return;
+    case Qt::Key_Up: panBy(QPointF(0, fy)); return;
+    case Qt::Key_Down: panBy(QPointF(0, -fy)); return;
     case Qt::Key_Plus:
     case Qt::Key_Equal: zoomIn(); return;
     case Qt::Key_Minus: zoomOut(); return;

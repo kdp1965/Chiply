@@ -1,7 +1,8 @@
 #pragma once
 // The canvas. M0 provides Wokwi-style navigation (PLAN.md 4.2):
 //   wheel = zoom at cursor, Shift+wheel = horizontal pan, Ctrl/Cmd+wheel =
-//   vertical pan, middle-drag or Space+drag = pan, arrow keys = pan,
+//   vertical pan, middle-drag, Shift+drag or Space+drag = pan, arrow keys
+//   move the diagram in the arrow's direction,
 //   left-drag on empty canvas = marquee, +/- = zoom, F = fit, G = grid.
 #include <QGraphicsView>
 
@@ -38,5 +39,7 @@ private:
     bool m_showGrid = true;
     bool m_spaceHeld = false;
     bool m_panning = false;
+    bool m_shiftPending = false; // Shift+press: pan if it moves, click if not
+    QPoint m_pressPos;
     QPoint m_lastPanPos;
 };
