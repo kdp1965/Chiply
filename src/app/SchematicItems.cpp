@@ -128,6 +128,10 @@ QPainterPath PartItem::shape() const
     return p;
 }
 
+static bool s_showNames = false;
+void PartItem::setShowNames(bool on) { s_showNames = on; }
+bool PartItem::showNames() { return s_showNames; }
+
 void PartItem::setPlacement(const chiply::Part& part)
 {
     m_part.left = part.left;
@@ -196,8 +200,9 @@ void PartItem::hoverLeaveEvent(QGraphicsSceneHoverEvent*)
 
 QRectF PartItem::boundingRect() const
 {
-    // Text and leads may extend slightly past the outline.
-    return QRectF(0, 0, m_w, m_h).adjusted(-4, -4, 4, 14);
+    // Text and leads may extend slightly past the outline; the name label
+    // sits above it.
+    return QRectF(0, 0, m_w, m_h).adjusted(-4, -22, 60, 14);
 }
 
 void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
@@ -208,6 +213,20 @@ void PartItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
     else
         SymbolPainter::paintUnknown(painter, m_w, m_h, QString::fromStdString(m_part.type), c);
 
+    if (s_showNames) {
+        // Id above the part, upright regardless of the part's rotation.
+        painter->save();
+        const QPointF anchor = QPointF(0, -4);
+        painter->translate(anchor);
+        painter->rotate(-m_part.rotate);
+        QFont f("Helvetica");
+        f.setPixelSize(11);
+        f.setBold(true);
+        painter->setFont(f);
+        painter->setPen(c.partText);
+        painter->drawText(QPointF(0, 0), QString::fromStdString(m_part.id));
+        painter->restore();
+    }
     if (isSelected()) {
         QPen pen(c.selection, 2);
         pen.setCosmetic(true);

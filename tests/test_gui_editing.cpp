@@ -3,6 +3,7 @@
 #include "EditorSession.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
+#include "MiniToolbar.h"
 #include "core/Geometry.h"
 #include "core/JsonFormat.h"
 #include "core/WokwiJson.h"
@@ -195,6 +196,48 @@ private slots:
         QTest::keyClick(v, Qt::Key_Escape);
         QVERIFY(!s->placing());
         QVERIFY(!s->document().findPart("mux63"));
+    }
+
+    void renameValidatesAndRewritesWires()
+    {
+        QVERIFY(!s->renamePart("flop238", "2bad").isEmpty());
+        QVERIFY(!s->renamePart("flop238", "module").isEmpty());
+        QVERIFY(!s->renamePart("flop238", "flop239").isEmpty()); // taken
+        std::size_t refs = 0;
+        for (const Wire& w : s->document().wires)
+            refs += (w.from.part == "flop238") + (w.to.part == "flop238");
+        QVERIFY(s->renamePart("flop238", "cmp_val_reg").isEmpty());
+        QVERIFY(!s->document().findPart("flop238"));
+        std::size_t after = 0;
+        for (const Wire& w : s->document().wires)
+            after += (w.from.part == "cmp_val_reg") + (w.to.part == "cmp_val_reg");
+        QCOMPARE(after, refs);
+        QCOMPARE(s->selectedPartIds(), std::vector<std::string>{"cmp_val_reg"});
+        s->undoStack()->undo();
+        QVERIFY(s->document().findPart("flop238"));
+    }
+
+    void attributeAndWireColorEdits()
+    {
+        s->setPartAttr("clock1", "frequency", "20000");
+        QCOMPARE(s->document().findPart("clock1")->attrs["frequency"].get<std::string>(), std::string("20000"));
+        s->undoStack()->undo();
+        QCOMPARE(s->document().findPart("clock1")->attrs["frequency"].get<std::string>(), std::string("10000"));
+        s->setWireColor(0, "blue");
+        QCOMPARE(s->document().wires[0].color, std::string("blue"));
+        s->undoStack()->undo();
+        QCOMPARE(s->document().wires[0].color, std::string("red"));
+    }
+
+    void miniToolbarOnSingleSelection()
+    {
+        click(outline("flop238").center());
+        QApplication::processEvents();
+        QVERIFY(s->miniToolbar()->isVisible());
+        click(outline("flop239").center(), Qt::ShiftModifier);
+        QVERIFY(!s->miniToolbar()->isVisible());
+        v->clearSelection();
+        QVERIFY(!s->miniToolbar()->isVisible());
     }
 
     void undoEverythingRestoresTheFile()

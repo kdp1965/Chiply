@@ -34,5 +34,6 @@ private:
 
     QTabWidget* m_tabs = nullptr;
     class QUndoGroup* m_undoGroup = nullptr;
+    class Inspector* m_inspector = nullptr;
     QLabel* m_zoomLabel = nullptr;
 };

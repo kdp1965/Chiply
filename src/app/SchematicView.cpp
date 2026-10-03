@@ -339,6 +339,18 @@ void SchematicView::updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods)
     m_dragWire->showPreview(m_dragResult);
 }
 
+void SchematicView::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    QGraphicsItem* it = selectableAt(event->position().toPoint());
+    if (event->button() == Qt::LeftButton && it && !itemPartId(it).empty()) {
+        selectOnly(it);
+        emit editPartRequested();
+        event->accept();
+        return;
+    }
+    event->accept();
+}
+
 void SchematicView::clickAt(QPoint viewPos, Qt::KeyboardModifiers mods)
 {
     QGraphicsItem* item = selectableAt(viewPos);
@@ -544,6 +556,10 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Minus: zoomOut(); return;
     case Qt::Key_F: fitContents(); return;
     case Qt::Key_G: toggleGrid(); return;
+    case Qt::Key_F2:
+        if (hasSelectedParts())
+            emit editPartRequested();
+        return;
     case Qt::Key_A:
         if (!event->isAutoRepeat() && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier)))
             emit addPartRequested();

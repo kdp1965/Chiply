@@ -2,6 +2,9 @@
 
 #include "EditorSession.h"
 #include "PartPalette.h"
+#include "Inspector.h"
+#include "MiniToolbar.h"
+#include "SchematicItems.h"
 #include "SchematicView.h"
 #include "Theme.h"
 #include "core/WokwiJson.h"
@@ -21,6 +24,8 @@
 #include <QToolBar>
 #include <QDockWidget>
 #include <QUndoView>
+#include <QSettings>
+#include <QGraphicsScene>
 #include <QUndoGroup>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -36,6 +41,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_tabs, &QTabWidget::currentChanged, this, [this] {
         if (auto* s = current())
             m_undoGroup->setActiveStack(s->undoStack());
+        if (m_inspector)
+            m_inspector->setSession(current());
         updateStatus();
     });
 
@@ -144,6 +151,28 @@ void MainWindow::buildMenus()
             m_tabs->setCurrentIndex((m_tabs->currentIndex() + m_tabs->count() - 1) % m_tabs->count());
     });
 
+    m_inspector = new Inspector(this);
+    auto* inspDock = new QDockWidget(tr("Inspector"), this);
+    inspDock->setObjectName("inspector");
+    inspDock->setWidget(m_inspector);
+    addDockWidget(Qt::RightDockWidgetArea, inspDock);
+    view->addAction(inspDock->toggleViewAction());
+    QAction* names = view->addAction(tr("Show Part &Names"));
+    names->setCheckable(true);
+    names->setChecked(QSettings().value("view/showNames", false).toBool());
+    PartItem::setShowNames(names->isChecked());
+    connect(names, &QAction::toggled, this, [this](bool on) {
+        QSettings().setValue("view/showNames", on);
+        PartItem::setShowNames(on);
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            sessionAt(i)->view()->scene()->update();
+            sessionAt(i)->view()->resetCachedContent();
+            for (QGraphicsItem* it : sessionAt(i)->view()->scene()->items())
+                if (it->type() == PartItem::Type)
+                    it->update();
+        }
+    });
+
     // Undo history: every step of the active tab; click one to jump there.
     auto* historyDock = new QDockWidget(tr("Undo History"), this);
     historyDock->setObjectName("undoHistory");
@@ -185,6 +214,12 @@ int MainWindow::addSession(EditorSession* s)
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
     connect(s->view(), &SchematicView::addPartRequested, this, &MainWindow::addPart);
+    auto edit = [this] {
+        if (m_inspector)
+            m_inspector->focusName();
+    };
+    connect(s->view(), &SchematicView::editPartRequested, this, edit);
+    connect(s->miniToolbar(), &MiniToolbar::editRequested, this, edit);
     connect(s, &EditorSession::selectionChanged, this, [this, s] {
         if (s == current())
             updateStatus();

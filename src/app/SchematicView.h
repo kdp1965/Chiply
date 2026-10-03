@@ -61,6 +61,7 @@ signals:
     void placeClicked(QPointF scenePos);
     void placeCancelled();
     void addPartRequested();
+    void editPartRequested(); // F2 or double-click on a part
     // Keyboard edits on the selection.
     void nudgeRequested(int gridX, int gridY, bool autoRepeat);
     void rotateRequested();
@@ -73,6 +74,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void drawForeground(QPainter* painter, const QRectF& rect) override;

@@ -2,6 +2,7 @@
 
 #include "SchematicView.h"
 #include "Theme.h"
+#include "MiniToolbar.h"
 #include "SchematicItems.h"
 #include "core/Edit.h"
 #include "core/IdGen.h"
@@ -10,6 +11,7 @@
 #include "core/WokwiJson.h"
 
 #include <QCursor>
+#include <QScrollBar>
 #include <QFileInfo>
 #include <QSignalBlocker>
 
@@ -29,9 +31,18 @@ EditorSession::EditorSession(QObject* parent)
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
     connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
+    m_mini = new MiniToolbar(this, m_view->viewport());
+    auto reposition = [this] { m_mini->reposition(); };
+    connect(this, &EditorSession::selectionChanged, m_mini, reposition);
+    connect(this, &EditorSession::documentChanged, m_mini, reposition);
+    connect(m_view, &SchematicView::zoomChanged, m_mini, reposition);
+    connect(m_view->horizontalScrollBar(), &QScrollBar::valueChanged, m_mini, reposition);
+    connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, m_mini, reposition);
+    connect(m_view, &SchematicView::moveEnded, m_mini, reposition);
     connect(m_view, &SchematicView::moveStarted, this, [this](const QString& grab) {
         setMoveGrab(grab.toStdString());
         beginMove();
+        m_mini->hide();
     });
     connect(m_view, &SchematicView::moveUpdated, this, [this](QPointF d, double grid) {
         setSnapMode(grid);
@@ -132,6 +143,7 @@ void EditorSession::applyWirePath(int wireIndex, const chiply::WirePath& path)
             break;
         }
     }
+    emit documentChanged();
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +227,7 @@ void EditorSession::applyPlacements(const std::vector<Placement>& ps)
         refreshWiresOf(pl.id);
     }
     m_view->viewport()->update(); // group box follows
+    emit documentChanged();
 }
 
 void EditorSession::refreshWiresOf(const std::string& partId)
@@ -363,6 +376,51 @@ QPointF placementOrigin(const chiply::Part& p, QPointF c)
 }
 } // namespace
 
+QString EditorSession::renamePart(const std::string& from, const std::string& to)
+{
+    if (from == to)
+        return {};
+    if (!chiply::isValidInstanceName(to))
+        return tr("\"%1\" is not a valid Verilog instance name (letters, digits, _; not starting with a digit; not a keyword).")
+            .arg(QString::fromStdString(to));
+    if (m_doc.findPart(to))
+        return tr("\"%1\" is already used by another part.").arg(QString::fromStdString(to));
+    chiply::Document after = m_doc;
+    if (!after.renamePart(from, to))
+        return tr("Rename failed.");
+    m_undo.push(new DocumentCommand(this, tr("Rename %1 to %2").arg(QString::fromStdString(from), QString::fromStdString(to)),
+                                    m_doc, after, {from}, {to}));
+    return {};
+}
+
+void EditorSession::setPartAttr(const std::string& id, const std::string& key, const std::string& value)
+{
+    chiply::Document after = m_doc;
+    chiply::Part* p = after.findPart(id);
+    if (!p)
+        return;
+    if (p->attrs.contains(key) && p->attrs[key].is_string() && p->attrs[key].get<std::string>() == value)
+        return;
+    p->attrs[key] = value;
+    m_undo.push(new DocumentCommand(this, tr("Set %1.%2").arg(QString::fromStdString(id), QString::fromStdString(key)),
+                                    m_doc, after, {id}, {id}));
+}
+
+void EditorSession::setWireColor(int wireIndex, const std::string& color)
+{
+    if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()) || m_doc.wires[size_t(wireIndex)].color == color)
+        return;
+    chiply::Document after = m_doc;
+    after.wires[size_t(wireIndex)].color = color;
+    m_undo.push(new DocumentCommand(this, tr("Wire color %1").arg(QString::fromStdString(color)), m_doc, after,
+                                    selectedPartIds(), selectedPartIds()));
+    // Keep the wire selected.
+    for (QGraphicsItem* it : m_scene.items())
+        if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->index() == wireIndex)
+            it->setSelected(true);
+    updateSelectionState();
+}
+
 void EditorSession::startPlacing(const std::string& type)
 {
     cancelPlacing();
@@ -425,6 +483,7 @@ void EditorSession::replaceDocument(const chiply::Document& doc, const std::vect
     }
     rebuildScene();
     selectParts(select);
+    emit documentChanged();
 }
 
 void EditorSession::selectParts(const std::vector<std::string>& ids)

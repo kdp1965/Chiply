@@ -33,6 +33,7 @@ public:
     QStringList loadWarnings() const { return m_warnings; }
 
     SchematicView* view() const { return m_view; }
+    class MiniToolbar* miniToolbar() const { return m_mini; }
     QUndoStack* undoStack() { return &m_undo; }
 
     struct SelectionSummary {
@@ -64,6 +65,12 @@ public:
     void deleteSelection();
     void duplicateSelection();
 
+    // Property edits (undoable). renamePart returns an error message, or an
+    // empty string on success.
+    QString renamePart(const std::string& from, const std::string& to);
+    void setPartAttr(const std::string& id, const std::string& key, const std::string& value);
+    void setWireColor(int wireIndex, const std::string& color);
+
     // Adding parts: a translucent preview follows the cursor until placed.
     void startPlacing(const std::string& type);
     void placingMoved(QPointF scenePos);
@@ -87,6 +94,7 @@ public:
 signals:
     void titleChanged();
     void selectionChanged();
+    void documentChanged(); // any edit, including undo/redo
 
 private:
     void rebuildScene();
@@ -106,6 +114,7 @@ private:
     std::map<std::string, QGraphicsItem*> m_partItems;            // id -> PartItem/TextItem
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
     QGraphicsItem* m_ghost = nullptr;
+    class MiniToolbar* m_mini = nullptr;
     std::string m_placeType;
     std::vector<Placement> m_moveStart;
     std::string m_moveGrab;

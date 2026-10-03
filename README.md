@@ -15,7 +15,8 @@ Status: early development. The design and milestones are in
 | M1 Core model, byte-exact Wokwi JSON round trip, wire path codec, ids | done |
 | M2 Part library: exact Wokwi geometry, pin directions, symbols, wires | done |
 | M3 Viewer and selection: hover, click/marquee selection, implicit wires | done |
-| M4 Part editing: click-drag move, rotate, delete, palette, rename | next |
+| M4 Part editing: move, nudge, rotate, delete, duplicate, add parts, Inspector, rename, undo | done |
+| M5 Wire editing: draw wires from pins, vertex handles, colors | next (segment handles already done) |
 
 ## Building
 

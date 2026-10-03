@@ -26,6 +26,8 @@ public:
     QPainterPath shape() const override;
     // The part's outline in scene coordinates (rotated bounds).
     QRectF outlineSceneRect() const;
+    static void setShowNames(bool on);
+    static bool showNames();
     // Follows a placement change (left/top/rotate) of the document part.
     void setPlacement(const chiply::Part& part);
 
