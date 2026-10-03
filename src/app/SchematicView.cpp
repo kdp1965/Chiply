@@ -1,5 +1,8 @@
 #include "SchematicView.h"
 
+#include <QContextMenuEvent>
+#include <utility>
+
 #include "SchematicItems.h"
 #include "Theme.h"
 #include "core/JsonFormat.h"
@@ -412,6 +415,7 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
     if (m_drawing) {
         if (event->button() == Qt::RightButton) {
             cancelWire();
+            m_eatContextMenu = true;
         } else if (event->button() == Qt::LeftButton && !(event->modifiers() & Qt::ShiftModifier) && !m_spaceHeld) {
             if (!finishWireAt(pos))
                 addWirePoint(pos, event->modifiers());
@@ -452,8 +456,10 @@ notDrawing:
     if (m_placing) {
         if (event->button() == Qt::LeftButton)
             emit placeClicked(mapToScene(pos));
-        else if (event->button() == Qt::RightButton)
+        else if (event->button() == Qt::RightButton) {
+            m_eatContextMenu = true;
             emit placeCancelled();
+        }
         event->accept();
         return;
     }
@@ -729,6 +735,25 @@ void SchematicView::updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods)
     coord = chiply::round2(coord);
     m_dragResult = chiply::moveSegment(m_dragRoute, m_dragSegment, coord);
     m_dragWire->showPreview(m_dragResult);
+}
+
+void SchematicView::contextMenuEvent(QContextMenuEvent* event)
+{
+    if (std::exchange(m_eatContextMenu, false) || m_drawing || m_placing) {
+        event->accept();
+        return;
+    }
+    const QPoint pos = event->pos();
+    auto [part, pin] = pinAt(pos);
+    if (part && pin && !(part->def() && part->def()->pins.size() == 1 && part->def()->width <= 12)) {
+        emit probeMenuRequested(QString::fromStdString(part->partId() + ":" + pin->name), -1, event->globalPos());
+    } else if (QGraphicsItem* it = selectableAt(pos); it && it->type() == WireItem::Type) {
+        emit probeMenuRequested({}, static_cast<WireItem*>(it)->index(), event->globalPos());
+    } else if (part && pin) {
+        // A junction: probe the wires meeting there through its pin.
+        emit probeMenuRequested(QString::fromStdString(part->partId() + ":" + pin->name), -1, event->globalPos());
+    }
+    event->accept();
 }
 
 void SchematicView::mouseDoubleClickEvent(QMouseEvent* event)

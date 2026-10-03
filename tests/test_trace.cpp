@@ -50,14 +50,14 @@ TEST_CASE("logic analyzer channels record the clock and its inverse", "[trace]")
     t.addLogicAnalyzers(*d.sim);
     REQUIRE(t.hasAnalyzer());
     CHECK(t.defaultFileName() == "my-trace.vcd");
-    REQUIRE(t.signals().size() == 3); // channels = 3
-    CHECK(t.signals()[0].scope == "logic1");
-    CHECK(t.signals()[0].name == "D0");
+    REQUIRE(t.channels().size() == 3); // channels = 3
+    CHECK(t.channels()[0].scope == "logic1");
+    CHECK(t.channels()[0].name == "D0");
 
     d.sim->advance(2'000'000'000); // 2 ms of a 1 kHz clock
     t.collect(*d.sim);
-    const auto& d0 = t.signals()[0].samples;
-    const auto& d1 = t.signals()[1].samples;
+    const auto& d0 = t.channels()[0].samples;
+    const auto& d1 = t.channels()[1].samples;
     REQUIRE(d0.size() == 5); // 0 at t=0, then a change every 0.5 ms
     CHECK(d0[1] == std::pair<Time, V>{500'000'000, V::H});
     CHECK(d0[4] == std::pair<Time, V>{2'000'000'000, V::L});
@@ -65,9 +65,9 @@ TEST_CASE("logic analyzer channels record the clock and its inverse", "[trace]")
         CHECK(d1[i].first == d0[i].first);
         CHECK(d1[i].second == vnot(d0[i].second));
     }
-    CHECK(t.signals()[0].at(600'000'000) == V::H);
-    CHECK(t.signals()[0].at(1'000'000'000) == V::L);
-    CHECK(t.signals()[2].at(1'000'000'000) == V::Z);
+    CHECK(t.channels()[0].at(600'000'000) == V::H);
+    CHECK(t.channels()[0].at(1'000'000'000) == V::L);
+    CHECK(t.channels()[2].at(1'000'000'000) == V::Z);
 }
 
 TEST_CASE("VCD output", "[trace]")
@@ -101,25 +101,25 @@ TEST_CASE("changes within one time step collapse to the final value", "[trace]")
     d.sim->drive(d.net("ttin:IN0"), V::L); // back again in the same time step
     d.sim->settle();
     t.collect(*d.sim);
-    REQUIRE(t.signals()[0].samples.size() == 1);
-    CHECK(t.signals()[0].samples[0].second == start);
+    REQUIRE(t.channels()[0].samples.size() == 1);
+    CHECK(t.channels()[0].samples[0].second == start);
     d.sim->drive(d.net("ttin:IN0"), V::H);
     d.sim->advance(1000);
     t.collect(*d.sim);
-    CHECK(t.signals()[0].samples.size() == 1); // still time 0: merged
+    CHECK(t.channels()[0].samples.size() == 1); // still time 0: merged
     d.sim->advance(1000);
     d.sim->drive(d.net("ttin:IN0"), V::L);
     d.sim->advance(1000);
     t.collect(*d.sim);
-    CHECK(t.signals()[0].samples.size() == 2);
+    CHECK(t.channels()[0].samples.size() == 2);
     // A second signal on the same net records independently.
     t.add(*d.sim, "probes", "again", out0);
     d.sim->advance(1000);
     d.sim->drive(d.net("ttin:IN0"), V::H);
     d.sim->advance(1000);
     t.collect(*d.sim);
-    CHECK(t.signals()[0].samples.size() == 3);
-    CHECK(t.signals()[1].samples.size() == 2);
+    CHECK(t.channels()[0].samples.size() == 3);
+    CHECK(t.channels()[1].samples.size() == 2);
 }
 
 TEST_CASE("truth table rows expand like tt-support-tools", "[truthtable]")

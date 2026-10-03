@@ -43,7 +43,7 @@ public:
     // Drops all samples; each signal restarts at its current value.
     void restart(Simulator& sim);
 
-    const std::vector<TraceSignal>& signals() const { return m_signals; }
+    const std::vector<TraceSignal>& channels() const { return m_signals; }
     // Earliest time still covered by every signal.
     Time start() const;
 

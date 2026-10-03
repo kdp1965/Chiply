@@ -3,8 +3,10 @@
 // Tabs never share any of these; only the clipboard and preferences are global.
 #include "core/Document.h"
 #include "core/WirePath.h"
+#include "sim/Trace.h"
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -121,6 +123,21 @@ public:
     class SimRunner* sim() const { return m_sim; }
     bool simulating() const { return m_sim != nullptr; }
 
+    // ---- traces (PLAN.md 6.4) ----
+    // Probed pins ("flop30:Q"), shown in the Waveforms pane and written to
+    // VCD. Remembered per file in the app settings.
+    const QStringList& probes() const { return m_probes; }
+    bool isProbed(const QString& pinRef) const { return m_probes.contains(pinRef); }
+    void addProbe(const QString& pinRef);
+    void removeProbe(const QString& pinRef);
+    // The current run's recording, kept after Stop until the next run.
+    std::shared_ptr<chiply::sim::Trace> trace() const { return m_trace; }
+    chiply::sim::Time traceEnd() const; // current time while running
+    // Writes the recording as VCD; returns an error message or "".
+    QString writeTraceVcd(const QString& path) const;
+    // Default VCD path: the logic analyzer's file name next to the diagram.
+    QString defaultTracePath() const;
+
     // Applies placements and wire paths without undo (used by commands).
     void applyPlacements(const std::vector<Placement>& ps);
     void applyWirePaths(const std::vector<WireChange>& ws);
@@ -147,6 +164,7 @@ signals:
     void selectionChanged();
     void documentChanged(); // any edit, including undo/redo
     void simulationChanged(); // started, stopped, running state or time
+    void probesChanged();
 
 private:
     void rebuildScene();
@@ -167,6 +185,11 @@ private:
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
     QGraphicsItem* m_ghost = nullptr;
     class SimRunner* m_sim = nullptr;
+    QStringList m_probes;
+    std::shared_ptr<chiply::sim::Trace> m_trace;
+    chiply::sim::Time m_traceEnd = 0;
+    void loadProbes();
+    void saveProbes() const;
     std::string m_simHeldButton;
     bool m_pasteFloating = false;
     QPointF m_pasteAnchor;

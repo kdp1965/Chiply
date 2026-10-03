@@ -26,6 +26,10 @@ SimRunner::SimRunner(EditorSession* s)
 {
     m_nl = std::make_unique<chiply::Netlist>(chiply::Netlist::build(m_doc, chiply::PartLibrary::builtin()));
     m_sim = std::make_unique<chiply::sim::Simulator>(*m_nl);
+    m_trace = std::make_shared<chiply::sim::Trace>();
+    m_trace->addLogicAnalyzers(*m_sim);
+    for (const QString& p : s->probes())
+        addProbe(p);
     m_timer.setInterval(kTickMs);
     connect(&m_timer, &QTimer::timeout, this, &SimRunner::tick);
     PartItem::setPinValueProvider([this](const std::string& part, const std::string& pin) { return valueText(part, pin); });
@@ -136,8 +140,16 @@ QString SimRunner::valueText(const std::string& part, const std::string& pin) co
     return {};
 }
 
+void SimRunner::addProbe(const QString& pinRef)
+{
+    const auto ref = chiply::PinRef::parse(pinRef.toStdString());
+    if (ref)
+        m_trace->add(*m_sim, "probes", pinRef.toStdString(), m_sim->netOf(*ref));
+}
+
 void SimRunner::refresh()
 {
+    m_trace->collect(*m_sim);
     QGraphicsScene* scene = m_s->view()->scene();
     for (QGraphicsItem* it : scene->items()) {
         if (it->type() == WireItem::Type) {

@@ -9,17 +9,23 @@
 #include "core/IdGen.h"
 #include "core/Geometry.h"
 #include "core/JsonFormat.h"
+#include "core/Netlist.h"
 #include "core/WokwiJson.h"
 
 #include <QCursor>
+#include <QMenu>
 #include <QScrollBar>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QSettings>
 #include <QSignalBlocker>
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
 #include <set>
+#include <sstream>
 
 namespace {
 constexpr int kMaxWiresWithHandles = 40;
@@ -123,6 +129,31 @@ EditorSession::EditorSession(QObject* parent)
     connect(m_view, &SchematicView::rotateRequested, this, &EditorSession::rotateSelection);
     connect(m_view, &SchematicView::deleteRequested, this, &EditorSession::deleteSelection);
     connect(m_view, &SchematicView::duplicateRequested, this, &EditorSession::duplicateSelection);
+    connect(m_view, &SchematicView::probeMenuRequested, this, [this](QString ref, int wire, QPoint global) {
+        if (ref.isEmpty() && wire >= 0 && wire < int(m_doc.wires.size())) {
+            // Name the net after its driver (a gate or flop output) if it has one.
+            const chiply::PinRef from = m_doc.wires[size_t(wire)].from;
+            ref = QString::fromStdString(from.str());
+            const chiply::Netlist nl = chiply::Netlist::build(m_doc, chiply::PartLibrary::builtin());
+            const int net = nl.netOf(from);
+            if (net >= 0 && !nl.nets[size_t(net)].name.empty())
+                ref = QString::fromStdString(nl.nets[size_t(net)].name);
+        }
+        if (ref.isEmpty())
+            return;
+        QMenu menu(m_view);
+        QFont f = menu.font();
+        f.setPointSize(std::max(f.pointSize(), 15)); // readable
+        menu.setFont(f);
+        const bool on = isProbed(ref);
+        QAction* a = menu.addAction(on ? tr("Remove Probe %1").arg(ref) : tr("Probe %1").arg(ref));
+        if (menu.exec(global) == a) {
+            if (on)
+                removeProbe(ref);
+            else
+                addProbe(ref);
+        }
+    });
 }
 
 void EditorSession::load(const QString& path)
@@ -135,6 +166,7 @@ void EditorSession::load(const QString& path)
     m_path = path;
     m_undo.clear();
     rebuildScene();
+    loadProbes();
     emit titleChanged();
 }
 
@@ -153,6 +185,7 @@ void EditorSession::save(const QString& path)
     const QString target = path.isEmpty() ? m_path : path;
     chiply::saveWokwiFile(m_doc, target.toStdString());
     m_path = target;
+    saveProbes(); // a Save As keeps the probes under the new name
     m_undo.setClean();
     emit titleChanged();
 }
@@ -707,6 +740,7 @@ void EditorSession::startSimulation()
     cancelPlacing();
     endMove(false);
     m_sim = new SimRunner(this);
+    m_trace = m_sim->trace();
     m_view->setSimMode(true);
     m_mini->hide();
     connect(m_sim, &SimRunner::changed, this, &EditorSession::simulationChanged);
@@ -718,12 +752,99 @@ void EditorSession::stopSimulation()
     if (!m_sim)
         return;
     m_sim->pause();
+    m_traceEnd = m_sim->now();
     m_sim->clearVisuals();
     m_sim->deleteLater();
     m_sim = nullptr;
     m_simHeldButton.clear();
     m_view->setSimMode(false);
     emit simulationChanged();
+}
+
+// ---- traces ----
+
+namespace {
+QString probeKey(const QString& path)
+{
+    return QStringLiteral("probes/") + QString::fromLatin1(QFileInfo(path).absoluteFilePath().toUtf8().toBase64(
+                                           QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+} // namespace
+
+void EditorSession::loadProbes()
+{
+    m_probes.clear();
+    if (!m_path.isEmpty())
+        for (const QString& p : QSettings().value(probeKey(m_path)).toStringList())
+            if (auto ref = chiply::PinRef::parse(p.toStdString()); ref && m_doc.findPart(ref->part))
+                m_probes << p;
+    emit probesChanged();
+}
+
+void EditorSession::saveProbes() const
+{
+    if (m_path.isEmpty())
+        return;
+    if (m_probes.isEmpty())
+        QSettings().remove(probeKey(m_path));
+    else
+        QSettings().setValue(probeKey(m_path), m_probes);
+}
+
+void EditorSession::addProbe(const QString& pinRef)
+{
+    if (m_probes.contains(pinRef) || !chiply::PinRef::parse(pinRef.toStdString()))
+        return;
+    m_probes << pinRef;
+    saveProbes();
+    if (m_sim)
+        m_sim->addProbe(pinRef);
+    emit probesChanged();
+}
+
+void EditorSession::removeProbe(const QString& pinRef)
+{
+    if (!m_probes.removeOne(pinRef))
+        return;
+    saveProbes();
+    if (m_trace) {
+        const auto& sig = m_trace->channels();
+        for (std::size_t i = 0; i < sig.size(); ++i)
+            if (sig[i].scope == "probes" && sig[i].name == pinRef.toStdString()) {
+                m_trace->remove(int(i));
+                break;
+            }
+    }
+    emit probesChanged();
+}
+
+chiply::sim::Time EditorSession::traceEnd() const
+{
+    return m_sim ? m_sim->now() : m_traceEnd;
+}
+
+QString EditorSession::defaultTracePath() const
+{
+    const QString name = m_trace ? QString::fromStdString(m_trace->defaultFileName()) : QStringLiteral("wokwi-logic.vcd");
+    const QString dir = m_path.isEmpty() ? QDir::homePath() : QFileInfo(m_path).absolutePath();
+    return QDir(dir).filePath(name);
+}
+
+QString EditorSession::writeTraceVcd(const QString& path) const
+{
+    if (!m_trace || m_trace->channels().empty())
+        return tr("Nothing has been recorded. Probe a wire or pin, or add a logic analyzer, then run.");
+    if (m_sim)
+        m_sim->collect();
+    std::ostringstream out;
+    m_trace->writeVcd(out, traceEnd());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return tr("Cannot write %1: %2").arg(path, f.errorString());
+    const std::string data = out.str();
+    if (f.write(data.data(), qint64(data.size())) != qint64(data.size()))
+        return tr("Cannot write %1: %2").arg(path, f.errorString());
+    return {};
 }
 
 std::string EditorSession::duplicateInPlace(const std::string& grab)

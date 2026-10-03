@@ -100,8 +100,11 @@ signals:
     void rotateRequested();
     void deleteRequested();
     void duplicateRequested();
+    // Right-click on a pin (pinRef) or a wire (wireIndex): the Probe menu.
+    void probeMenuRequested(QString pinRef, int wireIndex, QPoint globalPos);
 
 protected:
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void wheelEvent(QWheelEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
@@ -148,6 +151,7 @@ private:
     chiply::Point snapped(QPointF scene, Qt::KeyboardModifiers mods) const;
     std::vector<chiply::Point> legTo(chiply::Point target) const; // L-bend from the last point
     bool m_drawing = false;
+    bool m_eatContextMenu = false; // the right press already cancelled something
     QString m_drawFrom;              // "part:PIN"
     QString m_drawColor;
     std::vector<chiply::Point> m_drawPts; // committed points, first = source pin

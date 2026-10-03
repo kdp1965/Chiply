@@ -131,7 +131,7 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
             if (!f)
                 throw std::runtime_error(where + "cannot write " + a);
             trace.writeVcd(f, sim.now());
-            std::cout << "wrote " << a << " (" << trace.signals().size() << " signals)\n";
+            std::cout << "wrote " << a << " (" << trace.channels().size() << " signals)\n";
         } else if (cmd == "print") {
             while (in >> a)
                 std::cout << a << " = " << toChar(sim.value(pin(a))) << "  ";

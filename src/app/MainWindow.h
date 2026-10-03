@@ -62,5 +62,12 @@ private:
     static inline bool s_persistLayout = true;
     class QUndoGroup* m_undoGroup = nullptr;
     class Inspector* m_inspector = nullptr;
+    class WaveformView* m_waveforms = nullptr;
+    class QDockWidget* m_waveDock = nullptr;
+    QAction* m_saveTraceAction = nullptr;
+    QAction* m_gtkwaveAction = nullptr;
+    void saveTrace();
+    void openInGtkWave();
+    void updateTraceActions();
     QLabel* m_zoomLabel = nullptr;
 };

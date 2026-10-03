@@ -8,9 +8,14 @@
 #include "SchematicItems.h"
 #include "SchematicView.h"
 #include "Theme.h"
+#include "WaveformView.h"
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QScrollArea>
+#include <QDir>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QCheckBox>
 #include <QActionGroup>
 #include <QApplication>
@@ -52,6 +57,8 @@ MainWindow::MainWindow(QWidget* parent)
             m_undoGroup->setActiveStack(s->undoStack());
         if (m_inspector)
             m_inspector->setSession(current());
+        if (m_waveforms)
+            m_waveforms->setSession(current());
         updateSimControls();
         updateStatus();
     });
@@ -293,6 +300,33 @@ void MainWindow::buildMenus()
     view->addSeparator();
     view->addAction(historyDock->toggleViewAction());
 
+    // Waveforms (PLAN.md 6.4): logic analyzer channels and probes.
+    m_waveDock = new QDockWidget(tr("Waveforms"), this);
+    m_waveDock->setObjectName("waveforms");
+    auto* waveScroll = new QScrollArea(m_waveDock);
+    waveScroll->setWidgetResizable(true);
+    waveScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    waveScroll->setFrameShape(QFrame::NoFrame);
+    m_waveforms = new WaveformView(waveScroll);
+    waveScroll->setWidget(m_waveforms);
+    m_waveDock->setWidget(waveScroll);
+    addDockWidget(Qt::BottomDockWidgetArea, m_waveDock);
+    m_waveDock->hide();
+    view->addAction(m_waveDock->toggleViewAction());
+    connect(m_waveforms, &WaveformView::saveRequested, this, &MainWindow::saveTrace);
+
+    QMenu* simMenu = menuBar()->addMenu(tr("&Simulation"));
+    simMenu->addAction(m_playAction);
+    simMenu->addAction(m_stepAction);
+    simMenu->addAction(m_stopAction);
+    simMenu->addSeparator();
+    m_saveTraceAction = simMenu->addAction(tr("Save Trace as &VCD..."), this, &MainWindow::saveTrace);
+    m_saveTraceAction->setObjectName("saveTraceAction");
+    m_gtkwaveAction = simMenu->addAction(tr("Open Trace in &GTKWave"), this, &MainWindow::openInGtkWave);
+    m_gtkwaveAction->setObjectName("gtkwaveAction");
+    simMenu->addSeparator();
+    simMenu->addAction(m_waveDock->toggleViewAction());
+
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("&About Chiply"), this, [this] {
         QMessageBox::about(this, tr("About Chiply"),
@@ -323,6 +357,13 @@ int MainWindow::addSession(EditorSession* s)
     connect(s, &EditorSession::simulationChanged, this, [this, s] {
         if (s == current())
             updateSimControls();
+    });
+    connect(s, &EditorSession::probesChanged, this, [this, s] {
+        // A new probe opens the Waveforms pane.
+        if (s == current() && !s->probes().isEmpty() && m_waveDock && !m_waveDock->isVisible())
+            m_waveDock->show();
+        if (s == current())
+            updateTraceActions();
     });
     auto edit = [this] {
         if (m_inspector)
@@ -464,6 +505,9 @@ void MainWindow::playPause()
             return;
         if (!s->sim()->error().isEmpty())
             statusBar()->showMessage(s->sim()->error(), 8000);
+        // A logic analyzer in the design opens the Waveforms pane.
+        if (s->trace() && s->trace()->hasAnalyzer() && m_waveDock && !m_waveDock->isVisible())
+            m_waveDock->show();
     }
     if (s->sim()->running())
         s->sim()->pause();
@@ -471,6 +515,69 @@ void MainWindow::playPause()
         s->sim()->play();
     s->view()->setFocus();
     updateSimControls();
+}
+
+namespace {
+QString findGtkWave()
+{
+    QString exe = QStandardPaths::findExecutable(QStringLiteral("gtkwave"));
+    if (exe.isEmpty())
+        exe = QStandardPaths::findExecutable(QStringLiteral("gtkwave"),
+                                             {QStringLiteral("/opt/homebrew/bin"), QStringLiteral("/usr/local/bin"),
+                                              QStringLiteral("/opt/local/bin")});
+#ifdef Q_OS_MACOS
+    if (exe.isEmpty() && QFileInfo::exists(QStringLiteral("/Applications/gtkwave.app")))
+        exe = QStringLiteral("/Applications/gtkwave.app");
+#endif
+    return exe;
+}
+} // namespace
+
+void MainWindow::updateTraceActions()
+{
+    EditorSession* s = current();
+    const bool has = s && s->trace() && !s->trace()->channels().empty();
+    if (m_saveTraceAction)
+        m_saveTraceAction->setEnabled(has);
+    if (m_gtkwaveAction) {
+        static const QString gtk = findGtkWave();
+        m_gtkwaveAction->setVisible(!gtk.isEmpty());
+        m_gtkwaveAction->setEnabled(has);
+    }
+}
+
+void MainWindow::saveTrace()
+{
+    EditorSession* s = current();
+    if (!s)
+        return;
+    const QString path = QFileDialog::getSaveFileName(this, tr("Save Trace"), s->defaultTracePath(),
+                                                      tr("Value change dump (*.vcd)"));
+    if (path.isEmpty())
+        return;
+    const QString err = s->writeTraceVcd(path);
+    if (!err.isEmpty())
+        QMessageBox::warning(this, tr("Save Trace"), err);
+    else
+        statusBar()->showMessage(tr("Saved trace %1").arg(path), 5000);
+}
+
+void MainWindow::openInGtkWave()
+{
+    EditorSession* s = current();
+    const QString gtk = findGtkWave();
+    if (!s || gtk.isEmpty())
+        return;
+    const QString path = QDir(QDir::tempPath()).filePath(QFileInfo(s->defaultTracePath()).fileName());
+    const QString err = s->writeTraceVcd(path);
+    if (!err.isEmpty()) {
+        QMessageBox::warning(this, tr("Open in GTKWave"), err);
+        return;
+    }
+    const bool ok = gtk.endsWith(QStringLiteral(".app"))
+        ? QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-a"), gtk, path})
+        : QProcess::startDetached(gtk, {path});
+    statusBar()->showMessage(ok ? tr("Opened %1 in GTKWave").arg(path) : tr("Could not start %1").arg(gtk), 5000);
 }
 
 void MainWindow::updateSimControls()
@@ -498,6 +605,9 @@ void MainWindow::updateSimControls()
         m_addPartAction->setEnabled(!active);
     if (m_undoGroup)
         m_undoGroup->setActiveStack(active ? nullptr : (s ? s->undoStack() : nullptr));
+    updateTraceActions();
+    if (m_waveforms)
+        m_waveforms->update();
     updateStatus();
 }
 

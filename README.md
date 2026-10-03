@@ -18,8 +18,8 @@ Status: early development. The design and milestones are in
 | M4 Part editing: move, nudge, rotate, delete, duplicate, add parts, Inspector, rename, undo | done |
 | M5 Wire editing: draw from pins, segment/corner/end handles, split, colors, delete | done |
 | M6 Copy/paste across tabs with id renumbering, Alt+drag duplicate | done |
-| M7 Built-in event-driven simulator (staged M7a-e), no external tools | next |
-| M8 Netlist DRC with Violations pane, Verilog export | planned |
+| M7 Built-in event-driven simulator, board parts, live UI, waveforms, VCD, truth tables | done |
+| M8 Netlist DRC with Violations pane, Verilog export | next |
 
 ## Building
 
@@ -64,6 +64,10 @@ GitHub Actions CI (Linux and macOS) runs only on request: Actions tab, CI,
 chiply-cli info diagram.json             # parts and wires summary
 chiply-cli format diagram.json out.json  # load and save
 chiply-cli check-roundtrip diagram.json  # verify byte-exact round trip
+chiply-cli netlist diagram.json          # connectivity summary
+chiply-cli sim diagram.json script.sim   # scripted stimulus and checks (see --help)
+chiply-cli truthtable diagram.json truthtable.md [--vcd out.vcd]
+                                         # Tiny Tapeout truth table on the chip
 ```
 
 ## License

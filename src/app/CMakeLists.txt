@@ -13,6 +13,7 @@ qt_add_library(chiply_ui STATIC
   Inspector.cpp Inspector.h
   MiniToolbar.cpp MiniToolbar.h
   SimRunner.cpp SimRunner.h
+  WaveformView.cpp WaveformView.h
 )
 target_include_directories(chiply_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chiply_ui PUBLIC chiply_core chiply_sim Qt6::Widgets)

@@ -4,6 +4,7 @@
 #include "core/Document.h"
 #include "core/Netlist.h"
 #include "sim/Simulator.h"
+#include "sim/Trace.h"
 
 #include <QElapsedTimer>
 #include <QObject>
@@ -43,6 +44,11 @@ public:
     QString error() const { return QString::fromStdString(m_sim->lastError()); }
     chiply::sim::Simulator& simulator() { return *m_sim; }
 
+    // Recording (PLAN.md 6.4): logic analyzers and the session's probes.
+    std::shared_ptr<chiply::sim::Trace> trace() const { return m_trace; }
+    void addProbe(const QString& pinRef);
+    void collect() { m_trace->collect(*m_sim); }
+
     // Pushes current values to wires and parts.
     void refresh();
     // Restores the scene to edit-mode drawing.
@@ -58,6 +64,7 @@ private:
     chiply::Document m_doc;
     std::unique_ptr<chiply::Netlist> m_nl;
     std::unique_ptr<chiply::sim::Simulator> m_sim;
+    std::shared_ptr<chiply::sim::Trace> m_trace;
     QTimer m_timer;
     QElapsedTimer m_wall;
     double m_simPerWall = 1.0; // pacing: 1 = real time

@@ -1,6 +1,7 @@
 // Simulation mode in the real window, on the Tiny Tapeout template.
 #include "EditorSession.h"
 #include "MainWindow.h"
+#include "WaveformView.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
 #include "SimRunner.h"
@@ -11,6 +12,9 @@
 #include <QTabWidget>
 #include <QTest>
 #include <QCheckBox>
+#include <QDir>
+#include <QDockWidget>
+#include <QFile>
 #include <QSettings>
 #include <QToolBar>
 
@@ -209,6 +213,65 @@ private slots:
         QVERIFY(ones > 0 && zeros > 0); // random start: both kinds show
         action("stopAction")->trigger();
         QVERIFY(!part("flop238")->simActive());
+    }
+
+    void probesRecordIntoTheWaveformPane()
+    {
+        // Back to the template tab: probe the first inverter's output.
+        auto* tabs = w->findChild<QTabWidget*>();
+        tabs->setCurrentIndex(0);
+        v = qobject_cast<SchematicView*>(tabs->currentWidget());
+        s = qobject_cast<EditorSession*>(v->property("session").value<QObject*>());
+        QVERIFY(!s->simulating());
+        auto* dock = w->findChild<QDockWidget*>("waveforms");
+        QVERIFY(dock && !dock->isVisible());
+        s->addProbe("not1:OUT");
+        QVERIFY(dock->isVisible()); // a probe opens the pane
+        QVERIFY(s->isProbed("not1:OUT"));
+        // Remembered for this file.
+        s->load(QStringLiteral(CHIPLY_REFERENCE_DIR "/tt_template_354858054593504257.diagram.json"));
+        QCOMPARE(s->probes(), QStringList{"not1:OUT"});
+
+        action("playAction")->trigger();
+        action("playAction")->trigger(); // paused
+        QVERIFY(s->trace());
+        QCOMPARE(int(s->trace()->channels().size()), 1);
+        PartItem* dip = part("sw1");
+        action("stepAction")->trigger(); // off time 0, so the change is not merged with the start
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(dip, QPointF(8.1, 28))); // IN0 on
+        action("stepAction")->trigger();
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(dip, QPointF(8.1, 28))); // and off
+        action("stepAction")->trigger();
+        const auto& sm = s->trace()->channels()[0].samples;
+        QCOMPARE(int(sm.size()), 3); // 1, 0, 1
+        QCOMPARE(sm[1].second, V::L);
+        QCOMPARE(sm[2].second, V::H);
+        auto* wf = w->findChild<WaveformView*>();
+        QVERIFY(wf && wf->session() == s);
+        QCOMPARE(wf->rowAt(wf->rowHeight() + 3), 0);
+        QVERIFY(w->findChild<QAction*>("saveTraceAction")->isEnabled());
+
+        // Probing while running records from then on.
+        s->addProbe("ttin:IN1");
+        QCOMPARE(int(s->trace()->channels().size()), 2);
+
+        // Stop keeps the recording; VCD out.
+        action("stopAction")->trigger();
+        QVERIFY(s->trace() && s->trace()->channels().size() == 2);
+        const QString vcd = QDir(QDir::tempPath()).filePath("chiply_gui_test.vcd");
+        QCOMPARE(s->writeTraceVcd(vcd), QString());
+        QFile f(vcd);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QByteArray text = f.readAll();
+        QVERIFY(text.contains("$var wire 1 ! not1_OUT $end"));
+        QVERIFY(text.contains("$var wire 1 \" ttin_IN1 $end"));
+        f.remove();
+
+        s->removeProbe("not1:OUT");
+        QCOMPARE(int(s->trace()->channels().size()), 1);
+        s->removeProbe("ttin:IN1");
+        s->load(QStringLiteral(CHIPLY_REFERENCE_DIR "/tt_template_354858054593504257.diagram.json"));
+        QVERIFY(s->probes().isEmpty());
         QSettings().clear();
     }
 };
