@@ -159,6 +159,7 @@ private:
     std::vector<chiply::Point> legTo(chiply::Point target) const; // L-bend from the last point
     bool m_drawing = false;
     bool m_eatContextMenu = false;
+    bool m_endMoved = false; // an end-handle press became a drag
     bool m_hlActive = false;
     QRectF m_hlBox;
     std::vector<QPointF> m_hlPins;

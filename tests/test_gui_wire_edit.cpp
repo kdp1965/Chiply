@@ -213,6 +213,41 @@ private slots:
         QCOMPARE(docRoute(), before);
     }
 
+    void clickOnEndHandleStartsANewWire()
+    {
+        // Select the wire, then click (no drag) its target end at flop238:D:
+        // the wire is deselected and a new wire starts from flop238:D.
+        v->clearSelection();
+        Point a = *pinPosition(s->document(), PartLibrary::builtin(), s->document().wires[size_t(idx)].from);
+        v->centerOn(QPointF(a.x, a.y));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(a.x + 12, a.y)));
+        QVERIFY(item()->isSelected());
+        const std::vector<Point> before = docRoute();
+        const Point d = before.back();
+        v->centerOn(QPointF(d.x, d.y));
+        const std::size_t wireCount = s->document().wires.size();
+        const int steps = s->undoStack()->index();
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(d.x, d.y)));
+        QTest::mouseMove(v->viewport(), v->mapFromScene(QPointF(d.x + 1, d.y + 1))); // a jitter, not a drag
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(d.x + 1, d.y + 1)));
+        QVERIFY(!item()->isSelected());
+        QVERIFY(v->drawingWire());
+        QCOMPARE(s->undoStack()->index(), steps); // nothing moved
+        QCOMPARE(docRoute(), before);
+        // Finish on flop238:CLK: a second wire from flop238:D.
+        const Point clk = *pinPosition(s->document(), PartLibrary::builtin(), *PinRef::parse("flop238:CLK"));
+        QTest::mouseMove(v->viewport(), v->mapFromScene(QPointF(clk.x, clk.y)));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(QPointF(clk.x, clk.y)));
+        QVERIFY(!v->drawingWire());
+        QCOMPARE(s->document().wires.size(), wireCount + 1);
+        const Wire& nw = s->document().wires.back();
+        QCOMPARE(nw.from.str(), std::string("flop238:D"));
+        QCOMPARE(nw.to.str(), std::string("flop238:CLK"));
+        QCOMPARE(s->document().wires[size_t(idx)].to.str(), std::string("flop238:D")); // the first wire is untouched
+        s->undoStack()->undo();
+        QCOMPARE(s->document().wires.size(), wireCount);
+    }
+
     void handlesStayOnScreenWhenZoomed()
     {
         v->clearSelection();

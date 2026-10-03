@@ -396,6 +396,7 @@ void SchematicView::mousePressEvent(QMouseEvent* event)
                 m_dragRoute = chiply::simplifyPolyline(m_dragWire->route());
                 m_dragResult = m_dragRoute;
                 m_press = Press::End;
+                m_endMoved = false;
                 m_pressPos = pos;
                 viewport()->setCursor(Qt::CrossCursor);
                 event->accept();
@@ -567,6 +568,12 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
         return;
     }
     if (m_press == Press::End && m_dragWire) {
+        // A click without a drag starts a new wire instead (on release).
+        if (!m_endMoved && (pos - m_pressPos).manhattanLength() <= 4) {
+            event->accept();
+            return;
+        }
+        m_endMoved = true;
         auto [part, pin] = pinAt(pos);
         chiply::Point q;
         if (part && pin) {
@@ -684,6 +691,23 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         viewport()->setCursor(Qt::ArrowCursor);
         WireItem* w = m_dragWire;
         m_dragWire = nullptr;
+        if (w && !m_endMoved) {
+            // Click on an end handle without dragging: deselect the wire and
+            // start a new wire from the pin at that end (e.g. a second
+            // connection right after making the first).
+            const std::vector<chiply::Point>& route = w->route();
+            const chiply::Point endPt = m_dragAtStart ? route.front() : route.back();
+            auto [endPart, endPin] = pinAt(mapFromScene(QPointF(endPt.x, endPt.y)));
+            clearSelection();
+            if (endPart && endPin) {
+                startWire(endPart, endPin);
+                m_pressPos = pos;
+                m_drawPressMoved = false;
+                updateWirePreview(pos, event->modifiers());
+            }
+            event->accept();
+            return;
+        }
         auto [part, pin] = pinAt(pos);
         if (w && part && pin) {
             const QString ref = QString::fromStdString(part->partId() + ":" + pin->name);
