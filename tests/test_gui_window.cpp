@@ -121,7 +121,9 @@ private slots:
         QVERIFY(!s->isModified());
         QCOMPARE(s->displayName(), QStringLiteral("Untitled"));
         QVERIFY(s->document().findPart("ttin") && s->document().findPart("ttout") && s->document().findPart("sw1"));
-        QCOMPARE(s->document().parts.size(), std::size_t(22)); // as in the Wokwi template
+        for (int b = 0; b < 8; ++b) // template.json adds the bidirectional I/O blocks
+            QVERIFY(s->document().findPart("ttio" + std::to_string(b)));
+        QCOMPARE(s->document().parts.size(), std::size_t(34));
         QCOMPARE(s->document().author(), std::string());
         QVERIFY(s->violations().empty()); // the template is DRC clean
         // A second one opens in its own tab.
