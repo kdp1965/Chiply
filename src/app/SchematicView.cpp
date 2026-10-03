@@ -512,7 +512,7 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
         }
         m_press = Press::Moving;
         viewport()->setCursor(Qt::SizeAllCursor);
-        emit moveStarted(QString::fromStdString(itemPartId(m_pressItem)));
+        emit moveStarted(QString::fromStdString(itemPartId(m_pressItem)), m_lastMods & Qt::AltModifier);
     }
     if (m_press == Press::Moving) {
         const QPointF d = mapToScene(pos) - mapToScene(m_pressPos);

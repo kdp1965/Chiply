@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -92,4 +93,44 @@ TEST_CASE("remove and restore puts everything back exactly")
     CHECK(r.wires.size() >= 2);
     restoreItems(d, r);
     CHECK(saveWokwi(d) == before);
+}
+
+TEST_CASE("clipboard text round-trips a fragment")
+{
+    Document d = ref();
+    Fragment f = extractFragment(d, {"flop238", "flop239", "xor15"});
+    const std::string text = fragmentToText(f);
+    CHECK(text.find("\"parts\"") != std::string::npos);
+    CHECK(text.find("\"connections\"") != std::string::npos);
+    auto back = fragmentFromText(text);
+    REQUIRE(back);
+    CHECK(back->parts.size() == f.parts.size());
+    CHECK(back->wires.size() == f.wires.size());
+    CHECK(fragmentToText(*back) == text);
+}
+
+TEST_CASE("a whole diagram.json pastes as a fragment; junk does not")
+{
+    std::ifstream in(std::string(CHIPLY_REFERENCE_DIR) + "/tt_template_354858054593504257.diagram.json");
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    auto f = fragmentFromText(ss.str());
+    REQUIRE(f);
+    CHECK(f->parts.size() == 22);
+    CHECK_FALSE(fragmentFromText("hello"));
+    CHECK_FALSE(fragmentFromText("{\"parts\": []}"));
+}
+
+TEST_CASE("pasting into another document renumbers against it")
+{
+    Document src = ref();
+    Fragment f = extractFragment(src, {"flop238", "flop239", "state_reg_2"});
+    std::ifstream in(std::string(CHIPLY_REFERENCE_DIR) + "/tt_template_354858054593504257.diagram.json");
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    Document dst = loadWokwi(ss.str()).doc;
+    auto ids = insertFragment(dst, *fragmentFromText(fragmentToText(f)), 0, 0);
+    // The template has no flops: auto ids restart at flop1; custom names kept.
+    CHECK(std::count(ids.begin(), ids.end(), "flop1") == 1);
+    CHECK(std::count(ids.begin(), ids.end(), "state_reg_2") == 1);
 }

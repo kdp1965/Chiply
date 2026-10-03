@@ -24,6 +24,8 @@
 #include <QToolBar>
 #include <QDockWidget>
 #include <QUndoView>
+#include <QClipboard>
+#include <QCursor>
 #include <QTimer>
 #include <QSettings>
 #include <QGraphicsScene>
@@ -112,6 +114,26 @@ void MainWindow::buildMenus()
     redo->setShortcuts({QKeySequence::Redo, QKeySequence(Qt::CTRL | Qt::Key_Y)});
     edit->addAction(undo);
     edit->addAction(redo);
+    edit->addSeparator();
+    edit->addAction(tr("Cu&t"), QKeySequence::Cut, this, [this] {
+        if (auto* s = current()) {
+            const QString t = s->copySelection();
+            if (!t.isEmpty()) {
+                QApplication::clipboard()->setText(t);
+                s->cutSelection();
+            }
+        }
+    });
+    edit->addAction(tr("&Copy"), QKeySequence::Copy, this, [this] {
+        if (auto* s = current()) {
+            const QString t = s->copySelection();
+            if (!t.isEmpty()) {
+                QApplication::clipboard()->setText(t);
+                statusBar()->showMessage(tr("Copied %n part(s)", nullptr, int(s->selectedPartIds().size())), 3000);
+            }
+        }
+    });
+    edit->addAction(tr("&Paste"), QKeySequence::Paste, this, &MainWindow::paste);
     edit->addSeparator();
     edit->addAction(tr("Add &Part...  (A)"), this, &MainWindow::addPart);
     edit->addAction(tr("&Rotate  (R)"), this, [this] { if (auto* s = current()) s->rotateSelection(); });
@@ -250,6 +272,43 @@ void MainWindow::addPart()
     if (dlg.exec() == QDialog::Accepted)
         s->startPlacing(dlg.chosenType().toStdString());
     s->view()->setFocus();
+}
+
+void MainWindow::paste()
+{
+    EditorSession* s = current();
+    if (!s)
+        return;
+    const QString text = QApplication::clipboard()->text();
+    bool skip = false;
+    const QStringList blocks = s->existingTtBlocksIn(text);
+    if (!blocks.isEmpty()) {
+        auto r = QMessageBox::question(
+            this, tr("Paste"),
+            tr("The pasted parts include Tiny Tapeout I/O blocks that this design already has (%1).\n\n"
+               "Skip them and the wires connected to them?").arg(blocks.join(", ")),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
+        if (r == QMessageBox::Cancel)
+            return;
+        skip = r == QMessageBox::Yes;
+    }
+    SchematicView* v = s->view();
+    const QPoint cur = v->viewport()->mapFromGlobal(QCursor::pos());
+    const QPointF anchor = v->mapToScene(v->viewport()->rect().contains(cur) ? cur : v->viewport()->rect().center());
+    const EditorSession::PasteReport rep = s->paste(text, anchor, skip);
+    if (!rep.error.isEmpty()) {
+        statusBar()->showMessage(rep.error, 5000);
+        return;
+    }
+    QString msg = tr("Pasted %n part(s)", nullptr, rep.parts);
+    if (rep.renamed)
+        msg += tr(", %n renamed", nullptr, rep.renamed);
+    if (rep.skippedBlocks)
+        msg += tr(", %n I/O block(s) skipped", nullptr, rep.skippedBlocks);
+    if (rep.droppedWires)
+        msg += tr(", %n wire(s) dropped", nullptr, rep.droppedWires);
+    statusBar()->showMessage(msg + tr(" - click to drop, Esc to cancel"), 8000);
+    v->setFocus();
 }
 
 void MainWindow::newFile()

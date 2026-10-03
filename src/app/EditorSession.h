@@ -81,6 +81,29 @@ public:
     // VCC red, otherwise green).
     std::string defaultWireColor(const chiply::PinRef& from) const;
 
+    // ---- clipboard (PLAN.md 4.7) ----
+    // Selected parts plus the wires between them, as Wokwi JSON text; empty
+    // if nothing is selected.
+    QString copySelection() const;
+    void cutSelection(); // copy is done by the caller; this deletes
+    struct PasteReport {
+        int parts = 0;
+        int renamed = 0;       // ids that changed
+        int droppedWires = 0;  // wires to parts not in the fragment / skipped
+        int skippedBlocks = 0; // Tiny Tapeout I/O blocks left out
+        QString error;
+    };
+    // Tiny Tapeout I/O block types in `text` that this document already has.
+    QStringList existingTtBlocksIn(const QString& text) const;
+    // Pastes with the fragment's top-left at `anchor` (snapped); the pasted
+    // parts are selected and follow the cursor until a click drops them
+    // (Esc cancels). One undo step.
+    PasteReport paste(const QString& text, QPointF anchor, bool skipExistingTtBlocks);
+    bool pasteFloating() const { return m_pasteFloating; }
+    // Copies the selection in place and selects the copy; returns the copy
+    // of `grab` (Alt/Option+drag).
+    std::string duplicateInPlace(const std::string& grab);
+
     // Adding parts: a translucent preview follows the cursor until placed.
     void startPlacing(const std::string& type);
     void placingMoved(QPointF scenePos);
@@ -136,6 +159,11 @@ private:
     std::map<std::string, QGraphicsItem*> m_partItems;            // id -> PartItem/TextItem
     std::map<std::string, std::vector<class WireItem*>> m_wiresOf; // id -> attached wires
     QGraphicsItem* m_ghost = nullptr;
+    bool m_pasteFloating = false;
+    QPointF m_pasteAnchor;
+    class DocumentCommand* m_pasteCmd = nullptr;
+    const QUndoCommand* m_pasteCmdBase = nullptr; // same object, for comparisons
+    void finishPaste(bool keep);
     class MiniToolbar* m_mini = nullptr;
     std::string m_placeType;
     std::vector<Placement> m_moveStart;

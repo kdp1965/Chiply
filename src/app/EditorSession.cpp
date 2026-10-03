@@ -29,6 +29,17 @@ EditorSession::EditorSession(QObject* parent)
     m_scene.setItemIndexMethod(QGraphicsScene::BspTreeIndex);
     m_view = new SchematicView(&m_scene);
     connect(&m_undo, &QUndoStack::cleanChanged, this, &EditorSession::titleChanged);
+    // Undo/redo while pasted parts float: the paste is gone, stop floating.
+    connect(&m_undo, &QUndoStack::indexChanged, this, [this] {
+        if (m_pasteFloating && m_undo.command(m_undo.index() - 1) != m_pasteCmdBase) {
+            m_pasteFloating = false;
+            m_pasteCmd = nullptr;
+            m_moveStart.clear();
+            m_moveWireStart.clear();
+            m_moveGrab.clear();
+            m_view->setPlacing(false);
+        }
+    });
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
     connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
@@ -45,8 +56,11 @@ EditorSession::EditorSession(QObject* parent)
     connect(m_view->horizontalScrollBar(), &QScrollBar::valueChanged, m_mini, reposition);
     connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, m_mini, reposition);
     connect(m_view, &SchematicView::moveEnded, m_mini, reposition);
-    connect(m_view, &SchematicView::moveStarted, this, [this](const QString& grab) {
-        setMoveGrab(grab.toStdString());
+    connect(m_view, &SchematicView::moveStarted, this, [this](const QString& grab, bool duplicate) {
+        std::string g = grab.toStdString();
+        if (duplicate)
+            g = duplicateInPlace(g); // Alt/Option+drag: drag a copy
+        setMoveGrab(g);
         beginMove();
         m_mini->hide();
     });
@@ -253,13 +267,24 @@ public:
     {
     }
     void undo() override { m_s->replaceDocument(m_before, m_selBefore, m_wBefore); }
-    void redo() override { m_s->replaceDocument(m_after, m_selAfter, m_wAfter); }
+    void redo() override
+    {
+        if (m_skipFirstRedo) { // the document already is m_after
+            m_skipFirstRedo = false;
+            return;
+        }
+        m_s->replaceDocument(m_after, m_selAfter, m_wAfter);
+    }
+    // Paste drops: the floating parts were moved after the push.
+    void setAfter(const chiply::Document& after) { m_after = after; }
+    void skipFirstRedo() { m_skipFirstRedo = true; }
 
 private:
     EditorSession* m_s;
     chiply::Document m_before, m_after;
     std::vector<std::string> m_selBefore, m_selAfter;
     std::vector<int> m_wBefore, m_wAfter;
+    bool m_skipFirstRedo = false;
 };
 
 EditorSession::Placement EditorSession::placementOf(const std::string& id) const
@@ -618,6 +643,138 @@ void EditorSession::reanchorWire(int wireIndex, bool atStart, const chiply::PinR
                                     after, selectedPartIds(), {}, selectedWireIndices(), {wireIndex}));
 }
 
+std::string EditorSession::duplicateInPlace(const std::string& grab)
+{
+    const std::vector<std::string> ids = selectedPartIds();
+    chiply::Document after = m_doc;
+    chiply::Fragment f = chiply::extractFragment(after, std::set<std::string>(ids.begin(), ids.end()));
+    const std::vector<std::string> newIds = chiply::insertFragment(after, f, 0, 0);
+    std::string g = grab;
+    for (std::size_t i = 0; i < f.parts.size(); ++i)
+        if (f.parts[i].id == grab)
+            g = newIds[i];
+    m_undo.push(new DocumentCommand(this, tr("Duplicate"), m_doc, after, ids, newIds));
+    return g;
+}
+
+QString EditorSession::copySelection() const
+{
+    const std::vector<std::string> ids = selectedPartIds();
+    if (ids.empty())
+        return {};
+    const chiply::Fragment f = chiply::extractFragment(m_doc, std::set<std::string>(ids.begin(), ids.end()));
+    return QString::fromStdString(chiply::fragmentToText(f));
+}
+
+void EditorSession::cutSelection()
+{
+    deleteSelection();
+}
+
+QStringList EditorSession::existingTtBlocksIn(const QString& text) const
+{
+    QStringList out;
+    auto f = chiply::fragmentFromText(text.toStdString());
+    if (!f)
+        return out;
+    for (const chiply::Part& p : f->parts) {
+        if (p.type.rfind("board-tt-block", 0) != 0 || out.contains(QString::fromStdString(p.type)))
+            continue;
+        for (const chiply::Part& q : m_doc.parts)
+            if (q.type == p.type) {
+                out << QString::fromStdString(p.type);
+                break;
+            }
+    }
+    return out;
+}
+
+EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anchor, bool skipExistingTtBlocks)
+{
+    PasteReport rep;
+    finishPaste(true);
+    endMove(true);
+    auto parsed = chiply::fragmentFromText(text.toStdString());
+    if (!parsed) {
+        rep.error = tr("The clipboard does not contain Wokwi parts.");
+        return rep;
+    }
+    chiply::Fragment f = std::move(*parsed);
+    if (skipExistingTtBlocks) {
+        const QStringList skip = existingTtBlocksIn(text);
+        std::set<std::string> gone;
+        std::vector<chiply::Part> keep;
+        for (chiply::Part& p : f.parts) {
+            if (skip.contains(QString::fromStdString(p.type)))
+                gone.insert(p.id);
+            else
+                keep.push_back(std::move(p));
+        }
+        rep.skippedBlocks = int(gone.size());
+        f.parts = std::move(keep);
+        std::vector<chiply::Wire> wires;
+        for (chiply::Wire& w : f.wires) {
+            if (gone.count(w.from.part) || gone.count(w.to.part))
+                ++rep.droppedWires;
+            else
+                wires.push_back(std::move(w));
+        }
+        f.wires = std::move(wires);
+    }
+    if (f.parts.empty()) {
+        rep.error = tr("Nothing left to paste.");
+        return rep;
+    }
+    // Fragment's top-left goes to the (snapped) anchor.
+    const chiply::Point o = chiply::fragmentOrigin(f);
+    const double g = SchematicView::kGrid;
+    const double dx = chiply::round2(std::round(anchor.x() / g) * g - o.x);
+    const double dy = chiply::round2(std::round(anchor.y() / g) * g - o.y);
+    chiply::Document after = m_doc;
+    int dropped = 0;
+    const std::vector<std::string> newIds = chiply::insertFragment(after, f, dx, dy, &dropped);
+    rep.droppedWires += dropped;
+    rep.parts = int(newIds.size());
+    for (std::size_t i = 0; i < newIds.size(); ++i)
+        rep.renamed += newIds[i] != f.parts[i].id;
+
+    auto* cmd = new DocumentCommand(this, tr("Paste %n part(s)", nullptr, rep.parts), m_doc, after,
+                                    selectedPartIds(), newIds, selectedWireIndices(), {});
+    m_undo.push(cmd);
+    // Float the pasted parts with the cursor until a click drops them.
+    m_pasteCmd = cmd;
+    m_pasteCmdBase = cmd;
+    m_pasteFloating = true;
+    m_pasteAnchor = anchor;
+    setMoveGrab(newIds.front());
+    beginMove();
+    m_view->setPlacing(true);
+    return rep;
+}
+
+void EditorSession::finishPaste(bool keep)
+{
+    if (!m_pasteFloating)
+        return;
+    m_pasteFloating = false;
+    m_view->setPlacing(false);
+    if (!keep) {
+        m_moveStart.clear();
+        m_moveWireStart.clear();
+        m_pasteCmd = nullptr;
+        m_undo.undo(); // removes the pasted parts
+        return;
+    }
+    // Fold the drop position into the paste command: one undo step.
+    m_moveStart.clear();
+    m_moveWireStart.clear();
+    m_moveGrab.clear();
+    if (m_pasteCmd && m_undo.command(m_undo.index() - 1) == m_pasteCmd)
+        m_pasteCmd->setAfter(m_doc);
+    m_pasteCmd = nullptr;
+    emit documentChanged();
+}
+
 std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const
 {
     if (const chiply::Part* p = m_doc.findPart(from.part))
@@ -668,6 +825,11 @@ void EditorSession::startPlacing(const std::string& type)
 
 void EditorSession::placingMoved(QPointF scenePos)
 {
+    if (m_pasteFloating) {
+        setSnapMode(SchematicView::kGrid);
+        previewMove(scenePos.x() - m_pasteAnchor.x(), scenePos.y() - m_pasteAnchor.y());
+        return;
+    }
     if (!m_ghost)
         return;
     chiply::Part p;
@@ -677,6 +839,11 @@ void EditorSession::placingMoved(QPointF scenePos)
 
 void EditorSession::placeAt(QPointF scenePos)
 {
+    if (m_pasteFloating) {
+        placingMoved(scenePos);
+        finishPaste(true);
+        return;
+    }
     if (!m_ghost)
         return;
     chiply::Part p = newPart(m_placeType, m_doc);
@@ -692,6 +859,10 @@ void EditorSession::placeAt(QPointF scenePos)
 
 void EditorSession::cancelPlacing()
 {
+    if (m_pasteFloating) {
+        finishPaste(false);
+        return;
+    }
     if (m_ghost) {
         m_scene.removeItem(m_ghost);
         delete m_ghost;

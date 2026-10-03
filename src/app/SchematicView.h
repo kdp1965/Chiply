@@ -72,7 +72,7 @@ signals:
     // A wire segment drag finished with a new route (index into doc.wires).
     void wireRouteEdited(int wireIndex, std::vector<chiply::Point> route);
     // Dragging selected parts. `grid` is the snap step (0 = none).
-    void moveStarted(QString grabbedPartId);
+    void moveStarted(QString grabbedPartId, bool duplicate); // duplicate: Alt/Option held at press
     void moveUpdated(QPointF sceneDelta, double grid);
     void moveEnded(bool commit);
     // Placing a new part.

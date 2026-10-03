@@ -1,6 +1,8 @@
 #include "core/Edit.h"
 
 #include "core/IdGen.h"
+#include "core/JsonFormat.h"
+#include "core/WokwiJson.h"
 
 #include <algorithm>
 
@@ -121,6 +123,44 @@ void removeLast(Document& doc, std::size_t parts, std::size_t wires)
 {
     doc.parts.resize(doc.parts.size() - std::min(parts, doc.parts.size()));
     doc.wires.resize(doc.wires.size() - std::min(wires, doc.wires.size()));
+}
+
+std::string fragmentToText(const Fragment& f)
+{
+    Json root = Json::object();
+    Json parts = Json::array();
+    for (const Part& p : f.parts)
+        parts.push_back(partToJson(p));
+    Json conns = Json::array();
+    for (const Wire& w : f.wires)
+        conns.push_back(wireToJson(w));
+    root["parts"] = std::move(parts);
+    root["connections"] = std::move(conns);
+    return prettyPrint(root) + "\n";
+}
+
+std::optional<Fragment> fragmentFromText(const std::string& text)
+{
+    try {
+        LoadResult r = loadWokwi(text);
+        if (r.doc.parts.empty())
+            return std::nullopt;
+        return Fragment{std::move(r.doc.parts), std::move(r.doc.wires)};
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+Point fragmentOrigin(const Fragment& f)
+{
+    if (f.parts.empty())
+        return {};
+    Point o{f.parts.front().left, f.parts.front().top};
+    for (const Part& p : f.parts) {
+        o.x = std::min(o.x, p.left);
+        o.y = std::min(o.y, p.top);
+    }
+    return o;
 }
 
 } // namespace chiply

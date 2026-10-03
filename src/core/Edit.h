@@ -2,6 +2,9 @@
 // Structural edits on a Document, shared by the editor's undo commands, the
 // clipboard and the CLI. Each edit returns what is needed to undo it.
 #include "core/Document.h"
+#include "core/WirePath.h"
+
+#include <optional>
 
 #include <map>
 #include <set>
@@ -28,6 +31,16 @@ struct Fragment {
     std::vector<Wire> wires;
 };
 Fragment extractFragment(const Document& doc, const std::set<std::string>& partIds);
+
+// Clipboard text: a Wokwi-format JSON object {"parts": [...],
+// "connections": [...]}, formatted like diagram.json.
+std::string fragmentToText(const Fragment& f);
+// Accepts a fragment or a whole diagram.json; nullopt if the text is not
+// one (or has no parts).
+std::optional<Fragment> fragmentFromText(const std::string& text);
+
+// Top-left of the parts' unrotated positions (min left, min top).
+Point fragmentOrigin(const Fragment& f);
 
 // Adds a fragment, renumbering ids and offsetting positions by (dx, dy).
 // Returns the new part ids (fragment order). Wires that reference a part not
