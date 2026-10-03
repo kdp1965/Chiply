@@ -39,12 +39,15 @@ private:
     // warnings ask. True to go ahead.
     bool exportPreflight(EditorSession* s, const QString& what);
     void exportVerilog();
+    // Adds a tab, replacing the initial empty, unmodified Untitled one.
+    void addReplacingBlank(EditorSession* s);
     void exportTtProject();
     bool closeTab(int index);
     void updateTitles();
     void updateStatus();
 
     void newFile();
+    void newFromTemplate();
     void addPart();
     void updateThemeButton();
     void playPause();

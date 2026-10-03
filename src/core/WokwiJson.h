@@ -33,4 +33,8 @@ Json partToJson(const Part& p);
 Wire wireFromJson(const Json& j, std::vector<std::string>* warnings = nullptr);
 Json wireToJson(const Wire& w);
 
+// Tiny Tapeout's Wokwi template (built in): the starting point for
+// File > New from Template.
+const char* ttTemplateJson();
+
 } // namespace chiply

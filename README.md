@@ -77,5 +77,8 @@ chiply-cli truthtable diagram.json truthtable.md [--vcd out.vcd]
 
 BSD 3-Clause, see [LICENSE](LICENSE). `resources/cells.v`, built into Chiply
 for the Tiny Tapeout export, is Tiny Tapeout's Wokwi cell library
-(`ttsky-wokwi-template`, Apache-2.0), unchanged. Reference files under `reference/` keep
+(`ttsky-wokwi-template`, Apache-2.0), unchanged.
+`resources/tt_template.diagram.json`, the starting point for File > New from
+Template, is Tiny Tapeout's Wokwi template
+(<https://wokwi.com/projects/354858054593504257>), unchanged. Reference files under `reference/` keep
 their own origins and licenses, listed in [reference/README.md](reference/README.md).

@@ -271,4 +271,7 @@ void saveWokwiFile(const Document& doc, const std::string& path)
         throw std::runtime_error("cannot replace " + path);
 }
 
+extern const char* const kTtTemplateJson;
+const char* ttTemplateJson() { return kTtTemplateJson; }
+
 } // namespace chiply

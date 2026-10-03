@@ -101,6 +101,8 @@ void MainWindow::buildMenus()
 {
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(tr("&New"), QKeySequence::New, this, &MainWindow::newFile);
+    file->addAction(tr("New from &Template"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this, &MainWindow::newFromTemplate)
+        ->setObjectName("newFromTemplateAction");
     file->addAction(tr("&Open..."), QKeySequence::Open, this, &MainWindow::openDialog);
     file->addSeparator();
     file->addAction(tr("&Save"), QKeySequence::Save, this, [this] {
@@ -848,6 +850,28 @@ void MainWindow::newFile()
     addSession(s);
 }
 
+void MainWindow::newFromTemplate()
+{
+    auto* s = new EditorSession;
+    s->newFromTemplate();
+    addReplacingBlank(s);
+    statusBar()->showMessage(tr("New design from the Tiny Tapeout template: Save As to name it"), 6000);
+}
+
+void MainWindow::addReplacingBlank(EditorSession* s)
+{
+    // Replace the initial empty, unmodified Untitled tab.
+    if (m_tabs->count() == 1 && sessionAt(0)->filePath().isEmpty() && !sessionAt(0)->isModified()
+        && sessionAt(0)->document().parts.empty()) {
+        EditorSession* old = sessionAt(0);
+        m_tabs->removeTab(0);
+        old->view()->deleteLater();
+        old->deleteLater();
+    }
+    addSession(s);
+    s->view()->fitContents();
+}
+
 void MainWindow::openDialog()
 {
     const QStringList paths = QFileDialog::getOpenFileNames(
@@ -873,16 +897,7 @@ bool MainWindow::openFile(const QString& path)
         QMessageBox::critical(this, tr("Open failed"), tr("%1\n\n%2").arg(path, QString::fromUtf8(e.what())));
         return false;
     }
-    // Replace the initial empty, unmodified Untitled tab.
-    if (m_tabs->count() == 1 && sessionAt(0)->filePath().isEmpty() && !sessionAt(0)->isModified()
-        && sessionAt(0)->document().parts.empty()) {
-        EditorSession* old = sessionAt(0);
-        m_tabs->removeTab(0);
-        old->view()->deleteLater();
-        old->deleteLater();
-    }
-    addSession(s);
-    s->view()->fitContents();
+    addReplacingBlank(s);
     if (!s->loadWarnings().isEmpty())
         statusBar()->showMessage(tr("%1 while loading: %2").arg(countOf(int(s->loadWarnings().size()), "warning", "warnings"))
                                      .arg(s->loadWarnings().first()), 10000);

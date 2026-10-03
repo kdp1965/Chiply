@@ -27,6 +27,9 @@ public:
     // Throws chiply::LoadError on failure.
     void load(const QString& path);
     void newDocument(const QString& author);
+    // An untitled design that starts as a copy of Tiny Tapeout's Wokwi
+    // template (built in; no file is opened). The author is cleared.
+    void newFromTemplate();
     // Throws std::runtime_error on failure. Empty path = current path.
     void save(const QString& path = {});
 

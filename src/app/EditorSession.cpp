@@ -197,6 +197,25 @@ void EditorSession::newDocument(const QString& author)
     emit titleChanged();
 }
 
+void EditorSession::newFromTemplate()
+{
+    chiply::LoadResult r = chiply::loadWokwi(chiply::ttTemplateJson());
+    m_doc = std::move(r.doc);
+    m_doc.setAuthor("");
+    m_path.clear();
+    m_warnings.clear();
+    m_undo.clear();
+    rebuildScene();
+    m_probes.clear();
+    m_waivers.clear();
+    m_checkOverrides.clear();
+    m_sidecarDirty = false;
+    m_drc.resetChecks();
+    runDrc(true);
+    emit probesChanged();
+    emit titleChanged();
+}
+
 void EditorSession::save(const QString& path)
 {
     const QString target = path.isEmpty() ? m_path : path;

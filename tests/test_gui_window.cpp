@@ -104,6 +104,28 @@ private slots:
         w.close();
     }
 
+    void newFromTemplateIsAnUntitledCopy()
+    {
+        MainWindow w;
+        w.show();
+        auto* tabs = w.findChild<QTabWidget*>();
+        QCOMPARE(tabs->count(), 1); // the blank Untitled tab
+        w.findChild<QAction*>("newFromTemplateAction")->trigger();
+        QCOMPARE(tabs->count(), 1); // replaced, not added beside it
+        auto* s = qobject_cast<EditorSession*>(tabs->currentWidget()->property("session").value<QObject*>());
+        QVERIFY(s);
+        QVERIFY(s->filePath().isEmpty());
+        QVERIFY(!s->isModified());
+        QCOMPARE(s->displayName(), QStringLiteral("Untitled"));
+        QVERIFY(s->document().findPart("ttin") && s->document().findPart("ttout") && s->document().findPart("sw1"));
+        QCOMPARE(s->document().parts.size(), std::size_t(22)); // as in the Wokwi template
+        QCOMPARE(s->document().author(), std::string());
+        QVERIFY(s->violations().empty()); // the template is DRC clean
+        // A second one opens in its own tab.
+        w.findChild<QAction*>("newFromTemplateAction")->trigger();
+        QCOMPARE(tabs->count(), 2);
+    }
+
     void selectionDoesNotShiftCanvas()
     {
         MainWindow w;
