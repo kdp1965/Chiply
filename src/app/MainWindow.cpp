@@ -152,6 +152,12 @@ bool MainWindow::openFile(const QString& path)
     return true;
 }
 
+void MainWindow::refitAll()
+{
+    for (int i = 0; i < m_tabs->count(); ++i)
+        sessionAt(i)->view()->fitContents();
+}
+
 bool MainWindow::saveSession(EditorSession* s, bool saveAs)
 {
     QString path = s->filePath();

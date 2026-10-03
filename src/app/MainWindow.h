@@ -12,6 +12,8 @@ public:
 
     // Opens `path` in a new tab, or activates its tab if already open.
     bool openFile(const QString& path);
+    // Fits every tab's view to its contents (used after the window is sized).
+    void refitAll();
 
 protected:
     void closeEvent(QCloseEvent* event) override;

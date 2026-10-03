@@ -26,8 +26,13 @@ cmake --build build
 ctest --test-dir build
 ```
 
-On macOS with Homebrew, `brew install qtbase` is enough; the full `qt`
-formula also pulls in Qt WebEngine, which Chiply does not use.
+On macOS, `brew install qtbase qtsvg cmake ninja` is enough; the full `qt`
+formula also pulls in Qt WebEngine, which Chiply does not use. On Apple
+silicon, use the native Homebrew in `/opt/homebrew`: an Intel Homebrew in
+`/usr/local` produces x86_64 binaries and has no prebuilt Qt on macOS 26.
+
+`chiply --screenshot out.png file.json` renders the window to a PNG and
+exits; with `QT_QPA_PLATFORM=offscreen` it runs headless.
 
 The core library, CLI and tests build without Qt:
 
