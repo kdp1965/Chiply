@@ -1,9 +1,9 @@
 name: CI
 
+# Run on request only (Actions tab -> CI -> "Run workflow"). Every change is
+# verified locally with the full test suite before it is committed.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:

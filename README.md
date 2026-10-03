@@ -47,6 +47,15 @@ The core library, CLI and tests build without Qt:
 cmake -S . -B build -G Ninja -DCHIPLY_BUILD_GUI=OFF
 ```
 
+## Tests
+
+```bash
+ctest --test-dir build   # core, round-trip, Wokwi wire fixture, and offscreen GUI tests
+```
+
+GitHub Actions CI (Linux and macOS) runs only on request: Actions tab, CI,
+"Run workflow".
+
 ## Command line
 
 ```bash
