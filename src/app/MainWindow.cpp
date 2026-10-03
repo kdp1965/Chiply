@@ -120,7 +120,9 @@ void MainWindow::buildMenus()
     addPart->setToolTip(tr("Add a part (A)"));
     tb->addSeparator();
     tb->addAction(tr("Fit"), this, [this] { if (auto* s = current()) s->view()->fitContents(); });
-    // Simulation controls, left of the zoom buttons: Play/Pause, Step, Stop.
+    tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
+    tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
+    // Simulation controls, right of the zoom buttons: Play/Pause, Step, Stop.
     tb->addSeparator();
     m_playAction = tb->addAction(simIcon(SimIcon::Play), tr("Play"), this, &MainWindow::playPause);
     m_playAction->setObjectName("playAction");
@@ -160,9 +162,6 @@ void MainWindow::buildMenus()
         b->setIconSize(QSize(30, 30));
     }
     tb->addWidget(liveWire);
-    tb->addSeparator();
-    tb->addAction(tr("Zoom +"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
-    tb->addAction(tr("Zoom \u2212"), this, [this] { if (auto* s = current()) s->view()->zoomOut(); });
     // Right end: light/dark switch (sun in light mode, moon in dark mode).
     auto* spacer = new QWidget(tb);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
