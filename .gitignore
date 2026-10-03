@@ -69,3 +69,4 @@ Testing/
 
 # Screenshots and scratch images dropped in the project root
 /*.png
+.DS_Store
