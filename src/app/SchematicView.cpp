@@ -523,6 +523,12 @@ void SchematicView::updateHandleDrag(QPoint viewPos, Qt::KeyboardModifiers mods)
 void SchematicView::mouseDoubleClickEvent(QMouseEvent* event)
 {
     QGraphicsItem* it = selectableAt(event->position().toPoint());
+    if (event->button() == Qt::LeftButton && it && it->type() == WireItem::Type && !m_drawing) {
+        // Wokwi: double-click deletes a wire.
+        emit deleteWireRequested(static_cast<WireItem*>(it)->index());
+        event->accept();
+        return;
+    }
     if (event->button() == Qt::LeftButton && it && !itemPartId(it).empty()) {
         selectOnly(it);
         emit editPartRequested();
@@ -722,6 +728,19 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
             if (m_drawing)
                 updateWirePreview(viewport()->mapFromGlobal(QCursor::pos()), event->modifiers());
             return;
+        }
+    }
+    // Wokwi color keys recolor the selected wires.
+    if (!(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
+        const QString color = wokwiColorForKey(event->key());
+        if (!color.isEmpty()) {
+            bool wires = false;
+            for (const QGraphicsItem* it : scene()->selectedItems())
+                wires |= it->type() == WireItem::Type;
+            if (wires) {
+                emit wireColorRequested(color);
+                return;
+            }
         }
     }
     // Editing keys act on the selected parts.

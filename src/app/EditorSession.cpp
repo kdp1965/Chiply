@@ -60,6 +60,9 @@ EditorSession::EditorSession(QObject* parent)
                 if (a && b)
                     addWire(*a, *b, color.toStdString(), pts);
             });
+    connect(m_view, &SchematicView::wireColorRequested, this,
+            [this](const QString& c) { setSelectedWiresColor(c.toStdString()); });
+    connect(m_view, &SchematicView::deleteWireRequested, this, &EditorSession::deleteWire);
     m_view->setWireColorProvider([this](const QString& ref) {
         auto r = chiply::PinRef::parse(ref.toStdString());
         return r ? QString::fromStdString(defaultWireColor(*r)) : QStringLiteral("green");
@@ -560,12 +563,31 @@ void EditorSession::setWireColor(int wireIndex, const std::string& color)
     chiply::Document after = m_doc;
     after.wires[size_t(wireIndex)].color = color;
     m_undo.push(new DocumentCommand(this, tr("Wire color %1").arg(QString::fromStdString(color)), m_doc, after,
-                                    selectedPartIds(), selectedPartIds()));
-    // Keep the wire selected.
-    for (QGraphicsItem* it : m_scene.items())
-        if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->index() == wireIndex)
-            it->setSelected(true);
-    updateSelectionState();
+                                    selectedPartIds(), selectedPartIds(), selectedWireIndices(), {wireIndex}));
+}
+
+void EditorSession::setSelectedWiresColor(const std::string& color)
+{
+    const std::vector<int> ws = selectedWireIndices();
+    chiply::Document after = m_doc;
+    bool changed = false;
+    for (int i : ws)
+        if (after.wires[size_t(i)].color != color) {
+            after.wires[size_t(i)].color = color;
+            changed = true;
+        }
+    if (changed)
+        m_undo.push(new DocumentCommand(this, tr("Wire color %1").arg(QString::fromStdString(color)), m_doc, after,
+                                        selectedPartIds(), selectedPartIds(), ws, ws));
+}
+
+void EditorSession::deleteWire(int wireIndex)
+{
+    if (wireIndex < 0 || wireIndex >= int(m_doc.wires.size()))
+        return;
+    chiply::Document after = m_doc;
+    chiply::removeItems(after, {}, {std::size_t(wireIndex)});
+    m_undo.push(new DocumentCommand(this, tr("Delete wire"), m_doc, after, selectedPartIds(), {}, {wireIndex}, {}));
 }
 
 std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const

@@ -77,6 +77,8 @@ signals:
     void placeCancelled();
     void addPartRequested();
     void editPartRequested(); // F2 or double-click on a part
+    void wireColorRequested(QString color);   // color key with wires selected
+    void deleteWireRequested(int wireIndex);  // double-click on a wire
     // A new wire was drawn from pin to pin along `route` (scene points).
     void wireDrawn(QString fromRef, QString toRef, QString color, std::vector<chiply::Point> route);
     // Keyboard edits on the selection.

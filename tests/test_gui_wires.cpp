@@ -136,6 +136,35 @@ private slots:
         s->undoStack()->undo();
     }
 
+    void colorKeysRecolorSelectedWires()
+    {
+        const QPointF a = pin("ttin:IN1");
+        v->centerOn(a);
+        click(a + QPointF(12, 0)); // on the ttin:IN1 -> flop238:D wire, off the pin
+        QCOMPARE(s->selectionSummary().wires, 1);
+        const int idx = s->selectedWireIndices().front();
+        const std::string before = s->document().wires[size_t(idx)].color;
+        QTest::keyClick(v, Qt::Key_M);
+        QCOMPARE(s->document().wires[size_t(idx)].color, std::string("magenta"));
+        QCOMPARE(s->selectionSummary().wires, 1); // still selected for more keys
+        QTest::keyClick(v, Qt::Key_6);
+        QCOMPARE(s->document().wires[size_t(idx)].color, std::string("blue"));
+        s->undoStack()->undo();
+        s->undoStack()->undo();
+        QCOMPARE(s->document().wires[size_t(idx)].color, before);
+    }
+
+    void doubleClickDeletesWire()
+    {
+        const QPointF a = pin("ttin:IN1");
+        v->centerOn(a);
+        const std::size_t wires = s->document().wires.size();
+        QTest::mouseDClick(v->viewport(), Qt::LeftButton, {}, at(a + QPointF(12, 0)));
+        QCOMPARE(s->document().wires.size(), wires - 1);
+        s->undoStack()->undo();
+        QCOMPARE(s->document().wires.size(), wires);
+    }
+
     void clickingPartBodyStillSelects()
     {
         const chiply::Part* p = s->document().findPart("flop238");

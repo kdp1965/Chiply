@@ -70,6 +70,8 @@ public:
     QString renamePart(const std::string& from, const std::string& to);
     void setPartAttr(const std::string& id, const std::string& key, const std::string& value);
     void setWireColor(int wireIndex, const std::string& color);
+    void setSelectedWiresColor(const std::string& color);
+    void deleteWire(int wireIndex);
     // Adds a wire along an orthogonal polyline from `from` to `to` (undoable).
     void addWire(const chiply::PinRef& from, const chiply::PinRef& to, const std::string& color,
                  const std::vector<chiply::Point>& route);
