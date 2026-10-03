@@ -37,6 +37,7 @@ public:
     // SymbolPainter::SimVisual), and a provider of pin values for tooltips.
     void setSim(bool active, unsigned bits);
     bool simActive() const { return m_simActive; }
+    unsigned simBits() const { return m_simBits; }
     static void setPinValueProvider(std::function<QString(const std::string& part, const std::string& pin)> f);
     static void setShowNames(bool on);
     static bool showNames();

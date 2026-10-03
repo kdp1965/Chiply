@@ -182,6 +182,33 @@ private slots:
         // gates overlap each other).
         QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, at(part("ttout"), QPointF(50, 50)));
         QCOMPARE(s->selectedPartIds(), std::vector<std::string>{"ttout"});
+    }
+
+    void flopsShowTheirStoredBit()
+    {
+        QVERIFY(w->openFile(QStringLiteral(CHIPLY_REFERENCE_DIR "/wokwi_414123795172381697.diagram.json")));
+        QApplication::processEvents();
+        v = qobject_cast<SchematicView*>(w->findChild<QTabWidget*>()->currentWidget());
+        s = qobject_cast<EditorSession*>(v->property("session").value<QObject*>());
+        QVERIFY(!part("flop238")->simActive());
+        action("playAction")->trigger();
+        action("playAction")->trigger(); // pause, so values hold still
+        s->sim()->refresh();
+        int ones = 0, zeros = 0;
+        for (QGraphicsItem* it : v->scene()->items()) {
+            if (it->type() != PartItem::Type)
+                continue;
+            auto* p = static_cast<PartItem*>(it);
+            if (p->def()->type.rfind("wokwi-flip-flop", 0) != 0)
+                continue;
+            QVERIFY(p->simActive());
+            const V q = val((p->partId() + ":Q").c_str());
+            QCOMPARE(p->simBits(), q == V::H ? 1u : q == V::L ? 0u : 2u);
+            (q == V::H ? ones : zeros)++;
+        }
+        QVERIFY(ones > 0 && zeros > 0); // random start: both kinds show
+        action("stopAction")->trigger();
+        QVERIFY(!part("flop238")->simActive());
         QSettings().clear();
     }
 };

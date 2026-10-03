@@ -214,6 +214,21 @@ void flipFlop(const Ctx& k, const std::string& kind)
     k.text(17.0, 7.62 + dy, "Q", 2.2, Qt::AlignRight);
     k.p->setPen(QPen(k.c.partStroke, 0.18));
     k.line(15.35, 6.35 + dy, 16.95, 6.35 + dy);
+
+    // Simulating: a square on the Q lead shows the stored bit, as on
+    // wokwi.com. Filled yellow = 1, empty = 0 (fill, not colour alone, tells
+    // them apart); dashed red = unknown.
+    if (k.sim) {
+        const QRectF sq(20.0 - 1.05, 2.54 + dy - 1.05, 2.1, 2.1);
+        QPen pen(k.c.lead, 0.2, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin);
+        if (k.bit(1)) {
+            pen.setColor(QColor(0xe5, 0x39, 0x35));
+            pen.setDashPattern({1.5, 1.0});
+        }
+        k.p->setPen(pen);
+        k.p->setBrush(k.bit(0) ? QBrush(QColor(0xff, 0xd6, 0x00)) : QBrush(k.c.background));
+        k.p->drawRect(sq);
+    }
 }
 
 void vcc(const Ctx& k)

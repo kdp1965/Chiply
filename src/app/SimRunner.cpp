@@ -161,6 +161,9 @@ void SimRunner::refresh()
                 for (int i = 1; i < 8; ++i)
                     if (auto si = m_sim->switchState(id, i); si && *si)
                         bits |= 1u << i;
+            } else if (p->def() && p->def()->type.rfind("wokwi-flip-flop", 0) == 0) {
+                const auto q = m_sim->value(chiply::PinRef{id, "Q"});
+                bits = q == chiply::sim::V::H ? 1u : (q == chiply::sim::V::L ? 0u : 2u);
             } else
                 live = false;
             p->setSim(live, bits);

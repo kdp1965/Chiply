@@ -507,7 +507,7 @@ Chiply simulates designs itself, like Wokwi: press Run and the circuit runs, wit
 ### 6.3 UI while running
 
 - Run / Pause / Step / Reset on the toolbar; editing is locked while running (Wokwi behaviour), selection and navigation still work.
-- Live values on the canvas: wires drawn bright when `1`, dim when `0`, red-dashed when `X` / conflict, gray-dotted when `Z`; values must not rely on colour alone, so `X`/`Z` also differ in line style. Hovering a pin or wire shows its value in the tooltip. The **LiveWire** toolbar checkbox (on by default, saved as a preference) turns this wire colouring on or off; tooltips show values either way.
+- Live values on the canvas: wires drawn bright when `1`, dim when `0`, red-dashed when `X` / conflict, gray-dotted when `Z`; values must not rely on colour alone, so `X`/`Z` also differ in line style. Hovering a pin or wire shows its value in the tooltip. Each flip-flop shows its stored bit in a small square on its Q lead, as on wokwi.com: filled yellow for `1`, empty for `0`, dashed red when unknown. The **LiveWire** toolbar checkbox (on by default, saved as a preference) turns this wire colouring on or off; tooltips show values either way.
 - A status line shows simulated time, clock cycles and speed (e.g. "1.25x real time").
 
 ### 6.4 Traces and tests

@@ -13,7 +13,7 @@ namespace SymbolPainter {
 // Live state while simulating (PLAN.md 6.3). Meaning of `bits` per part:
 // pushbutton bit 0 = pressed; slide switch bit 0 = lever on the pin-3 side;
 // DIP switch bits 0..7 = switches on; LED bit 0 = lit; 7-segment bits 0..7 =
-// segments A..G, DP lit.
+// segments A..G, DP lit; flip-flop bit 0 = Q is 1, bit 1 = Q unknown (X/Z).
 struct SimVisual {
     unsigned bits = 0;
 };
