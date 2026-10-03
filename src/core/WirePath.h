@@ -73,6 +73,12 @@ std::vector<Point> moveCorner(std::vector<Point> pts, std::size_t i, Point to);
 // `to`'s other coordinate, leaving a step. Returns the simplified result.
 std::vector<Point> splitSegment(const std::vector<Point>& pts, std::size_t seg, Point to);
 
+// Where to draw the handle of segment a-b: its midpoint if that lies inside
+// the visible rectangle [x0,x1]x[y0,y1]; otherwise the point of the
+// segment's visible part nearest the midpoint; the plain midpoint if no part
+// of the segment is visible.
+Point segmentHandlePos(Point a, Point b, double x0, double y0, double x1, double y1);
+
 // Index of the segment of `pts` nearest `p`, and that distance.
 std::pair<std::size_t, double> nearestSegment(const std::vector<Point>& pts, Point p);
 

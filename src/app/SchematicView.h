@@ -36,6 +36,8 @@ public:
     explicit SchematicView(QGraphicsScene* scene, QWidget* parent = nullptr);
 
     static constexpr double kGrid = 9.6; // 0.1 inch at Wokwi's 96 px/inch
+    static constexpr int kHandleMargin = 24; // screen px kept between handles and the edge
+    QRectF visibleSceneRect() const;
 
     void zoomBy(double factor, QPoint anchorViewPos);
     void zoomIn();
@@ -64,6 +66,8 @@ public:
 
 signals:
     void zoomChanged(double zoom);
+    // Visible scene rectangle (inset by kHandleMargin) after scroll/zoom/resize.
+    void visibleRectChanged(QRectF sceneRect);
     void selectionEdited();
     // A wire segment drag finished with a new route (index into doc.wires).
     void wireRouteEdited(int wireIndex, std::vector<chiply::Point> route);
@@ -99,6 +103,8 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void drawForeground(QPainter* painter, const QRectF& rect) override;
+    void scrollContentsBy(int dx, int dy) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void panBy(QPointF viewDelta);

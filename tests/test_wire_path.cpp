@@ -224,3 +224,18 @@ TEST_CASE("nearest segment")
     CHECK(nearestSegment(pts, {50, 3}).first == 0);
     CHECK(nearestSegment(pts, {98, 30}).first == 1);
 }
+
+TEST_CASE("segment handle stays on screen")
+{
+    // Long horizontal wire from x=0 to x=1000 at y=50.
+    const Point a{0, 50}, b{1000, 50};
+    // Midpoint visible: stays at the midpoint.
+    CHECK(segmentHandlePos(a, b, 0, 0, 800, 100) == Point{500, 50});
+    // Only x 600..900 visible: nearest visible point to the midpoint.
+    CHECK(segmentHandlePos(a, b, 600, 0, 900, 100) == Point{600, 50});
+    CHECK(segmentHandlePos(a, b, 100, 0, 300, 100) == Point{300, 50});
+    // Segment not in view at all: plain midpoint.
+    CHECK(segmentHandlePos(a, b, 0, 200, 800, 300) == Point{500, 50});
+    // Vertical segments too.
+    CHECK(segmentHandlePos({10, 0}, {10, 1000}, 0, 700, 50, 900) == Point{10, 700});
+}

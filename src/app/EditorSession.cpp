@@ -32,6 +32,11 @@ EditorSession::EditorSession(QObject* parent)
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
     connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
+    connect(m_view, &SchematicView::visibleRectChanged, this, [this](const QRectF& r) {
+        for (QGraphicsItem* it : m_scene.selectedItems())
+            if (it->type() == WireItem::Type)
+                static_cast<WireItem*>(it)->setVisibleRect(r);
+    });
     m_mini = new MiniToolbar(this, m_view->viewport());
     auto reposition = [this] { m_mini->reposition(); };
     connect(this, &EditorSession::selectionChanged, m_mini, reposition);
@@ -767,7 +772,10 @@ void EditorSession::updateSelectionState()
             continue;
         auto* w = static_cast<WireItem*>(it);
         // Segment handles on explicitly selected wires (not on mass selections).
-        w->setHandlesVisible(w->isSelected() && s.wires <= kMaxWiresWithHandles);
+        const bool handles = w->isSelected() && s.wires <= kMaxWiresWithHandles;
+        if (handles)
+            w->setVisibleRect(m_view->visibleSceneRect());
+        w->setHandlesVisible(handles);
         WireItem::Link link = WireItem::Link::None;
         if (!w->isSelected()) {
             const bool a = parts.count(w->fromPart()), b = parts.count(w->toPart());

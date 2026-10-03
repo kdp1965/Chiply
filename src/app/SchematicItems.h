@@ -111,6 +111,9 @@ public:
     void setRoute(const std::vector<chiply::Point>& route); // committed route
     void showPreview(const std::vector<chiply::Point>& route); // during a drag
     void setHandlesVisible(bool on);
+    // Visible part of the scene (inset by a margin): segment handles whose
+    // midpoint is off-screen slide along their segment into it.
+    void setVisibleRect(const QRectF& r);
     // Hit area is the drawn line plus a few pixels, not the area the route
     // encloses (QGraphicsPathItem's default), so wires never steal hover or
     // clicks from the parts they loop around; the pins at both ends are left
@@ -124,6 +127,8 @@ private:
     std::vector<chiply::Point> m_route;
     std::vector<QGraphicsItem*> m_handles;
     bool m_handlesOn = false;
+    QRectF m_visible;
+    std::vector<chiply::Point> m_handleRoute; // route the handles were built for
     int m_index;
     std::string m_fromPart, m_toPart;
     Link m_link = Link::None;

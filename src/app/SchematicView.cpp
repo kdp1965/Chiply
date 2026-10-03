@@ -86,6 +86,7 @@ void SchematicView::zoomBy(double factor, QPoint anchorViewPos)
     const QPointF drift = mapFromScene(before) - QPointF(anchorViewPos);
     panBy(drift);
     emit zoomChanged(zoom());
+    emit visibleRectChanged(visibleSceneRect());
 }
 
 void SchematicView::zoomIn() { zoomBy(1.25, viewport()->rect().center()); }
@@ -98,6 +99,7 @@ void SchematicView::fitContents()
         r = QRectF(-200, -200, 400, 400);
     fitInView(r.adjusted(-20, -20, 20, 20), Qt::KeepAspectRatio);
     emit zoomChanged(zoom());
+    emit visibleRectChanged(visibleSceneRect());
 }
 
 void SchematicView::toggleGrid()
@@ -280,6 +282,24 @@ bool SchematicView::finishWireAt(QPoint viewPos)
     cancelWire();
     emit wireDrawn(from, to, color, chiply::simplifyPolyline(pts));
     return true;
+}
+
+QRectF SchematicView::visibleSceneRect() const
+{
+    const QRect r = viewport()->rect().adjusted(kHandleMargin, kHandleMargin, -kHandleMargin, -kHandleMargin);
+    return mapToScene(r).boundingRect();
+}
+
+void SchematicView::scrollContentsBy(int dx, int dy)
+{
+    QGraphicsView::scrollContentsBy(dx, dy);
+    emit visibleRectChanged(visibleSceneRect());
+}
+
+void SchematicView::resizeEvent(QResizeEvent* event)
+{
+    QGraphicsView::resizeEvent(event);
+    emit visibleRectChanged(visibleSceneRect());
 }
 
 void SchematicView::setPlacing(bool on)

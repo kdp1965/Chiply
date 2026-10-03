@@ -103,6 +103,26 @@ void WireItem::showPreview(const std::vector<chiply::Point>& route)
     rebuildHandles(route);
 }
 
+void WireItem::setVisibleRect(const QRectF& r)
+{
+    m_visible = r;
+    if (!m_handlesOn)
+        return;
+    const std::vector<chiply::Point> rr = chiply::simplifyPolyline(m_handleRoute);
+    for (QGraphicsItem* h : m_handles) {
+        if (h->type() != SegmentHandle::Type)
+            continue;
+        const std::size_t i = static_cast<SegmentHandle*>(h)->segment();
+        if (i + 1 >= rr.size())
+            continue;
+        chiply::Point p{(rr[i].x + rr[i + 1].x) / 2, (rr[i].y + rr[i + 1].y) / 2};
+        if (!m_visible.isNull())
+            p = chiply::segmentHandlePos(rr[i], rr[i + 1], m_visible.left(), m_visible.top(), m_visible.right(),
+                                         m_visible.bottom());
+        h->setPos(p.x, p.y);
+    }
+}
+
 void WireItem::setHandlesVisible(bool on)
 {
     if (on == m_handlesOn)
@@ -116,6 +136,7 @@ void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
     for (QGraphicsItem* h : m_handles)
         delete h;
     m_handles.clear();
+    m_handleRoute = routeIn;
     if (!m_handlesOn)
         return;
     const std::vector<chiply::Point> r = chiply::simplifyPolyline(routeIn);
@@ -125,6 +146,7 @@ void WireItem::rebuildHandles(const std::vector<chiply::Point>& routeIn)
         h->setPos((r[i].x + r[i + 1].x) / 2, (r[i].y + r[i + 1].y) / 2);
         m_handles.push_back(h);
     }
+    setVisibleRect(m_visible); // keep segment handles on screen
     if (r.size() >= 2) {
         for (bool start : {true, false}) {
             auto* h = new EndHandle(this, start);

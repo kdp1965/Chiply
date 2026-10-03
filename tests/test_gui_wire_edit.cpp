@@ -213,6 +213,58 @@ private slots:
         QCOMPARE(docRoute(), before);
     }
 
+    void handlesStayOnScreenWhenZoomed()
+    {
+        v->clearSelection();
+        const std::vector<Point> r = docRoute();
+        // Longest segment and its midpoint.
+        std::size_t seg = 0;
+        double best = 0;
+        for (std::size_t i = 0; i + 1 < r.size(); ++i) {
+            const double l = std::fabs(r[i + 1].x - r[i].x) + std::fabs(r[i + 1].y - r[i].y);
+            if (l > best) {
+                best = l;
+                seg = i;
+            }
+        }
+        QVERIFY(best > 1000);
+        // Zoom in on a point a quarter of the way along that segment, so the
+        // segment crosses the view but its midpoint is far off-screen.
+        const QPointF q(r[seg].x + (r[seg + 1].x - r[seg].x) / 4, r[seg].y + (r[seg + 1].y - r[seg].y) / 4);
+        v->resetTransform();
+        v->scale(3, 3);
+        v->centerOn(q);
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(q));
+        QVERIFY(item()->isSelected());
+        const QPointF mid((r[seg].x + r[seg + 1].x) / 2, (r[seg].y + r[seg + 1].y) / 2);
+        QVERIFY(!v->viewport()->rect().contains(v->mapFromScene(mid)));
+        SegmentHandle* h = nullptr;
+        for (SegmentHandle* x : handles())
+            if (x->segment() == seg)
+                h = x;
+        QVERIFY(h);
+        const QRect inner = v->viewport()->rect().adjusted(SchematicView::kHandleMargin - 1, SchematicView::kHandleMargin - 1,
+                                                           -SchematicView::kHandleMargin + 1, -SchematicView::kHandleMargin + 1);
+        QVERIFY2(inner.contains(v->mapFromScene(h->scenePos())), "handle of the long segment is on screen");
+        // It follows scrolling.
+        v->centerOn(q + QPointF((r[seg + 1].x - r[seg].x) / 8, (r[seg + 1].y - r[seg].y) / 8));
+        QApplication::processEvents();
+        QVERIFY(inner.contains(v->mapFromScene(h->scenePos())));
+        // Dragging it still moves that segment.
+        const QPointF hp = h->scenePos();
+        const bool horiz = h->horizontal();
+        const QPointF target = hp + (horiz ? QPointF(0, 9.6) : QPointF(9.6, 0));
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(hp));
+        for (int i = 1; i <= 4; ++i)
+            QTest::mouseMove(v->viewport(), v->mapFromScene(hp + (target - hp) * i / 4.0));
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(target));
+        const std::vector<Point> after = docRoute();
+        QVERIFY(after != r);
+        s->undoStack()->undo();
+        QCOMPARE(docRoute(), r);
+        v->resetTransform();
+    }
+
     void savedFileRoundTrips()
     {
         QTemporaryDir dir;

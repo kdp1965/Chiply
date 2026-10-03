@@ -394,4 +394,26 @@ std::vector<Point> splitSegment(const std::vector<Point>& in, std::size_t seg, P
     return simplifyPolyline(out);
 }
 
+Point segmentHandlePos(Point a, Point b, double x0, double y0, double x1, double y1)
+{
+    const Point mid{(a.x + b.x) / 2, (a.y + b.y) / 2};
+    if (mid.x >= x0 && mid.x <= x1 && mid.y >= y0 && mid.y <= y1)
+        return mid;
+    const bool horizontal = std::fabs(a.y - b.y) < 0.005;
+    if (horizontal) {
+        if (a.y < y0 || a.y > y1)
+            return mid;
+        const double lo = std::max(std::min(a.x, b.x), x0), hi = std::min(std::max(a.x, b.x), x1);
+        if (lo > hi)
+            return mid;
+        return {std::clamp(mid.x, lo, hi), a.y};
+    }
+    if (a.x < x0 || a.x > x1)
+        return mid;
+    const double lo = std::max(std::min(a.y, b.y), y0), hi = std::min(std::max(a.y, b.y), y1);
+    if (lo > hi)
+        return mid;
+    return {a.x, std::clamp(mid.y, lo, hi)};
+}
+
 } // namespace chiply
