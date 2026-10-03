@@ -62,6 +62,15 @@ std::vector<Point> simplifyPolyline(const std::vector<Point>& pts);
 // touches an endpoint gets a new connecting segment so the ends stay put.
 std::vector<Point> moveSegment(std::vector<Point> pts, std::size_t seg, double coord);
 
+// Elastic end move: the endpoint at the start (atStart) or end of an
+// orthogonal polyline moves to `newEnd`; the rest of the route stays where it
+// is in the diagram. For the horizontal part of the move, the first
+// horizontal segment from that end stretches and any vertical segments
+// before it slide sideways with the end; likewise for the vertical part
+// with the first vertical segment. If there is no segment on that axis, a
+// jog is inserted half-way along the route.
+std::vector<Point> stretchEnd(const std::vector<Point>& pts, bool atStart, Point newEnd);
+
 // A source-anchored Wokwi path whose routePolyline() from pts.front() to
 // pts.back() reproduces `pts` (an orthogonal polyline). Moves are rounded to
 // 2 decimals; the final leg is left implicit, as Wokwi's editor writes it.

@@ -16,6 +16,7 @@
 #include <QSignalBlocker>
 
 #include <cmath>
+#include <optional>
 #include <set>
 
 namespace {
@@ -151,17 +152,29 @@ void EditorSession::applyWirePath(int wireIndex, const chiply::WirePath& path)
 
 class PlacementCommand : public QUndoCommand {
 public:
-    PlacementCommand(EditorSession* s, const QString& text, std::vector<EditorSession::Placement> before,
-                     std::vector<EditorSession::Placement> after, bool mergeable)
+    using Placement = EditorSession::Placement;
+    using WireChange = EditorSession::WireChange;
+    PlacementCommand(EditorSession* s, const QString& text, std::vector<Placement> before, std::vector<Placement> after,
+                     std::vector<WireChange> wiresBefore, std::vector<WireChange> wiresAfter, bool mergeable)
         : QUndoCommand(text)
         , m_s(s)
         , m_before(std::move(before))
         , m_after(std::move(after))
+        , m_wBefore(std::move(wiresBefore))
+        , m_wAfter(std::move(wiresAfter))
         , m_mergeable(mergeable)
     {
     }
-    void undo() override { m_s->applyPlacements(m_before); }
-    void redo() override { m_s->applyPlacements(m_after); }
+    void undo() override
+    {
+        m_s->applyPlacements(m_before);
+        m_s->applyWirePaths(m_wBefore);
+    }
+    void redo() override
+    {
+        m_s->applyPlacements(m_after);
+        m_s->applyWirePaths(m_wAfter);
+    }
     int id() const override { return 1; }
     bool mergeWith(const QUndoCommand* other) override
     {
@@ -172,12 +185,31 @@ public:
             if (o->m_after[i].id != m_after[i].id)
                 return false;
         m_after = o->m_after;
+        // Keep the earliest "before" path of each wire, the latest "after".
+        for (const WireChange& w : o->m_wBefore) {
+            bool known = false;
+            for (const WireChange& x : m_wBefore)
+                known |= x.index == w.index;
+            if (!known)
+                m_wBefore.push_back(w);
+        }
+        for (const WireChange& w : o->m_wAfter) {
+            bool replaced = false;
+            for (WireChange& x : m_wAfter)
+                if (x.index == w.index) {
+                    x.path = w.path;
+                    replaced = true;
+                }
+            if (!replaced)
+                m_wAfter.push_back(w);
+        }
         return true;
     }
 
 private:
     EditorSession* m_s;
-    std::vector<EditorSession::Placement> m_before, m_after;
+    std::vector<Placement> m_before, m_after;
+    std::vector<WireChange> m_wBefore, m_wAfter;
     bool m_mergeable;
 };
 
@@ -230,6 +262,90 @@ void EditorSession::applyPlacements(const std::vector<Placement>& ps)
     emit documentChanged();
 }
 
+void EditorSession::applyPlacementsOnly(const std::vector<Placement>& ps)
+{
+    for (const Placement& pl : ps)
+        if (chiply::Part* p = m_doc.findPart(pl.id)) {
+            p->left = pl.left;
+            p->top = pl.top;
+            p->rotate = pl.rotate;
+        }
+}
+
+void EditorSession::applyWirePaths(const std::vector<WireChange>& ws)
+{
+    for (const WireChange& c : ws) {
+        if (c.index < 0 || c.index >= int(m_doc.wires.size()))
+            continue;
+        chiply::Wire& w = m_doc.wires[size_t(c.index)];
+        w.path = c.path;
+        w.rawPath.reset();
+        w.hasPathElement = true;
+    }
+    std::set<std::string> touched;
+    for (const WireChange& c : ws)
+        if (c.index >= 0 && c.index < int(m_doc.wires.size()))
+            touched.insert(m_doc.wires[size_t(c.index)].from.part);
+    for (const std::string& id : touched)
+        refreshWiresOf(id);
+    if (!ws.empty())
+        emit documentChanged();
+}
+
+std::vector<EditorSession::WireChange> EditorSession::elasticWires(const std::vector<Placement>& from,
+                                                                   const std::vector<Placement>& to,
+                                                                   std::vector<WireChange>* before) const
+{
+    std::map<std::string, Placement> f, t;
+    for (const Placement& p : from)
+        f[p.id] = p;
+    for (const Placement& p : to)
+        t[p.id] = p;
+    const chiply::PartLibrary& lib = chiply::PartLibrary::builtin();
+    auto pinAt = [&](const chiply::PinRef& r, const std::map<std::string, Placement>& over) -> std::optional<chiply::Point> {
+        const chiply::Part* p = m_doc.findPart(r.part);
+        if (!p)
+            return std::nullopt;
+        const chiply::PartDef* d = lib.find(p->type);
+        if (!d)
+            return std::nullopt;
+        chiply::Part q = *p;
+        auto it = over.find(r.part);
+        if (it != over.end()) {
+            q.left = it->second.left;
+            q.top = it->second.top;
+            q.rotate = it->second.rotate;
+        }
+        return chiply::pinPosition(q, *d, r.pin);
+    };
+    std::vector<WireChange> out;
+    for (std::size_t i = 0; i < m_doc.wires.size(); ++i) {
+        const chiply::Wire& w = m_doc.wires[i];
+        const bool a = t.count(w.from.part), b = t.count(w.to.part);
+        if (a == b)
+            continue; // untouched, or moving rigidly with both ends
+        auto fa = pinAt(w.from, f), fb = pinAt(w.to, f);
+        auto ta = pinAt(w.from, t), tb = pinAt(w.to, t);
+        if (!fa || !fb || !ta || !tb)
+            continue;
+        const auto old = chiply::routePolyline(*fa, *fb, w.path);
+        const chiply::Point moved = a ? *ta : *tb;
+        const auto pts = chiply::stretchEnd(old, a, {chiply::round2(moved.x), chiply::round2(moved.y)});
+        if (before)
+            before->push_back({int(i), w.path});
+        out.push_back({int(i), chiply::pathFromPolyline(pts)});
+    }
+    return out;
+}
+
+void EditorSession::pushPlacement(const QString& text, const std::vector<Placement>& before,
+                                  const std::vector<Placement>& after, bool mergeable)
+{
+    std::vector<WireChange> wb;
+    std::vector<WireChange> wa = elasticWires(before, after, &wb);
+    m_undo.push(new PlacementCommand(this, text, before, after, wb, wa, mergeable));
+}
+
 void EditorSession::refreshWiresOf(const std::string& partId)
 {
     auto it = m_wiresOf.find(partId);
@@ -248,8 +364,15 @@ void EditorSession::refreshWiresOf(const std::string& partId)
 void EditorSession::beginMove()
 {
     m_moveStart.clear();
+    m_moveWireStart.clear();
     for (const std::string& id : selectedPartIds())
         m_moveStart.push_back(placementOf(id));
+    std::set<std::string> ids;
+    for (const Placement& p : m_moveStart)
+        ids.insert(p.id);
+    for (std::size_t i = 0; i < m_doc.wires.size(); ++i)
+        if (ids.count(m_doc.wires[i].from.part) != ids.count(m_doc.wires[i].to.part))
+            m_moveWireStart.push_back({int(i), m_doc.wires[i].path});
     if (m_moveGrab.empty() && !m_moveStart.empty())
         m_moveGrab = m_moveStart.front().id;
 }
@@ -275,7 +398,13 @@ void EditorSession::previewMove(double dx, double dy)
         p.left = chiply::round2(p.left + ddx);
         p.top = chiply::round2(p.top + ddy);
     }
+    // Elastic wires are always computed from the drag's starting state.
+    for (const WireChange& c : m_moveWireStart)
+        m_doc.wires[size_t(c.index)].path = c.path;
+    applyPlacementsOnly(m_moveStart); // document back to the start positions
+    std::vector<WireChange> wa = elasticWires(m_moveStart, ps, nullptr);
     applyPlacements(ps);
+    applyWirePaths(wa);
 }
 
 void EditorSession::endMove(bool commit)
@@ -286,14 +415,17 @@ void EditorSession::endMove(bool commit)
     for (const Placement& p : m_moveStart)
         after.push_back(placementOf(p.id));
     const std::vector<Placement> before = m_moveStart;
+    const std::vector<WireChange> wiresBefore = m_moveWireStart;
     m_moveStart.clear();
+    m_moveWireStart.clear();
     m_moveGrab.clear();
     applyPlacements(before); // back to the start; the command re-applies
+    applyWirePaths(wiresBefore);
     bool changed = false;
     for (std::size_t i = 0; i < before.size(); ++i)
         changed |= before[i].left != after[i].left || before[i].top != after[i].top;
     if (commit && changed)
-        m_undo.push(new PlacementCommand(this, tr("Move"), before, after, false));
+        pushPlacement(tr("Move"), before, after, false);
 }
 
 void EditorSession::nudgeSelection(int gx, int gy, bool autoRepeat)
@@ -309,7 +441,7 @@ void EditorSession::nudgeSelection(int gx, int gy, bool autoRepeat)
         p.top = chiply::round2(p.top + gy * SchematicView::kGrid);
         after.push_back(p);
     }
-    m_undo.push(new PlacementCommand(this, tr("Nudge"), before, after, autoRepeat));
+    pushPlacement(tr("Nudge"), before, after, autoRepeat);
 }
 
 void EditorSession::rotateSelection()
@@ -324,7 +456,7 @@ void EditorSession::rotateSelection()
         p.rotate = (p.rotate + 90) % 360; // 90 degrees clockwise, as Wokwi's R
         after.push_back(p);
     }
-    m_undo.push(new PlacementCommand(this, tr("Rotate"), before, after, false));
+    pushPlacement(tr("Rotate"), before, after, false);
 }
 
 void EditorSession::deleteSelection()

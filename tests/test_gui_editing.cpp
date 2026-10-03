@@ -14,6 +14,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <algorithm>
+#include <map>
+
 using namespace chiply;
 
 class EditingTest : public QObject {
@@ -238,6 +241,53 @@ private slots:
         QVERIFY(!s->miniToolbar()->isVisible());
         v->clearSelection();
         QVERIFY(!s->miniToolbar()->isVisible());
+    }
+
+    // flop54 moved right one step: its wires stretch at the segment nearest
+    // the flop; long runs elsewhere (e.g. the vertical into the mux) stay put.
+    void elasticWiresOnNudge()
+    {
+        v->clearSelection();
+        QGraphicsItem* item = nullptr;
+        for (QGraphicsItem* it : v->scene()->items())
+            if (itemPartId(it) == "flop54")
+                item = it;
+        QVERIFY(item);
+        v->centerOn(item);
+        v->selectOnly(item);
+        std::map<int, std::vector<Point>> before;
+        for (std::size_t i = 0; i < s->document().wires.size(); ++i) {
+            const Wire& w = s->document().wires[i];
+            if ((w.from.part == "flop54") != (w.to.part == "flop54"))
+                before[int(i)] = simplifyPolyline(wireItem(int(i))->route());
+        }
+        QVERIFY(!before.empty());
+        QTest::keyClick(v, Qt::Key_Right);
+        for (const auto& [i, old] : before) {
+            const auto now = simplifyPolyline(wireItem(i)->route());
+            const Wire& w = s->document().wires[size_t(i)];
+            const bool atStart = w.from.part == "flop54";
+            // Every corner of the old route except those before the first
+            // horizontal segment from flop54 is still there, unchanged.
+            std::vector<Point> o = old, n = now;
+            if (!atStart) {
+                std::reverse(o.begin(), o.end());
+                std::reverse(n.begin(), n.end());
+            }
+            std::size_t k = 0;
+            while (k + 1 < o.size() && std::fabs(o[k].y - o[k + 1].y) > 0.005)
+                ++k;
+            for (std::size_t j = k + 1; j < o.size(); ++j)
+                QVERIFY2(std::find_if(n.begin(), n.end(), [&](const Point& p) {
+                             return std::fabs(p.x - o[j].x) < 0.02 && std::fabs(p.y - o[j].y) < 0.02;
+                         }) != n.end(),
+                         qPrintable(QString::fromStdString(w.from.str() + " -> " + w.to.str())));
+            // The flop end moved by one grid step.
+            QVERIFY(std::fabs(n.front().x - (o.front().x + 9.6)) < 0.02);
+        }
+        s->undoStack()->undo();
+        for (const auto& [i, old] : before)
+            QCOMPARE(simplifyPolyline(wireItem(i)->route()), old);
     }
 
     void undoEverythingRestoresTheFile()

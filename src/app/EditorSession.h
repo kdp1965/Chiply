@@ -78,8 +78,19 @@ public:
     void cancelPlacing();
     bool placing() const { return m_ghost != nullptr; }
 
-    // Applies placements without undo (used by commands).
+    struct WireChange {
+        int index;
+        chiply::WirePath path;
+    };
+    // Applies placements and wire paths without undo (used by commands).
     void applyPlacements(const std::vector<Placement>& ps);
+    void applyWirePaths(const std::vector<WireChange>& ws);
+    // Elastic re-routing for moving parts from `from` to `to` placements:
+    // wires with exactly one end on a moving part keep their route except
+    // the segment nearest that part along the move direction (PLAN.md 4.4).
+    // Returns the new paths; `before` receives the current ones.
+    std::vector<WireChange> elasticWires(const std::vector<Placement>& from, const std::vector<Placement>& to,
+                                         std::vector<WireChange>* before) const;
     // Replaces the document wholesale and rebuilds, selecting `select`
     // (used by structural commands).
     void replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select);
@@ -117,6 +128,10 @@ private:
     class MiniToolbar* m_mini = nullptr;
     std::string m_placeType;
     std::vector<Placement> m_moveStart;
+    std::vector<WireChange> m_moveWireStart; // paths of affected wires at drag start
+    void applyPlacementsOnly(const std::vector<Placement>& ps); // document only
+    void pushPlacement(const QString& text, const std::vector<Placement>& before,
+                       const std::vector<Placement>& after, bool mergeable);
     std::string m_moveGrab;
     double m_snap = 9.6;
 };

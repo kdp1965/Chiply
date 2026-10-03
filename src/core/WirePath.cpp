@@ -2,6 +2,7 @@
 
 #include "core/JsonFormat.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 
@@ -250,6 +251,72 @@ WirePath pathFromPolyline(const std::vector<Point>& in)
     if (matches(shortForm))
         return shortForm;
     return segs(pts.size() - 1);
+}
+
+namespace {
+
+// Moves pts[0] by d along one axis (H: x, V: y), keeping the polyline
+// orthogonal and everything after the first segment on that axis fixed.
+void stretchStartAxis(std::vector<Point>& pts, Axis axis, double d)
+{
+    if (std::fabs(d) < 0.005 || pts.empty())
+        return;
+    auto coord = [axis](Point& p) -> double& { return axis == Axis::H ? p.x : p.y; };
+    auto other = [axis](const Point& p) { return axis == Axis::H ? p.y : p.x; };
+    if (pts.size() == 1) {
+        coord(pts[0]) += d;
+        return;
+    }
+    // First segment that runs along the move axis.
+    std::size_t k = pts.size();
+    for (std::size_t i = 0; i + 1 < pts.size(); ++i) {
+        if (std::fabs(other(pts[i]) - other(pts[i + 1])) < 0.005 && std::fabs(coord(pts[i]) - coord(pts[i + 1])) >= 0.005) {
+            k = i;
+            break;
+        }
+    }
+    if (k < pts.size()) {
+        for (std::size_t j = 0; j <= k; ++j)
+            coord(pts[j]) += d; // segments before k slide rigidly, k stretches
+        return;
+    }
+    // Only perpendicular segments: add a jog half-way so the far end stays.
+    const Point a = pts.front(), b = pts.back();
+    double mid = (other(a) + other(b)) / 2;
+    const double g = 9.6;
+    const double snapped = std::round(mid / g) * g;
+    if (std::fabs(snapped - other(a)) >= 0.005 && std::fabs(snapped - other(b)) >= 0.005)
+        mid = snapped;
+    Point a2 = a, j1, j2;
+    coord(a2) += d;
+    if (axis == Axis::H) {
+        j1 = {a2.x, mid};
+        j2 = {b.x, mid};
+    } else {
+        j1 = {mid, a2.y};
+        j2 = {mid, b.y};
+    }
+    pts = {a2, j1, j2, b};
+}
+
+} // namespace
+
+std::vector<Point> stretchEnd(const std::vector<Point>& in, bool atStart, Point newEnd)
+{
+    std::vector<Point> pts = simplifyPolyline(in);
+    if (pts.empty())
+        return pts;
+    if (!atStart)
+        std::reverse(pts.begin(), pts.end());
+    const double dx = round2(newEnd.x - pts[0].x), dy = round2(newEnd.y - pts[0].y);
+    stretchStartAxis(pts, Axis::H, dx);
+    pts = simplifyPolyline(pts);
+    stretchStartAxis(pts, Axis::V, dy);
+    pts[0] = newEnd;
+    pts = simplifyPolyline(pts);
+    if (!atStart)
+        std::reverse(pts.begin(), pts.end());
+    return pts;
 }
 
 } // namespace chiply

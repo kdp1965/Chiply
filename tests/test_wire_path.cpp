@@ -145,3 +145,50 @@ TEST_CASE("pathFromPolyline reproduces the polyline through Wokwi's rules")
     CHECK(formatWirePath(pathFromPolyline({{0, 0}, {28.8, 0}, {28.8, 50}, {40, 50}}))
           == std::vector<std::string>{"h28.8", "v50"});
 }
+
+TEST_CASE("elastic: horizontal first segment stretches on a horizontal move")
+{
+    // Part pin at (0,0) -> right 30 -> down 100 -> right to (80,100).
+    std::vector<Point> pts{{0, 0}, {30, 0}, {30, 100}, {80, 100}};
+    // Move the part (source end) right by 9.6: only the first segment changes.
+    CHECK(stretchEnd(pts, true, {9.6, 0}) == std::vector<Point>{{9.6, 0}, {30, 0}, {30, 100}, {80, 100}});
+    // Moving left also leaves the long vertical where it is.
+    CHECK(stretchEnd(pts, true, {-9.6, 0}) == std::vector<Point>{{-9.6, 0}, {30, 0}, {30, 100}, {80, 100}});
+}
+
+TEST_CASE("elastic: a segment at 90 degrees slides, the next one stretches")
+{
+    // Pin leaves vertically: (0,0) down 40, right to (60,40).
+    std::vector<Point> pts{{0, 0}, {0, 40}, {60, 40}};
+    CHECK(stretchEnd(pts, true, {9.6, 0}) == std::vector<Point>{{9.6, 0}, {9.6, 40}, {60, 40}});
+    // A vertical move stretches the vertical segment.
+    CHECK(stretchEnd(pts, true, {0, 9.6}) == std::vector<Point>{{0, 9.6}, {0, 40}, {60, 40}});
+}
+
+TEST_CASE("elastic: vertical move on a horizontal-first wire")
+{
+    std::vector<Point> pts{{0, 0}, {30, 0}, {30, 100}, {80, 100}};
+    // The horizontal stub slides down; the vertical segment shortens.
+    CHECK(stretchEnd(pts, true, {0, 9.6}) == std::vector<Point>{{0, 9.6}, {30, 9.6}, {30, 100}, {80, 100}});
+}
+
+TEST_CASE("elastic: target end and straight wires")
+{
+    std::vector<Point> pts{{0, 0}, {30, 0}, {30, 100}, {80, 100}};
+    CHECK(stretchEnd(pts, false, {89.6, 100}) == std::vector<Point>{{0, 0}, {30, 0}, {30, 100}, {89.6, 100}});
+    // A straight horizontal wire just gets longer/shorter.
+    CHECK(stretchEnd({{0, 0}, {50, 0}}, true, {9.6, 0}) == std::vector<Point>{{9.6, 0}, {50, 0}});
+    // A straight vertical wire moved sideways gets a jog half-way.
+    CHECK(stretchEnd({{0, 0}, {0, 96}}, true, {9.6, 0})
+          == std::vector<Point>{{9.6, 0}, {9.6, 48}, {0, 48}, {0, 96}});
+}
+
+TEST_CASE("elastic result is a valid Wokwi path")
+{
+    std::vector<Point> pts{{0, 0}, {0, 40}, {60, 40}, {60, 90}, {120, 90}};
+    for (Point e : {Point{9.6, 0}, Point{-19.2, 9.6}, Point{0, -28.8}}) {
+        auto moved = stretchEnd(pts, true, e);
+        WirePath p = pathFromPolyline(moved);
+        CHECK(simplifyPolyline(routePolyline(moved.front(), moved.back(), p)) == moved);
+    }
+}
