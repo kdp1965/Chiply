@@ -16,6 +16,7 @@ add_executable(chiply_tests
   test_sim_cosim.cpp
   test_sim_board.cpp
   test_trace.cpp
+  test_drc.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_sim Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE
@@ -104,6 +105,12 @@ add_test(NAME cli_sim_template
 add_test(NAME cli_sim_template_board
   COMMAND chiply-cli sim ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
           ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_board.sim)
+add_test(NAME cli_check_template
+  COMMAND chiply-cli check ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json)
+# The reference design has 10 known errors: check exits non-zero.
+add_test(NAME cli_check_reference_fails
+  COMMAND chiply-cli check ${PROJECT_SOURCE_DIR}/reference/wokwi_414123795172381697.diagram.json)
+set_tests_properties(cli_check_reference_fails PROPERTIES WILL_FAIL TRUE)
 add_test(NAME cli_truthtable_template
   COMMAND chiply-cli truthtable ${PROJECT_SOURCE_DIR}/reference/tt_template_354858054593504257.diagram.json
           ${CMAKE_CURRENT_SOURCE_DIR}/data/tt_template_truthtable.md)

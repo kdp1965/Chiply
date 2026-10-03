@@ -5,8 +5,10 @@
 //   chiply-cli check-roundtrip <diagram.json>   exit 0 if save == input bytes
 //   chiply-cli netlist <diagram.json> [--nets]  connectivity summary (or every net)
 //   chiply-cli sim <diagram.json> <script>      run a stimulus script (see simScript)
+//   chiply-cli check <diagram.json> [--enable/--disable <check>]...  design rule checks
 //   chiply-cli truthtable <diagram.json> <truthtable.md> [options]
 //                                                check a Tiny Tapeout truth table
+#include "core/Drc.h"
 #include "core/Netlist.h"
 #include "core/WokwiJson.h"
 #include "sim/Simulator.h"
@@ -148,6 +150,31 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
 
 std::string readFile(const std::string& path);
 
+int drcCheck(int argc, char** argv)
+{
+    drc::Engine e;
+    for (int i = 3; i < argc; ++i) {
+        const std::string a = argv[i];
+        if ((a == "--enable" || a == "--disable") && i + 1 < argc) {
+            const std::string id = argv[++i];
+            if (!drc::findCheck(id))
+                throw std::runtime_error("unknown check \"" + id + "\" (see chiply-cli check --list)");
+            e.setEnabled(id, a == "--enable");
+        } else {
+            throw std::runtime_error("unknown option " + a);
+        }
+    }
+    const LoadResult r = loadWokwiFile(argv[2]);
+    const drc::Stats& st = e.runFull(r.doc);
+    for (const drc::Violation& v : e.violations())
+        std::cout << drc::severityName(v.severity) << ": [" << v.check << "] " << v.message << "\n";
+    const auto errors = e.count(drc::Severity::Error), warnings = e.count(drc::Severity::Warning),
+               infos = e.count(drc::Severity::Info);
+    std::cout << errors << " error(s), " << warnings << " warning(s), " << infos << " info; " << st.partsTotal
+              << " parts checked in " << st.ms << " ms\n";
+    return errors ? 1 : 0;
+}
+
 int truthTable(int argc, char** argv)
 {
     using namespace chiply::sim;
@@ -234,6 +261,8 @@ int usage()
                  "  chiply-cli format <diagram.json> [out.json]\n"
                  "  chiply-cli check-roundtrip <diagram.json>\n"
                  "  chiply-cli netlist <diagram.json> [--nets]\n"
+                 "  chiply-cli check <diagram.json> [--enable <check>] [--disable <check>]...\n"
+                 "  chiply-cli check --list\n"
                  "  chiply-cli sim <diagram.json> <script>\n"
                  "  chiply-cli truthtable <diagram.json> <truthtable.md> [--set part:PIN=0|1]... [--vcd out.vcd]\n"
                  "             [--verilog] [--zero-start|--x-start] [--seed n]\n"
@@ -305,6 +334,14 @@ int main(int argc, char** argv)
                 return usage();
             return simScript(path, argv[3]);
         }
+        if (cmd == "check" && path == "--list") {
+            for (const drc::CheckInfo& c : drc::checks())
+                std::cout << c.id << "  (" << drc::severityName(c.severity) << (c.defaultOn ? "" : ", off by default")
+                          << ")  " << c.description << "\n";
+            return 0;
+        }
+        if (cmd == "check")
+            return drcCheck(argc, argv);
         if (cmd == "truthtable") {
             if (argc < 4)
                 return usage();
