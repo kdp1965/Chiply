@@ -132,6 +132,7 @@ MainWindow::MainWindow(QWidget* parent)
         connect(d, &QDockWidget::visibilityChanged, &m_saveLayout, qOverload<>(&QTimer::start));
     }
     newFile();
+    m_constructed = true;
 }
 
 void MainWindow::buildMenus()
@@ -1140,12 +1141,21 @@ void MainWindow::updateSimControls()
 void MainWindow::changeEvent(QEvent* e)
 {
     QMainWindow::changeEvent(e);
-    if (e->type() == QEvent::PaletteChange || e->type() == QEvent::ThemeChange)
+    // Not while the window is being built: the theme may still be setting
+    // itself up (and sends these events synchronously on macOS).
+    if (m_constructed && (e->type() == QEvent::PaletteChange || e->type() == QEvent::ThemeChange))
         updateThemeButton();
 }
 
 void MainWindow::updateThemeButton()
 {
+    if (m_updatingTheme)
+        return; // redrawing can itself raise palette events
+    m_updatingTheme = true;
+    struct Reset {
+        bool& flag;
+        ~Reset() { flag = false; }
+    } reset{m_updatingTheme};
     // The ink follows the theme setting itself: when the theme changes, the
     // widgets' palettes catch up only a moment later (changeEvent redraws).
     if (m_titleLabel)

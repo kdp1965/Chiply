@@ -37,6 +37,9 @@ int main(int argc, char* argv[])
         Theme::instance().setModeForSession(m);
     }
 
+    // Create the theme (it applies the saved light/dark choice) before any
+    // window exists: applying it sends theme-change events to windows.
+    (void)Theme::instance();
     if (cli.isSet(shot))
         MainWindow::setPersistLayout(false); // leave the user's layout alone
     MainWindow w;

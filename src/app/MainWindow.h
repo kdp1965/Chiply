@@ -62,6 +62,8 @@ private:
     void addPart();
     void updateThemeButton();
     void changeEvent(QEvent* e) override;
+    bool m_constructed = false;   // changeEvent ignores events while building
+    bool m_updatingTheme = false;
     void playPause();
     void updateSimControls();
     enum class SimIcon { Play, Pause, Stop, Step };
