@@ -9,6 +9,8 @@
 #include "core/WokwiJson.h"
 
 #include <QElapsedTimer>
+#include "core/WirePath.h"
+#include <QFile>
 #include <QScrollBar>
 #include <QGraphicsScene>
 #include <QTemporaryDir>
@@ -367,6 +369,94 @@ private slots:
         QTest::qWait(400);
         QVERIFY(v->verticalScrollBar()->value() > vv0 + 50);
         v->cancelWire();
+    }
+
+    void selectedWireSegmentsMoveWithTheParts()
+    {
+        // A column of flops; each Q -> short horizontal -> vertical -> long
+        // horizontal to a gate far right.
+        std::string parts, wires;
+        for (int i = 0; i < 3; ++i) {
+            const int top = i * 96;
+            parts += "{\"type\": \"wokwi-flip-flop-d\", \"id\": \"f" + std::to_string(i) + "\", \"top\": " + std::to_string(top)
+                + ", \"left\": 0, \"attrs\": {}},";
+            parts += "{\"type\": \"wokwi-gate-and-2\", \"id\": \"g" + std::to_string(i) + "\", \"top\": " + std::to_string(top + 19.2)
+                + ", \"left\": 499.2, \"attrs\": {}}" + (i < 2 ? "," : "");
+            wires += "[\"f" + std::to_string(i) + ":Q\", \"g" + std::to_string(i) + ":A\", \"green\", [\"h19.2\", \"v19.2\"]]"
+                + (i < 2 ? "," : "");
+        }
+        QTemporaryDir dir;
+        const QString path = dir.filePath("col.json");
+        {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QByteArray::fromStdString("{\"version\": 1, \"author\": \"\", \"editor\": \"wokwi\", \"parts\": [" + parts
+                                              + "], \"connections\": [" + wires + "], \"dependencies\": {}}"));
+        }
+        EditorSession es;
+        es.load(path);
+        SchematicView* view = es.view();
+        auto route = [&](int i) {
+            const chiply::Wire& w = es.document().wires[size_t(i)];
+            auto a = chiply::pinPosition(es.document(), chiply::PartLibrary::builtin(), w.from);
+            auto b = chiply::pinPosition(es.document(), chiply::PartLibrary::builtin(), w.to);
+            return chiply::simplifyPolyline(chiply::routePolyline(*a, *b, w.path));
+        };
+        const auto r0 = route(0);
+        QCOMPARE(r0.size(), std::size_t(4)); // Q, corner, corner, gate A
+        // Marquee the flops, the short horizontals and the verticals (not the
+        // gates, not the long horizontals).
+        view->selectInRect(QRectF(-10, -10, 140, 330), false, false);
+        auto sel = es.selectedPartIds();
+        std::sort(sel.begin(), sel.end());
+        QCOMPARE(sel, (std::vector<std::string>{"f0", "f1", "f2"}));
+        for (QGraphicsItem* it : view->scene()->items())
+            if (it->type() == WireItem::Type)
+                QCOMPARE(static_cast<WireItem*>(it)->selectedSegments(), (std::vector<int>{0, 1})); // shown selected
+        // Two grid steps left: the selected segments move, only the long
+        // horizontal stretches (no new bends).
+        es.nudgeSelection(-2, 0, false);
+        for (int i = 0; i < 3; ++i) {
+            const auto before = i == 0 ? r0 : std::vector<chiply::Point>{};
+            const auto r = route(i);
+            QCOMPARE(r.size(), std::size_t(4));
+            const double y = i * 96 + 9.6;
+            QVERIFY(std::fabs(r[0].x - 76.8) < 0.02 && std::fabs(r[0].y - y) < 0.02);        // Q moved
+            QVERIFY(std::fabs(r[1].x - 96.0) < 0.02 && std::fabs(r[1].y - y) < 0.02);        // corner moved
+            QVERIFY(std::fabs(r[2].x - 96.0) < 0.02 && std::fabs(r[2].y - (y + 19.2)) < 0.02); // corner moved
+            QVERIFY(std::fabs(r[3].x - 499.2) < 0.02 && std::fabs(r[3].y - (y + 19.2)) < 0.02); // gate pin fixed
+        }
+        // Again: the selected segments keep following.
+        es.nudgeSelection(-1, 0, false);
+        QVERIFY(std::fabs(route(1)[2].x - 86.4) < 0.02);
+        // Undo twice: back where it was, and the segments are still selected.
+        es.undoStack()->undo();
+        es.undoStack()->undo();
+        QCOMPARE(route(0), r0);
+        es.nudgeSelection(1, 0, false);
+        QVERIFY(std::fabs(route(0)[2].x - 124.8) < 0.02); // the corner moved right with the flops
+        es.undoStack()->undo();
+        // A mouse drag does the same.
+        view->resize(900, 700);
+        view->show();
+        QVERIFY(QTest::qWaitForWindowExposed(view));
+        view->resetTransform();
+        view->centerOn(QPointF(250, 140));
+        const QPointF grab(48, 96 + 18); // inside f1
+        const QPoint at = view->mapFromScene(grab), to = view->mapFromScene(grab + QPointF(-28.8, 0));
+        QTest::mousePress(view->viewport(), Qt::LeftButton, {}, at);
+        for (int k = 1; k <= 6; ++k)
+            QTest::mouseMove(view->viewport(), at + (to - at) * k / 6);
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, {}, to);
+        const auto r2 = route(2);
+        QCOMPARE(r2.size(), std::size_t(4));
+        QVERIFY(std::fabs(r2[1].x - 86.4) < 0.02); // 115.2 - 28.8
+        QVERIFY(std::fabs(r2[3].x - 499.2) < 0.02);
+        // A click elsewhere clears the segment selection.
+        view->clearSelection();
+        for (QGraphicsItem* it : view->scene()->items())
+            if (it->type() == WireItem::Type)
+                QVERIFY(static_cast<WireItem*>(it)->selectedSegments().empty());
     }
 };
 

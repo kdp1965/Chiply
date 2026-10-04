@@ -958,6 +958,28 @@ void SchematicView::selectInRect(const QRectF& r, bool crossing, bool add)
                 it->setSelected(true);
         }
     }
+    // Wires not selected as a whole: the segments the rectangle fully
+    // encloses move with the selection (their corners; ends stay on pins).
+    std::map<int, std::vector<chiply::Point>> corners;
+    const QRectF rr = r.adjusted(-0.01, -0.01, 0.01, 0.01);
+    for (QGraphicsItem* it : scene()->items(r, Qt::IntersectsItemShape)) {
+        if (it->type() != WireItem::Type || it->isSelected())
+            continue;
+        auto* w = static_cast<WireItem*>(it);
+        const std::vector<chiply::Point>& route = w->route();
+        std::vector<chiply::Point> pts;
+        for (std::size_t k = 0; k + 1 < route.size(); ++k) {
+            const QPointF a(route[k].x, route[k].y), b(route[k + 1].x, route[k + 1].y);
+            if (!rr.contains(a) || !rr.contains(b))
+                continue;
+            for (std::size_t m : {k, k + 1})
+                if (m != 0 && m + 1 != route.size())
+                    pts.push_back(route[m]);
+        }
+        if (!pts.empty())
+            corners[w->index()] = pts;
+    }
+    emit segmentsSelected(corners, add);
     emit selectionEdited();
 }
 
@@ -967,6 +989,7 @@ void SchematicView::clearSelection()
         const QSignalBlocker block(scene());
         scene()->clearSelection();
     }
+    emit segmentsCleared();
     emit selectionEdited();
 }
 
@@ -992,6 +1015,7 @@ void SchematicView::selectOnly(QGraphicsItem* item)
         scene()->clearSelection();
         item->setSelected(true);
     }
+    emit segmentsCleared();
     emit selectionEdited();
 }
 

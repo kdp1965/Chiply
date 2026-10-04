@@ -50,6 +50,7 @@ public:
         int wires = 0;      // explicitly selected
         int implicitWires = 0; // both ends on selected parts
         int stretchWires = 0;  // one end on a selected part
+        int segments = 0;      // wires with segments selected by a marquee (they move too)
         bool empty() const { return parts == 0 && wires == 0; }
     };
     SelectionSummary selectionSummary() const { return m_summary; }
@@ -263,6 +264,17 @@ private:
     void finishPaste(bool keep);
     class MiniToolbar* m_mini = nullptr;
     std::string m_placeType;
+    // Wire segments a marquee enclosed (PLAN.md 4.4): their corners, kept
+    // relative to one selected part so they follow every move and undo.
+    struct SegmentSelection {
+        std::string ref;               // a selected part
+        double refLeft = 0, refTop = 0; // its position when the corners were taken
+        std::map<int, std::vector<chiply::Point>> corners; // wire index -> corners then
+    } m_segSel;
+    std::map<int, std::vector<chiply::Point>> movingCorners() const; // corners now
+    void selectSegments(const std::map<int, std::vector<chiply::Point>>& corners, bool add);
+    void clearSegments();
+    void refreshSegmentHighlights();
     std::vector<Placement> m_moveStart;
     std::vector<WireChange> m_moveWireStart; // paths of affected wires at drag start
     void applyPlacementsOnly(const std::vector<Placement>& ps); // document only

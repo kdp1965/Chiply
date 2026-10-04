@@ -60,6 +60,8 @@ EditorSession::EditorSession(QObject* parent)
         }
     });
     connect(&Theme::instance(), &Theme::changed, this, &EditorSession::rebuildScene);
+    connect(m_view, &SchematicView::segmentsSelected, this, &EditorSession::selectSegments);
+    connect(m_view, &SchematicView::segmentsCleared, this, &EditorSession::clearSegments);
     connect(m_view, &SchematicView::selectionEdited, this, &EditorSession::updateSelectionState);
     connect(m_view, &SchematicView::wireRouteEdited, this, &EditorSession::editWireRoute);
     connect(m_view, &SchematicView::simPress, this, [this](const QString& id, QPointF local) {
@@ -178,6 +180,7 @@ void EditorSession::load(const QString& path)
     m_warnings.clear();
     for (const std::string& w : r.warnings)
         m_warnings << QString::fromStdString(w);
+    m_segSel = {};
     m_path = path;
     m_undo.clear();
     rebuildScene();
@@ -191,6 +194,7 @@ void EditorSession::load(const QString& path)
 
 void EditorSession::newDocument(const QString& author)
 {
+    m_segSel = {};
     m_doc = chiply::Document::makeEmpty(author.toStdString());
     m_path.clear();
     m_warnings.clear();
@@ -207,6 +211,7 @@ void EditorSession::newDocument(const QString& author)
 void EditorSession::newFromTemplate()
 {
     chiply::LoadResult r = chiply::loadWokwi(chiply::ttTemplateJson());
+    m_segSel = {};
     m_doc = std::move(r.doc);
     m_doc.setAuthor("");
     m_path.clear();
@@ -422,6 +427,8 @@ void EditorSession::applyPlacements(const std::vector<Placement>& ps)
         refreshWiresOf(pl.id);
     }
     m_view->viewport()->update(); // group box follows
+    if (!m_segSel.corners.empty())
+        refreshSegmentHighlights();
     emit documentChanged();
 }
 
@@ -451,8 +458,85 @@ void EditorSession::applyWirePaths(const std::vector<WireChange>& ws)
             touched.insert(m_doc.wires[size_t(c.index)].from.part);
     for (const std::string& id : touched)
         refreshWiresOf(id);
+    if (!m_segSel.corners.empty())
+        refreshSegmentHighlights();
     if (!ws.empty())
         emit documentChanged();
+}
+
+// ---- selected wire segments ----
+
+void EditorSession::selectSegments(const std::map<int, std::vector<chiply::Point>>& corners, bool add)
+{
+    std::map<int, std::vector<chiply::Point>> now = add ? movingCorners() : std::map<int, std::vector<chiply::Point>>{};
+    for (const auto& [w, pts] : corners)
+        for (const chiply::Point& p : pts)
+            now[w].push_back(p);
+    m_segSel = {};
+    const std::vector<std::string> sel = selectedPartIds();
+    if (!now.empty() && !sel.empty()) {
+        if (const chiply::Part* p = m_doc.findPart(sel.front())) {
+            m_segSel.ref = p->id;
+            m_segSel.refLeft = p->left;
+            m_segSel.refTop = p->top;
+            m_segSel.corners = std::move(now);
+        }
+    }
+    refreshSegmentHighlights();
+}
+
+void EditorSession::clearSegments()
+{
+    if (m_segSel.corners.empty())
+        return;
+    m_segSel = {};
+    refreshSegmentHighlights();
+}
+
+std::map<int, std::vector<chiply::Point>> EditorSession::movingCorners() const
+{
+    const chiply::Part* ref = m_segSel.ref.empty() ? nullptr : m_doc.findPart(m_segSel.ref);
+    if (!ref)
+        return {};
+    const double dx = ref->left - m_segSel.refLeft, dy = ref->top - m_segSel.refTop;
+    std::map<int, std::vector<chiply::Point>> out;
+    for (const auto& [w, pts] : m_segSel.corners)
+        for (const chiply::Point& p : pts)
+            out[w].push_back({chiply::round2(p.x + dx), chiply::round2(p.y + dy)});
+    return out;
+}
+
+void EditorSession::refreshSegmentHighlights()
+{
+    const auto corners = movingCorners();
+    std::set<std::string> parts;
+    for (const std::string& id : selectedPartIds())
+        parts.insert(id);
+    auto near = [](const chiply::Point& a, const chiply::Point& b) { return std::abs(a.x - b.x) < 0.02 && std::abs(a.y - b.y) < 0.02; };
+    for (QGraphicsItem* it : m_scene.items()) {
+        if (it->type() != WireItem::Type)
+            continue;
+        auto* w = static_cast<WireItem*>(it);
+        std::vector<int> segs;
+        auto c = corners.find(w->index());
+        if (c != corners.end()) {
+            const auto& route = w->route();
+            auto moving = [&](std::size_t k) {
+                if (k == 0)
+                    return parts.count(w->fromPart()) > 0;
+                if (k + 1 == route.size())
+                    return parts.count(w->toPart()) > 0;
+                for (const chiply::Point& p : c->second)
+                    if (near(p, route[k]))
+                        return true;
+                return false;
+            };
+            for (std::size_t k = 0; k + 1 < route.size(); ++k)
+                if (moving(k) && moving(k + 1))
+                    segs.push_back(int(k));
+        }
+        w->setSelectedSegments(segs);
+    }
 }
 
 std::vector<EditorSession::WireChange> EditorSession::elasticWires(const std::vector<Placement>& from,
@@ -481,10 +565,75 @@ std::vector<EditorSession::WireChange> EditorSession::elasticWires(const std::ve
         }
         return chiply::pinPosition(q, *d, r.pin);
     };
+    // Selected wire segments move rigidly with the parts when the move is a
+    // plain translation (every part by the same delta, no rotation).
+    bool translation = !from.empty();
+    double ddx = 0, ddy = 0;
+    for (std::size_t k = 0; k < from.size() && k < to.size(); ++k) {
+        const double x = to[k].left - from[k].left, y = to[k].top - from[k].top;
+        if (k == 0) {
+            ddx = x;
+            ddy = y;
+        }
+        translation &= from[k].rotate == to[k].rotate && std::abs(x - ddx) < 1e-6 && std::abs(y - ddy) < 1e-6;
+    }
+    const auto corners = translation ? movingCorners() : std::map<int, std::vector<chiply::Point>>{};
     std::vector<WireChange> out;
     for (std::size_t i = 0; i < m_doc.wires.size(); ++i) {
         const chiply::Wire& w = m_doc.wires[i];
         const bool a = t.count(w.from.part), b = t.count(w.to.part);
+        auto c = corners.find(int(i));
+        if (c != corners.end() && !(a && b)) {
+            // Points that move: the ends on moving parts and the selected
+            // corners; each run of points that stay is re-routed between its
+            // moving neighbours with the elastic rule.
+            auto fa = pinAt(w.from, f), fb = pinAt(w.to, f);
+            if (!fa || !fb)
+                continue;
+            const auto old = chiply::routePolyline(*fa, *fb, w.path);
+            const std::size_t n = old.size();
+            std::vector<char> mv(n, 0);
+            mv[0] = a;
+            mv[n - 1] = b;
+            for (std::size_t k = 1; k + 1 < n; ++k)
+                for (const chiply::Point& p : c->second)
+                    if (std::abs(p.x - old[k].x) < 0.02 && std::abs(p.y - old[k].y) < 0.02)
+                        mv[k] = 1;
+            auto moved = [&](std::size_t k) {
+                return chiply::Point{chiply::round2(old[k].x + ddx), chiply::round2(old[k].y + ddy)};
+            };
+            std::vector<chiply::Point> pts;
+            auto push = [&](const chiply::Point& p) {
+                if (pts.empty() || std::abs(pts.back().x - p.x) > 1e-9 || std::abs(pts.back().y - p.y) > 1e-9)
+                    pts.push_back(p);
+            };
+            std::size_t k = 0;
+            while (k < n) {
+                if (mv[k]) {
+                    push(moved(k));
+                    ++k;
+                    continue;
+                }
+                std::size_t j = k;
+                while (j + 1 < n && !mv[j + 1])
+                    ++j;
+                // Fixed run k..j, with moving neighbours k-1 and/or j+1.
+                const std::size_t lo = k > 0 ? k - 1 : k, hi = j + 1 < n ? j + 1 : j;
+                std::vector<chiply::Point> sub(old.begin() + std::ptrdiff_t(lo), old.begin() + std::ptrdiff_t(hi) + 1);
+                if (k > 0)
+                    sub = chiply::stretchEnd(sub, true, moved(k - 1));
+                if (j + 1 < n)
+                    sub = chiply::stretchEnd(sub, false, moved(j + 1));
+                const std::size_t first = k > 0 ? 1 : 0, last = j + 1 < n ? sub.size() - 1 : sub.size();
+                for (std::size_t q = first; q < last; ++q)
+                    push(sub[q]);
+                k = j + 1;
+            }
+            if (before)
+                before->push_back({int(i), w.path});
+            out.push_back({int(i), chiply::pathFromPolyline(chiply::simplifyPolyline(pts))});
+            continue;
+        }
         if (a == b)
             continue; // untouched, or moving rigidly with both ends
         auto fa = pinAt(w.from, f), fb = pinAt(w.to, f);
@@ -535,8 +684,9 @@ void EditorSession::beginMove()
     std::set<std::string> ids;
     for (const Placement& p : m_moveStart)
         ids.insert(p.id);
+    const auto corners = movingCorners();
     for (std::size_t i = 0; i < m_doc.wires.size(); ++i)
-        if (ids.count(m_doc.wires[i].from.part) != ids.count(m_doc.wires[i].to.part))
+        if (ids.count(m_doc.wires[i].from.part) != ids.count(m_doc.wires[i].to.part) || corners.count(int(i)))
             m_moveWireStart.push_back({int(i), m_doc.wires[i].path});
     if (m_moveGrab.empty() && !m_moveStart.empty())
         m_moveGrab = m_moveStart.front().id;
@@ -1408,6 +1558,7 @@ void EditorSession::cancelPlacing()
 void EditorSession::replaceDocument(const chiply::Document& doc, const std::vector<std::string>& select,
                                     const std::vector<int>& selectWires)
 {
+    m_segSel = {}; // wire indices may have changed
     m_doc = doc;
     {
         const QSignalBlocker block(&m_scene);
@@ -1494,6 +1645,25 @@ void EditorSession::updateSelectionState()
         }
         w->setLink(link);
     }
+    // Selected wire segments follow the selection: re-anchor them if their
+    // reference part left it; none without selected parts.
+    if (!m_segSel.corners.empty()) {
+        if (parts.empty()) {
+            m_segSel = {};
+        } else if (!parts.count(m_segSel.ref)) {
+            const auto now = movingCorners();
+            if (const chiply::Part* p = m_doc.findPart(*parts.begin())) {
+                m_segSel.ref = p->id;
+                m_segSel.refLeft = p->left;
+                m_segSel.refTop = p->top;
+                m_segSel.corners = now;
+            }
+        }
+        s.segments = 0;
+        for (const auto& [w, pts] : m_segSel.corners)
+            (void)pts, ++s.segments;
+    }
+    refreshSegmentHighlights();
     m_summary = s;
     emit selectionChanged();
 }

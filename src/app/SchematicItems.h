@@ -114,6 +114,10 @@ public:
     const std::string& toPart() const { return m_toPart; }
     Link link() const { return m_link; }
     void setLink(Link l);
+    // Segments (indices into route()) selected by a marquee: drawn with the
+    // selection halo; they move with the selection.
+    void setSelectedSegments(const std::vector<int>& segs);
+    const std::vector<int>& selectedSegments() const { return m_selSegs; }
     // Simulation value of the wire's net: -1 = not simulating, else
     // 0 = low, 1 = high, 2 = X, 3 = Z (chiply::sim::V).
     void setSimValue(int v);
@@ -150,6 +154,7 @@ private:
     int m_index;
     std::string m_fromPart, m_toPart;
     Link m_link = Link::None;
+    std::vector<int> m_selSegs;
     int m_simValue = -1;
     QString m_tip;
 };

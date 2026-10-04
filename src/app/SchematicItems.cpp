@@ -382,6 +382,14 @@ void WireItem::setSimValue(int v)
     update();
 }
 
+void WireItem::setSelectedSegments(const std::vector<int>& segs)
+{
+    if (segs == m_selSegs)
+        return;
+    m_selSegs = segs;
+    update();
+}
+
 void WireItem::setLink(Link l)
 {
     if (l == m_link)
@@ -406,6 +414,17 @@ void WireItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget
         painter->setPen(QPen(halo, kWireWidth + 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter->setBrush(Qt::NoBrush);
         painter->drawPath(path());
+    }
+    if (!m_selSegs.empty() && !isSelected()) {
+        // Marquee-selected segments: the explicit-selection halo.
+        QColor halo = c.selection;
+        halo.setAlpha(170);
+        painter->setPen(QPen(halo, kWireWidth + 5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->setBrush(Qt::NoBrush);
+        for (int k : m_selSegs)
+            if (k >= 0 && std::size_t(k) + 1 < m_route.size())
+                painter->drawLine(QPointF(m_route[size_t(k)].x, m_route[size_t(k)].y),
+                                  QPointF(m_route[size_t(k) + 1].x, m_route[size_t(k) + 1].y));
     }
     painter->setPen(pen());
     painter->setBrush(Qt::NoBrush);

@@ -17,6 +17,7 @@
 #include "core/WirePath.h"
 
 #include <QGraphicsView>
+#include <map>
 #include <QElapsedTimer>
 #include <QTimer>
 
@@ -107,6 +108,11 @@ signals:
     void rotateRequested();
     void deleteRequested();
     void duplicateRequested();
+    // A marquee fully enclosed some segments of wires it did not select as a
+    // whole: their corner points (scene coordinates, wire ends excluded) by
+    // wire index. They move with the selection (EditorSession).
+    void segmentsSelected(std::map<int, std::vector<chiply::Point>> corners, bool add);
+    void segmentsCleared();
     // The cursor's position in scene coordinates (status bar).
     void cursorMoved(QPointF scenePos);
     // Right-click on a pin (pinRef) or a wire (wireIndex): the Probe menu.
