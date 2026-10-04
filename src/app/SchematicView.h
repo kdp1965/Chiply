@@ -194,4 +194,7 @@ private:
     QPoint m_lastMousePos;    // viewport
     Qt::KeyboardModifiers m_lastMods;
     QTimer m_autoScroll;
+    QPoint m_autoPos;
+    QPointF m_moveStartScene;      // where a part drag started (scene)              // last cursor position (viewport) for edge auto-scroll
+    bool autoScrollActive() const;
 };

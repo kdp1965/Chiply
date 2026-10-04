@@ -61,6 +61,19 @@
 #include <QGraphicsScene>
 #include <QUndoGroup>
 
+namespace {
+// The folder of the last Open / Save (a preference), so dialogs start there.
+QString lastFolder()
+{
+    const QString d = QSettings().value("files/lastFolder").toString();
+    return !d.isEmpty() && QFileInfo(d).isDir() ? d : QDir::homePath();
+}
+void rememberFolder(const QString& filePath)
+{
+    QSettings().setValue("files/lastFolder", QFileInfo(filePath).absolutePath());
+}
+} // namespace
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -852,7 +865,7 @@ void MainWindow::exportVerilog()
     EditorSession* s = current();
     if (!s || !exportPreflight(s, tr("Export Verilog")))
         return;
-    const QFileInfo fi(s->filePath().isEmpty() ? QStringLiteral("untitled.json") : s->filePath());
+    const QFileInfo fi(s->filePath().isEmpty() ? QDir(lastFolder()).filePath(QStringLiteral("untitled.json")) : s->filePath());
     QString stem = fi.completeBaseName();
     if (stem.endsWith(QStringLiteral(".diagram")))
         stem.chop(8);
@@ -905,7 +918,7 @@ void MainWindow::exportTtProject()
     EditorSession* s = current();
     if (!s || !exportPreflight(s, tr("Export Tiny Tapeout Project")))
         return;
-    const QString start = s->filePath().isEmpty() ? QDir::homePath() : QFileInfo(s->filePath()).absolutePath();
+    const QString start = s->filePath().isEmpty() ? lastFolder() : QFileInfo(s->filePath()).absolutePath();
     const QString dir = QFileDialog::getExistingDirectory(this, tr("Tiny Tapeout project folder (with info.yaml)"), start);
     if (dir.isEmpty())
         return;
@@ -1124,10 +1137,20 @@ void MainWindow::updateSimControls()
     updateStatus();
 }
 
+void MainWindow::changeEvent(QEvent* e)
+{
+    QMainWindow::changeEvent(e);
+    if (e->type() == QEvent::PaletteChange || e->type() == QEvent::ThemeChange)
+        updateThemeButton();
+}
+
 void MainWindow::updateThemeButton()
 {
+    // The ink follows the theme setting itself: when the theme changes, the
+    // widgets' palettes catch up only a moment later (changeEvent redraws).
     if (m_titleLabel)
-        m_titleLabel->setPixmap(titlePixmap(palette().color(QPalette::WindowText), devicePixelRatioF()));
+        m_titleLabel->setPixmap(titlePixmap(Theme::instance().isDark() ? QColor(0xf0, 0xf0, 0xf0) : QColor(0x10, 0x10, 0x10),
+                                            devicePixelRatioF()));
     if (!m_themeButton)
         return;
     const bool dark = Theme::instance().isDark();
@@ -1216,7 +1239,7 @@ void MainWindow::addReplacingBlank(EditorSession* s)
 void MainWindow::openDialog()
 {
     const QStringList paths = QFileDialog::getOpenFileNames(
-        this, tr("Open diagram"), QString(), tr("Wokwi diagrams (*.json);;All files (*)"));
+        this, tr("Open diagram"), lastFolder(), tr("Wokwi diagrams (*.json);;All files (*)"));
     for (const QString& p : paths)
         openFile(p);
 }
@@ -1239,6 +1262,7 @@ bool MainWindow::openFile(const QString& path)
         return false;
     }
     addReplacingBlank(s);
+    rememberFolder(path);
     if (s->usesExtensionParts() && !EditorSession::extensionsEnabled())
         statusBar()->showMessage(tr("This design uses Chiply extension parts. Turn on Edit > Chiply Extensions to add more."), 10000);
     if (!s->loadWarnings().isEmpty())
@@ -1258,7 +1282,7 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
     QString path = s->filePath();
     if (saveAs || path.isEmpty()) {
         path = QFileDialog::getSaveFileName(this, tr("Save diagram"),
-            path.isEmpty() ? QStringLiteral("diagram.json") : path, tr("Wokwi diagrams (*.json)"));
+            path.isEmpty() ? QDir(lastFolder()).filePath(QStringLiteral("diagram.json")) : path, tr("Wokwi diagrams (*.json)"));
         if (path.isEmpty())
             return false;
     }
@@ -1268,6 +1292,7 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
         QMessageBox::critical(this, tr("Save failed"), QString::fromUtf8(e.what()));
         return false;
     }
+    rememberFolder(path);
     if (s->usesExtensionParts())
         statusBar()->showMessage(tr("Saved %1 (uses Chiply extension parts: Wokwi cannot load it)").arg(path), 8000);
     else

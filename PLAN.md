@@ -334,7 +334,7 @@ Calibrated numbers replace the placeholders. Physical parts reference an SVG fro
 
 ### 4.1 Window layout
 
-Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/Step (sim); a tab bar with one tab per open file (4.10); the schematic canvas of the active tab in the center; on the right, two stacked docks: the Inspector (id, type, attrs, pin list with directions) that updates with the selection, and the Violations pane (5.2) whose entries navigate the canvas when clicked; a bottom dock for the simulation console and waveforms; a status bar with the cursor's x, y (diagram px), the mode, the DRC counts, the selection and the zoom. White canvas, light-gray 0.1 inch dot grid, Wokwi-like.
+Menu bar; a top toolbar with `+` Add part, zoom controls, Fit, Grid, Run/Pause/Step (sim); a tab bar with one tab per open file (4.10); the schematic canvas of the active tab in the center; on the right, two stacked docks: the Inspector (id, type, attrs, pin list with directions) that updates with the selection, and the Violations pane (5.2) whose entries navigate the canvas when clicked; a bottom dock for the simulation console and waveforms; a status bar with the cursor's x, y (diagram px), the mode, the DRC counts, the selection and the zoom. Moving parts, drawing a wire, dragging wire handles, placing or pasting parts and the marquee all scroll the canvas when the cursor nears or passes its edge, and the carried item keeps following the cursor. Open and Save start in the folder used last (a preference). White canvas, light-gray 0.1 inch dot grid, Wokwi-like.
 
 ### 4.2 Navigation
 

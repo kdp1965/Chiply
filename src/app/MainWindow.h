@@ -61,6 +61,7 @@ private:
     void newFromTemplate();
     void addPart();
     void updateThemeButton();
+    void changeEvent(QEvent* e) override;
     void playPause();
     void updateSimControls();
     enum class SimIcon { Play, Pause, Stop, Step };

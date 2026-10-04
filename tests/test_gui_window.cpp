@@ -13,6 +13,8 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QFileInfo>
+#include <QImage>
 #include <QLabel>
 #include <QListWidget>
 #include <QToolButton>
@@ -240,6 +242,46 @@ private slots:
         QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-64x8"));
         s->undoStack()->undo();
         QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-16x8"));
+    }
+
+    void lastFolderIsRemembered()
+    {
+        QSettings().remove("files/lastFolder");
+        MainWindow w;
+        QVERIFY(w.openFile(QStringLiteral(CHIPLY_REFERENCE_DIR "/tt_template_354858054593504257.diagram.json")));
+        QCOMPARE(QSettings().value("files/lastFolder").toString(), QFileInfo(QStringLiteral(CHIPLY_REFERENCE_DIR)).absoluteFilePath());
+        QSettings().remove("files/lastFolder");
+    }
+
+    void titleInkFollowsTheThemeWhenSwitched()
+    {
+        MainWindow w;
+        w.show();
+        auto* title = w.findChild<QLabel*>("programTitle");
+        // The ink: the most opaque pixel of the title graphic.
+        auto inkLightness = [&] {
+            const QImage img = title->pixmap().toImage();
+            int bestAlpha = -1, light = 0;
+            for (int y = 0; y < img.height(); ++y)
+                for (int x = 0; x < img.width(); ++x) {
+                    const QColor c = img.pixelColor(x, y);
+                    if (c.alpha() > bestAlpha) {
+                        bestAlpha = c.alpha();
+                        light = c.lightness();
+                    }
+                }
+            return light;
+        };
+        Theme::instance().setModeForSession(Theme::Mode::Dark);
+        QVERIFY(inkLightness() > 200); // light ink on the dark toolbar, right away
+        Theme::instance().setModeForSession(Theme::Mode::Light);
+        QVERIFY(inkLightness() < 60);
+        QApplication::processEvents(); // and still right after the palette catches up
+        QVERIFY(inkLightness() < 60);
+        Theme::instance().setModeForSession(Theme::Mode::Dark);
+        QApplication::processEvents();
+        QVERIFY(inkLightness() > 200);
+        Theme::instance().setModeForSession(Theme::Mode::Light);
     }
 
     void cursorPositionInTheStatusBar()

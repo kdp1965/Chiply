@@ -570,6 +570,9 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
     emit cursorMoved(mapToScene(pos));
+    m_autoPos = pos;
+    if (autoScrollActive() && !m_autoScroll.isActive())
+        m_autoScroll.start();
     if (m_drawing || (m_press == Press::End && m_dragWire && m_endMoved))
         showTargetPin(pos);
     if (m_drawing && !m_panning && !m_panPending) {
@@ -654,13 +657,14 @@ void SchematicView::mouseMoveEvent(QMouseEvent* event)
                 selectOnly(m_pressItem);
         }
         m_press = Press::Moving;
+        m_moveStartScene = mapToScene(m_pressPos); // in scene units: auto-scroll does not shift it
         m_pendingWirePart = nullptr; // a junction drag is a move, not a wire
         m_pendingWirePin = nullptr;
         viewport()->setCursor(Qt::SizeAllCursor);
         emit moveStarted(QString::fromStdString(itemPartId(m_pressItem)), m_lastMods & Qt::AltModifier);
     }
     if (m_press == Press::Moving) {
-        const QPointF d = mapToScene(pos) - mapToScene(m_pressPos);
+        const QPointF d = mapToScene(pos) - m_moveStartScene;
         const auto mods = event->modifiers();
         const double grid = (mods & Qt::ControlModifier) ? 0.0 : (mods & Qt::AltModifier) ? kGrid / 2 : kGrid;
         emit moveUpdated(d, grid);
@@ -894,9 +898,17 @@ void SchematicView::finishMarquee(Qt::KeyboardModifiers mods)
     selectInRect(marqueeSceneRect(), mods & Qt::AltModifier, mods & Qt::ControlModifier);
 }
 
+bool SchematicView::autoScrollActive() const
+{
+    // Carrying something across the canvas: the view follows the cursor
+    // past the edges.
+    return m_press == Press::Marquee || m_press == Press::Moving || (m_press == Press::End && m_endMoved)
+        || m_press == Press::Handle || m_press == Press::Corner || m_press == Press::Split || m_drawing || m_placing;
+}
+
 void SchematicView::autoScrollTick()
 {
-    if (m_press != Press::Marquee) {
+    if (!autoScrollActive()) {
         m_autoScroll.stop();
         return;
     }
@@ -904,16 +916,21 @@ void SchematicView::autoScrollTick()
     const QRect r = viewport()->rect();
     constexpr int kEdge = 30;
     auto speed = [](int d) { return d >= kEdge ? 0.0 : std::min(40.0, (kEdge - d) * 0.6); };
-    const QPoint p = m_lastMousePos;
+    const QPoint p = m_autoPos;
     QPointF d(0, 0);
     d.rx() -= speed(p.x() - r.left());
     d.rx() += speed(r.right() - p.x());
     d.ry() -= speed(p.y() - r.top());
     d.ry() += speed(r.bottom() - p.y());
-    if (!d.isNull()) {
-        panBy(d);
-        viewport()->update();
-    }
+    if (d.isNull())
+        return;
+    panBy(d);
+    // Replay the cursor at its place: what is being moved, drawn or
+    // stretched follows the scroll.
+    QMouseEvent move(QEvent::MouseMove, QPointF(p), QPointF(viewport()->mapToGlobal(p)), Qt::NoButton,
+                     QGuiApplication::mouseButtons(), QGuiApplication::keyboardModifiers());
+    mouseMoveEvent(&move);
+    viewport()->update();
 }
 
 namespace {

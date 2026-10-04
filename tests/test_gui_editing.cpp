@@ -329,6 +329,45 @@ private slots:
         QCOMPARE(saveWokwi(s->document()), original);
         QVERIFY(!s->isModified());
     }
+
+    void dragPastTheEdgeScrollsTheCanvas()
+    {
+        // Moving a part to the right edge of the view and holding it there
+        // scrolls the canvas, and the part keeps following the cursor.
+        v->resetTransform();
+        v->scale(1.5, 1.5);
+        const QPointF c = outline("flop238").center();
+        v->centerOn(c);
+        const double left0 = s->document().findPart("flop238")->left;
+        const int h0 = v->horizontalScrollBar()->value();
+        const QPoint start = v->mapFromScene(c);
+        const QPoint edge(v->viewport()->width() - 3, start.y());
+        QTest::mousePress(v->viewport(), Qt::LeftButton, {}, start);
+        for (int i = 1; i <= 10; ++i)
+            QTest::mouseMove(v->viewport(), start + (edge - start) * i / 10);
+        QTest::qWait(400); // the cursor rests at the edge
+        QVERIFY(v->horizontalScrollBar()->value() > h0 + 50);
+        QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, edge);
+        const double moved = s->document().findPart("flop238")->left - left0;
+        // Farther than the cursor moved on screen: the scroll was added.
+        QVERIFY(moved > (edge.x() - start.x()) / 1.5 + 40);
+        s->undoStack()->undo();
+        QCOMPARE(s->document().findPart("flop238")->left, left0);
+
+        // Drawing a wire towards the bottom edge scrolls too.
+        v->centerOn(c);
+        const int vv0 = v->verticalScrollBar()->value();
+        const chiply::Point q = *chiply::pinPosition(s->document(), chiply::PartLibrary::builtin(), *chiply::PinRef::parse("flop238:Q"));
+        const QPoint pinAt = v->mapFromScene(QPointF(q.x, q.y));
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, pinAt); // start drawing
+        QVERIFY(v->drawingWire());
+        const QPoint bottom(pinAt.x(), v->viewport()->height() - 3);
+        for (int i = 1; i <= 10; ++i)
+            QTest::mouseMove(v->viewport(), pinAt + (bottom - pinAt) * i / 10);
+        QTest::qWait(400);
+        QVERIFY(v->verticalScrollBar()->value() > vv0 + 50);
+        v->cancelWire();
+    }
 };
 
 QTEST_MAIN(EditingTest)
