@@ -191,7 +191,9 @@ private slots:
         QTest::mousePress(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(from));
         for (int i = 1; i <= 5; ++i)
             QTest::mouseMove(v->viewport(), v->mapFromScene(from + (to - from) * i / 5.0));
+        QCOMPARE(v->targetPinTip(), QStringLiteral("flop238:CLK")); // the pin is confirmed while dragging
         QTest::mouseRelease(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(to));
+        QVERIFY(v->targetPinTip().isEmpty());
         QCOMPARE(s->document().wires.size(), wireCount); // reconnected, not a new wire
         const Wire& w = s->document().wires[size_t(idx)];
         QCOMPARE(w.to.str(), std::string("flop238:CLK"));

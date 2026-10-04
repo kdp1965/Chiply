@@ -242,6 +242,22 @@ private slots:
         QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-16x8"));
     }
 
+    void cursorPositionInTheStatusBar()
+    {
+        MainWindow w;
+        w.resize(1200, 800);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        auto* v = qobject_cast<SchematicView*>(w.findChild<QTabWidget*>()->currentWidget());
+        v->resetTransform();
+        v->centerOn(QPointF(96, 48));
+        const QPoint at = v->mapFromScene(QPointF(96, 48));
+        QTest::mouseMove(v->viewport(), at);
+        const QString t = w.findChild<QLabel*>("cursorPos")->text();
+        QVERIFY2(t.startsWith("x 96.") || t.startsWith("x 95.") || t.startsWith("x 97."), qPrintable(t));
+        QVERIFY2(t.contains("y 48.") || t.contains("y 47.") || t.contains("y 49."), qPrintable(t));
+    }
+
     void selectionDoesNotShiftCanvas()
     {
         MainWindow w;

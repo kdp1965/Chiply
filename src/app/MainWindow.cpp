@@ -17,6 +17,11 @@
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QFontMetrics>
+#include <QVBoxLayout>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QDialog>
 #include <QUrl>
 #include <QDesktopServices>
 #include <atomic>
@@ -88,6 +93,12 @@ MainWindow::MainWindow(QWidget* parent)
     m_modeLabel->setObjectName("modeStatus");
     m_modeLabel->setFont(sf);
     statusBar()->addPermanentWidget(m_modeLabel);
+    m_posLabel = new QLabel(this);
+    m_posLabel->setObjectName("cursorPos");
+    m_posLabel->setFont(sf);
+    m_posLabel->setMinimumWidth(QFontMetrics(sf).horizontalAdvance(QStringLiteral("x -0000.0  y -0000.0   |")));
+    m_posLabel->setToolTip(tr("Cursor position in diagram units (px, 9.6 per 0.1 inch grid step)"));
+    statusBar()->addPermanentWidget(m_posLabel);
     m_drcLabel = new QLabel(this);
     m_drcLabel->setObjectName("drcStatus");
     m_drcLabel->setFont(sf);
@@ -201,6 +212,32 @@ void MainWindow::buildMenus()
         b->setIconSize(QSize(30, 30));
     }
     tb->addWidget(liveWire);
+    // Paste name format (PLAN.md 4.7): "r#_*" steps the number at # on paste.
+    tb->addSeparator();
+    auto* pasteLabel = new QLabel(tr(" Paste names "), tb);
+    tb->addWidget(pasteLabel);
+    auto* pasteFormat = new QLineEdit(EditorSession::pasteNameFormat(), tb);
+    pasteFormat->setObjectName("pasteNameFormat");
+    pasteFormat->setPlaceholderText(tr("e.g. r#_*"));
+    pasteFormat->setClearButtonEnabled(true);
+    pasteFormat->setFont(tbf); // as large as the rest of the toolbar
+    pasteFormat->setFixedWidth(190);
+    tb->addWidget(pasteFormat);
+    const QString pasteTip = tr("Paste name format: # is the number to step, * is any text.\n"
+                                "With r#_*, copying r1_b31 and r1_b31_n1 pastes r2_b31 and r2_b31_n1.\n"
+                                "Empty: pasted names get the next free number or _1.");
+    pasteFormat->setToolTip(pasteTip);
+    pasteLabel->setToolTip(pasteTip);
+    auto checkFormat = [pasteFormat, pasteTip](const QString& text) {
+        const chiply::NameFormat f(text.trimmed().toStdString());
+        pasteFormat->setStyleSheet(f.valid() ? QString() : QStringLiteral("color: #e53935;"));
+        pasteFormat->setToolTip(f.valid() ? pasteTip : QString::fromStdString(f.error()) + QStringLiteral("\n\n") + pasteTip);
+    };
+    checkFormat(pasteFormat->text());
+    connect(pasteFormat, &QLineEdit::textChanged, this, [checkFormat](const QString& t) {
+        EditorSession::setPasteNameFormat(t.trimmed());
+        checkFormat(t);
+    });
     // Right end: light/dark switch (sun in light mode, moon in dark mode).
     auto* spacer = new QWidget(tb);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -290,6 +327,10 @@ void MainWindow::buildMenus()
         statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks found") : tr("Custom blocks: %1").arg(names.join(QStringLiteral(", "))), 6000);
     });
     reloadBlocks->setObjectName("reloadBlocksAction");
+    edit->addSeparator();
+    QAction* replaceNames = edit->addAction(tr("Find and Replace in &Names..."), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
+                                            this, &MainWindow::replaceInNames);
+    replaceNames->setObjectName("replaceNamesAction");
     edit->addAction(tr("Open Block &Library Folder"), this, [] {
         const QString dir = QString::fromStdString(chiply::defaultUserBlocksDir());
         QDir().mkpath(dir);
@@ -468,6 +509,10 @@ int MainWindow::addSession(EditorSession* s)
     s->view()->setProperty("session", QVariant::fromValue(s));
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
+    connect(s->view(), &SchematicView::cursorMoved, this, [this, s](QPointF p) {
+        if (s == current() && m_posLabel)
+            m_posLabel->setText(QStringLiteral("x %1  y %2   |").arg(p.x(), 0, 'f', 1).arg(p.y(), 0, 'f', 1));
+    });
     connect(s->view(), &SchematicView::addPartRequested, this, &MainWindow::addPart);
     connect(s, &EditorSession::simulationChanged, this, [this, s] {
         if (s == current())
@@ -896,6 +941,74 @@ void MainWindow::exportTtProject()
     } catch (const std::exception& e) {
         QMessageBox::critical(this, tr("Export Tiny Tapeout Project"), QString::fromUtf8(e.what()));
     }
+}
+
+void MainWindow::replaceInNames()
+{
+    EditorSession* s = current();
+    if (!s || s->selectedPartIds().empty()) {
+        statusBar()->showMessage(tr("Select the parts whose names to change first"), 5000);
+        return;
+    }
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Find and Replace in Names"));
+    QFont f = dlg.font();
+    f.setPointSize(std::max(f.pointSize(), 15));
+    dlg.setFont(f);
+    auto* form = new QFormLayout;
+    auto* from = new QLineEdit(&dlg);
+    from->setObjectName("replaceFrom");
+    auto* to = new QLineEdit(&dlg);
+    to->setObjectName("replaceTo");
+    form->addRow(tr("Find"), from);
+    form->addRow(tr("Replace with"), to);
+    auto* preview = new QLabel(&dlg);
+    preview->setWordWrap(true);
+    preview->setTextFormat(Qt::PlainText);
+    preview->setMinimumWidth(420);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Replace"));
+    auto* lay = new QVBoxLayout(&dlg);
+    lay->addWidget(new QLabel(tr("In the names of the %1 selected parts (wires follow):").arg(s->selectedPartIds().size()), &dlg));
+    lay->addLayout(form);
+    lay->addWidget(preview);
+    lay->addWidget(buttons);
+    auto update = [&] {
+        QString err;
+        const auto map = s->previewReplaceInNames(from->text(), to->text(), &err);
+        QString text;
+        if (!err.isEmpty()) {
+            text = err;
+            preview->setStyleSheet(QStringLiteral("color: #e53935;"));
+        } else {
+            preview->setStyleSheet(QString());
+            int n = 0;
+            for (const auto& [a, b] : map) {
+                if (++n > 8) {
+                    text += tr("... and %1 more").arg(map.size() - 8);
+                    break;
+                }
+                text += QString::fromStdString(a) + QStringLiteral("  \u2192  ") + QString::fromStdString(b) + QLatin1Char('\n');
+            }
+            if (map.empty())
+                text = from->text().isEmpty() ? tr("Type the text to find.") : tr("No selected name contains it.");
+        }
+        preview->setText(text.trimmed());
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(err.isEmpty() && !map.empty());
+    };
+    connect(from, &QLineEdit::textChanged, &dlg, update);
+    connect(to, &QLineEdit::textChanged, &dlg, update);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    update();
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+    int changed = 0;
+    const QString err = s->replaceInNames(from->text(), to->text(), &changed);
+    if (!err.isEmpty())
+        QMessageBox::warning(this, tr("Find and Replace in Names"), err);
+    else
+        statusBar()->showMessage(tr("Renamed %1").arg(countOf(changed, "part", "parts")), 5000);
 }
 
 void MainWindow::setExtensions(bool on)

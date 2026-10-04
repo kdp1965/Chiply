@@ -22,8 +22,31 @@ std::set<std::string> usedIds(const Document& doc);
 //  - user names are kept if free, otherwise get the lowest free "_N" suffix;
 //  - duplicates inside the fragment are resolved the same way.
 // Returns old id -> new id for every incoming part (in order).
+// With a paste name format (see NameFormat), incoming ids that match it are
+// renamed by stepping the number at '#' instead (all by the same step, the
+// smallest that makes every one of them free); the rest follow the rules
+// above.
+struct NameFormat {
+    // "r#_*": '#' is the number to step, '*' is any text, the rest literal.
+    // Empty: no format. valid() is false (and error() says why) for a format
+    // without exactly one '#'.
+    explicit NameFormat(const std::string& format = {});
+    bool active() const { return m_active; }
+    bool valid() const { return m_error.empty(); }
+    const std::string& error() const { return m_error; }
+    // The id with its '#' number stepped by `step`, or nullopt if it does
+    // not match. Leading zeros keep the width ("r07" + 1 -> "r08").
+    std::optional<std::string> step(const std::string& id, long step) const;
+
+private:
+    bool m_active = false;
+    std::string m_error;
+    std::string m_regex;
+};
+
 std::vector<std::pair<std::string, std::string>> remapIds(const std::vector<Part>& incoming,
-                                                          const std::set<std::string>& used);
+                                                          const std::set<std::string>& used,
+                                                          const NameFormat& format = NameFormat());
 
 // A set of parts plus the wires whose both ends are among them.
 struct Fragment {
@@ -46,7 +69,16 @@ Point fragmentOrigin(const Fragment& f);
 // Returns the new part ids (fragment order). Wires that reference a part not
 // in the fragment are dropped and counted in *droppedWires.
 std::vector<std::string> insertFragment(Document& doc, Fragment frag, double dx, double dy,
-                                        int* droppedWires = nullptr);
+                                        int* droppedWires = nullptr, const NameFormat& format = NameFormat());
+
+// Find and replace in part ids: every occurrence of `from` in each of `ids`
+// becomes `to`. Returns old -> new for the ids that change. *error is set
+// (and nothing returned) if a new id is empty, repeated, or taken by a part
+// outside `ids`.
+std::map<std::string, std::string> replaceInIds(const Document& doc, const std::vector<std::string>& ids,
+                                                const std::string& from, const std::string& to, std::string* error);
+// Renames parts all at once (swaps work) and their wire ends.
+void renameParts(Document& doc, const std::map<std::string, std::string>& rename);
 
 // Removal with enough information to put everything back exactly.
 struct Removed {

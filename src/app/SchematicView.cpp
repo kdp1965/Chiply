@@ -1,6 +1,7 @@
 #include "SchematicView.h"
 
 #include <QContextMenuEvent>
+#include <QToolTip>
 #include <utility>
 
 #include "SchematicItems.h"
@@ -265,6 +266,7 @@ void SchematicView::startWire(PartItem* part, const chiply::PinDef* pin)
 
 void SchematicView::cancelWire()
 {
+    hideTargetPin();
     if (m_drawPreview) {
         scene()->removeItem(m_drawPreview);
         delete m_drawPreview;
@@ -544,9 +546,32 @@ notDrawing:
     QGraphicsView::mousePressEvent(event);
 }
 
+void SchematicView::showTargetPin(QPoint viewPos)
+{
+    auto [part, pin] = pinAt(viewPos);
+    const QString tip = part && pin ? QString::fromStdString(part->partId() + ":" + pin->name) : QString();
+    if (tip == m_targetTip)
+        return;
+    m_targetTip = tip;
+    if (tip.isEmpty())
+        QToolTip::hideText();
+    else
+        QToolTip::showText(viewport()->mapToGlobal(viewPos) + QPoint(16, 16), QStringLiteral("\u2192 ") + tip, viewport());
+}
+
+void SchematicView::hideTargetPin()
+{
+    if (!m_targetTip.isEmpty())
+        QToolTip::hideText();
+    m_targetTip.clear();
+}
+
 void SchematicView::mouseMoveEvent(QMouseEvent* event)
 {
     const QPoint pos = event->position().toPoint();
+    emit cursorMoved(mapToScene(pos));
+    if (m_drawing || (m_press == Press::End && m_dragWire && m_endMoved))
+        showTargetPin(pos);
     if (m_drawing && !m_panning && !m_panPending) {
         if ((pos - m_pressPos).manhattanLength() > 6)
             m_drawPressMoved = true;
@@ -687,6 +712,7 @@ void SchematicView::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     if (event->button() == Qt::LeftButton && m_press == Press::End) {
+        hideTargetPin();
         m_press = Press::None;
         viewport()->setCursor(Qt::ArrowCursor);
         WireItem* w = m_dragWire;

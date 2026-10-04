@@ -107,6 +107,8 @@ signals:
     void rotateRequested();
     void deleteRequested();
     void duplicateRequested();
+    // The cursor's position in scene coordinates (status bar).
+    void cursorMoved(QPointF scenePos);
     // Right-click on a pin (pinRef) or a wire (wireIndex): the Probe menu.
     void probeMenuRequested(QString pinRef, int wireIndex, QPoint globalPos);
 
@@ -160,6 +162,14 @@ private:
     bool m_drawing = false;
     bool m_eatContextMenu = false;
     bool m_endMoved = false; // an end-handle press became a drag
+    // While dragging a wire end or drawing a wire: the pin under the cursor
+    // is named in a tooltip, as confirmation it is targeted.
+    void showTargetPin(QPoint viewPos);
+    void hideTargetPin();
+    QString m_targetTip;
+public:
+    QString targetPinTip() const { return m_targetTip; } // for tests
+private:
     bool m_hlActive = false;
     QRectF m_hlBox;
     std::vector<QPointF> m_hlPins;

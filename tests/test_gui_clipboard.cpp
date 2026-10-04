@@ -6,6 +6,7 @@
 #include "core/WokwiJson.h"
 
 #include <QGraphicsScene>
+#include <QSettings>
 #include <QTest>
 
 using namespace chiply;
@@ -40,6 +41,9 @@ class ClipboardTest : public QObject {
 private slots:
     void initTestCase()
     {
+        QCoreApplication::setOrganizationName("ChiplyTest");
+        QCoreApplication::setApplicationName("ChiplyClipboardTest");
+        QSettings().clear();
         s = new EditorSession(this);
         s->load(QStringLiteral(CHIPLY_REFERENCE_DIR "/wokwi_414123795172381697.diagram.json"));
         original = saveWokwi(s->document());
@@ -150,6 +154,57 @@ private slots:
         s->undoStack()->undo();
         s->undoStack()->undo();
         QCOMPARE(saveWokwi(s->document()), original);
+    }
+
+    void pasteNameFormatStepsTheNumber()
+    {
+        // state_reg_0..2 exist: with "state_reg_#", a copy of state_reg_0
+        // pastes as state_reg_3 (not state_reg_0_1).
+        EditorSession::setPasteNameFormat(QStringLiteral("state_reg_#"));
+        select({"state_reg_0"});
+        auto rep = s->paste(s->copySelection(), centerOf("flop238") + QPointF(0, 300), false);
+        QVERIFY(rep.error.isEmpty());
+        QCOMPARE(s->selectedPartIds(), std::vector<std::string>{"state_reg_3"});
+        QTest::keyClick(v, Qt::Key_Escape); // cancel the floating paste
+        QVERIFY(!s->document().findPart("state_reg_3"));
+        // An invalid format (no #) is ignored: the usual _1.
+        EditorSession::setPasteNameFormat(QStringLiteral("state_reg_*"));
+        select({"state_reg_0"});
+        s->paste(s->copySelection(), centerOf("flop238") + QPointF(0, 300), false);
+        QCOMPARE(s->selectedPartIds(), std::vector<std::string>{"state_reg_0_1"});
+        QTest::keyClick(v, Qt::Key_Escape);
+        EditorSession::setPasteNameFormat(QString());
+    }
+
+    void findAndReplaceInSelectedNames()
+    {
+        select({"loop_reg_0", "loop_reg_1", "loop_reg_2"});
+        std::size_t wiresOn = 0;
+        for (const Wire& w : s->document().wires)
+            wiresOn += w.from.part.rfind("loop_reg_", 0) == 0 || w.to.part.rfind("loop_reg_", 0) == 0;
+        QVERIFY(wiresOn > 0);
+        QString err;
+        QCOMPARE(s->previewReplaceInNames("loop", "iter", &err).size(), std::size_t(3));
+        QVERIFY(s->previewReplaceInNames("loop_reg_0", "state_reg_0", &err).empty()); // taken
+        QVERIFY(err.contains("already used"));
+        QVERIFY(s->previewReplaceInNames("loop", "2x", &err).empty()); // not a Verilog name
+        int changed = 0;
+        QCOMPARE(s->replaceInNames("loop", "iter", &changed), QString());
+        QCOMPARE(changed, 3);
+        QVERIFY(s->document().findPart("iter_reg_1") && !s->document().findPart("loop_reg_1"));
+        std::size_t wiresNow = 0;
+        for (const Wire& w : s->document().wires) {
+            QVERIFY(w.from.part.rfind("loop_reg_", 0) != 0 && w.to.part.rfind("loop_reg_", 0) != 0);
+            wiresNow += w.from.part.rfind("iter_reg_", 0) == 0 || w.to.part.rfind("iter_reg_", 0) == 0;
+        }
+        QCOMPARE(wiresNow, wiresOn); // the wires followed
+        auto sel = s->selectedPartIds();
+        std::sort(sel.begin(), sel.end());
+        QCOMPARE(sel, (std::vector<std::string>{"iter_reg_0", "iter_reg_1", "iter_reg_2"}));
+        s->undoStack()->undo(); // one step
+        QVERIFY(s->document().findPart("loop_reg_1"));
+        QCOMPARE(saveWokwi(s->document()), original);
+        QSettings().clear();
     }
 };
 

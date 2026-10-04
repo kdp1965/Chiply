@@ -134,3 +134,78 @@ TEST_CASE("pasting into another document renumbers against it")
     CHECK(std::count(ids.begin(), ids.end(), "flop1") == 1);
     CHECK(std::count(ids.begin(), ids.end(), "state_reg_2") == 1);
 }
+
+TEST_CASE("paste name format steps the register number", "[edit]")
+{
+    NameFormat f("r#_*");
+    REQUIRE(f.valid());
+    CHECK(*f.step("r1_b31", 1) == "r2_b31");
+    CHECK(*f.step("r1_b31_n1", 1) == "r2_b31_n1"); // only the number at '#'
+    CHECK(*f.step("r07_x", 1) == "r08_x");         // zero padding kept
+    CHECK(!f.step("and12", 1));                    // does not match
+    CHECK(!NameFormat("r_*").valid());
+    CHECK(!NameFormat("r#_#").valid());
+    CHECK(!NameFormat("").active());
+
+    // Copying register r1's bank into a design that has r1 (and r2): the
+    // whole group steps to the first free number, r3; other ids as usual.
+    Document doc;
+    for (const char* id : {"r1_b0", "r1_b1", "r1_b1_n1", "r2_b0", "and1"}) {
+        Part p;
+        p.id = id;
+        p.type = "wokwi-gate-and-2";
+        doc.parts.push_back(p);
+    }
+    std::vector<Part> incoming;
+    for (const char* id : {"r1_b0", "r1_b1", "r1_b1_n1", "and1", "label"}) {
+        Part p;
+        p.id = id;
+        p.type = "wokwi-gate-and-2";
+        incoming.push_back(p);
+    }
+    Part named;
+    named.id = "label";
+    named.type = "wokwi-text";
+    doc.parts.push_back(named);
+    const auto map = remapIds(incoming, usedIds(doc), f);
+    CHECK(map[0].second == "r3_b0");
+    CHECK(map[1].second == "r3_b1");
+    CHECK(map[2].second == "r3_b1_n1");
+    CHECK(map[3].second == "and2");    // auto id: next free number
+    CHECK(map[4].second == "label_1"); // other names: _N as before
+    // Without a format the old rules apply.
+    CHECK(remapIds(incoming, usedIds(doc))[0].second == "r1_b0_1");
+}
+
+TEST_CASE("find and replace in names, with the wires", "[edit]")
+{
+    Document doc;
+    for (const char* id : {"r1_b0", "r1_b1", "r2_b0", "x"}) {
+        Part p;
+        p.id = id;
+        p.type = "wokwi-gate-and-2";
+        doc.parts.push_back(p);
+    }
+    Wire w;
+    w.from = {"r1_b0", "OUT"};
+    w.to = {"x", "A"};
+    doc.wires.push_back(w);
+    std::string err;
+    auto map = replaceInIds(doc, {"r1_b0", "r1_b1"}, "r1_", "r5_", &err);
+    CHECK(err.empty());
+    CHECK(map == std::map<std::string, std::string>{{"r1_b0", "r5_b0"}, {"r1_b1", "r5_b1"}});
+    renameParts(doc, map);
+    CHECK(doc.findPart("r5_b1"));
+    CHECK(doc.wires[0].from.str() == "r5_b0:OUT");
+    CHECK(doc.wires[0].to.str() == "x:A");
+    // Collisions with parts outside the selection are refused.
+    map = replaceInIds(doc, {"r5_b0"}, "r5", "r2", &err);
+    CHECK(map.empty());
+    CHECK(err.find("already used") != std::string::npos);
+    // Swapping within the selection is fine.
+    err.clear();
+    map = replaceInIds(doc, {"r5_b0", "r2_b0"}, "", "z", &err);
+    CHECK(map.empty()); // empty "from": nothing to do
+    renameParts(doc, {{"r5_b0", "r2_b0"}, {"r2_b0", "r5_b0"}});
+    CHECK(doc.wires[0].from.str() == "r2_b0:OUT");
+}

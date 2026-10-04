@@ -3,6 +3,7 @@
 // Tabs never share any of these; only the clipboard and preferences are global.
 #include "core/Document.h"
 #include "core/Drc.h"
+#include "core/Edit.h"
 #include "core/WirePath.h"
 #include "sim/Trace.h"
 
@@ -76,6 +77,15 @@ public:
     // Property edits (undoable). renamePart returns an error message, or an
     // empty string on success.
     QString renamePart(const std::string& from, const std::string& to);
+    // Paste name format ("r#_*", PLAN.md 4.7): paste, Duplicate and Alt-drag
+    // step the number at '#' in matching ids. A global preference.
+    static QString pasteNameFormat();
+    static void setPasteNameFormat(const QString& format);
+    static chiply::NameFormat pasteFormat();
+    // Find and replace in the selected parts' names (and their wires);
+    // undoable. Returns an error message, or "".
+    QString replaceInNames(const QString& from, const QString& to, int* changed = nullptr);
+    std::map<std::string, std::string> previewReplaceInNames(const QString& from, const QString& to, QString* error) const;
     void setPartAttr(const std::string& id, const std::string& key, const std::string& value);
     // Changes a part's type, keeping its id, place and attrs (undoable); used
     // to resize a RAM/ROM. Wires to pins the new type lacks are kept (DRC

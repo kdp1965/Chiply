@@ -657,7 +657,7 @@ void EditorSession::duplicateSelection()
     chiply::Document after = m_doc;
     chiply::Fragment f = chiply::extractFragment(after, std::set<std::string>(ids.begin(), ids.end()));
     const double off = 2 * SchematicView::kGrid;
-    std::vector<std::string> newIds = chiply::insertFragment(after, f, off, off);
+    std::vector<std::string> newIds = chiply::insertFragment(after, f, off, off, nullptr, pasteFormat());
     m_undo.push(new DocumentCommand(this, tr("Duplicate"), m_doc, after, ids, newIds));
 }
 
@@ -685,6 +685,50 @@ QPointF placementOrigin(const chiply::Part& p, QPointF c)
     return QPointF(s.x, s.y);
 }
 } // namespace
+
+QString EditorSession::pasteNameFormat() { return QSettings().value("edit/pasteNameFormat").toString(); }
+void EditorSession::setPasteNameFormat(const QString& f) { QSettings().setValue("edit/pasteNameFormat", f); }
+
+chiply::NameFormat EditorSession::pasteFormat()
+{
+    const chiply::NameFormat f(pasteNameFormat().trimmed().toStdString());
+    return f.valid() ? f : chiply::NameFormat(); // an invalid format is ignored
+}
+
+std::map<std::string, std::string> EditorSession::previewReplaceInNames(const QString& from, const QString& to,
+                                                                         QString* error) const
+{
+    std::string err;
+    auto map = chiply::replaceInIds(m_doc, selectedPartIds(), from.toStdString(), to.toStdString(), &err);
+    for (const auto& [a, b] : map)
+        if (err.empty() && !chiply::isValidInstanceName(b))
+            err = b + " is not a valid Verilog instance name";
+    if (error)
+        *error = QString::fromStdString(err);
+    return err.empty() ? map : std::map<std::string, std::string>{};
+}
+
+QString EditorSession::replaceInNames(const QString& from, const QString& to, int* changed)
+{
+    if (changed)
+        *changed = 0;
+    if (m_sim)
+        return tr("Stop the simulation to edit.");
+    QString err;
+    const auto map = previewReplaceInNames(from, to, &err);
+    if (!err.isEmpty() || map.empty())
+        return err;
+    chiply::Document after = m_doc;
+    chiply::renameParts(after, map);
+    std::vector<std::string> before = selectedPartIds(), select;
+    for (const std::string& id : before)
+        select.push_back(map.count(id) ? map.at(id) : id);
+    m_undo.push(new DocumentCommand(this, tr("Replace \"%1\" with \"%2\" in %3 names").arg(from, to).arg(map.size()),
+                                    m_doc, after, before, select));
+    if (changed)
+        *changed = int(map.size());
+    return {};
+}
 
 QString EditorSession::renamePart(const std::string& from, const std::string& to)
 {
@@ -1125,7 +1169,7 @@ std::string EditorSession::duplicateInPlace(const std::string& grab)
     const std::vector<std::string> ids = selectedPartIds();
     chiply::Document after = m_doc;
     chiply::Fragment f = chiply::extractFragment(after, std::set<std::string>(ids.begin(), ids.end()));
-    const std::vector<std::string> newIds = chiply::insertFragment(after, f, 0, 0);
+    const std::vector<std::string> newIds = chiply::insertFragment(after, f, 0, 0, nullptr, pasteFormat());
     std::string g = grab;
     for (std::size_t i = 0; i < f.parts.size(); ++i)
         if (f.parts[i].id == grab)
@@ -1218,7 +1262,7 @@ EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anc
     const double dy = chiply::round2(s.y - first.top);
     chiply::Document after = m_doc;
     int dropped = 0;
-    const std::vector<std::string> newIds = chiply::insertFragment(after, f, dx, dy, &dropped);
+    const std::vector<std::string> newIds = chiply::insertFragment(after, f, dx, dy, &dropped, pasteFormat());
     rep.droppedWires += dropped;
     rep.parts = int(newIds.size());
     for (std::size_t i = 0; i < newIds.size(); ++i)

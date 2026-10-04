@@ -86,6 +86,8 @@ private:
     class QDockWidget* m_violDock = nullptr;
     class QLabel* m_drcLabel = nullptr;
     class QLabel* m_modeLabel = nullptr;
+    class QLabel* m_posLabel = nullptr;
+    void replaceInNames();
     QAction* m_extensionsAction = nullptr;
     void setExtensions(bool on);
     void updateDrcStatus();

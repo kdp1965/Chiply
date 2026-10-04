@@ -1,5 +1,9 @@
 #include "core/Edit.h"
 
+#include <regex>
+
+#include <cctype>
+
 #include "core/IdGen.h"
 #include "core/JsonFormat.h"
 #include "core/WokwiJson.h"
@@ -16,14 +20,87 @@ std::set<std::string> usedIds(const Document& doc)
     return ids;
 }
 
+NameFormat::NameFormat(const std::string& format)
+{
+    if (format.empty())
+        return;
+    m_active = true;
+    int hashes = 0;
+    std::string re = "^";
+    for (char c : format) {
+        if (c == '#') {
+            ++hashes;
+            re += "([0-9]+)";
+        } else if (c == '*') {
+            re += ".*";
+        } else if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+            re += c;
+        } else {
+            re += std::string("\\") + c;
+        }
+    }
+    if (hashes != 1) {
+        m_error = "the format needs exactly one # (the number to step)";
+        m_active = false;
+        return;
+    }
+    m_regex = re + "$";
+}
+
+std::optional<std::string> NameFormat::step(const std::string& id, long by) const
+{
+    if (!m_active)
+        return std::nullopt;
+    const std::regex re(m_regex);
+    std::smatch m;
+    if (!std::regex_match(id, m, re))
+        return std::nullopt;
+    const std::string digits = m[1].str();
+    long n = 0;
+    try {
+        n = std::stol(digits);
+    } catch (...) {
+        return std::nullopt;
+    }
+    std::string next = std::to_string(n + by);
+    if (digits.size() > 1 && digits[0] == '0' && next.size() < digits.size())
+        next.insert(0, digits.size() - next.size(), '0'); // keep zero padding
+    return id.substr(0, std::size_t(m.position(1))) + next + id.substr(std::size_t(m.position(1) + m.length(1)));
+}
+
 std::vector<std::pair<std::string, std::string>> remapIds(const std::vector<Part>& incoming,
-                                                          const std::set<std::string>& usedIn)
+                                                          const std::set<std::string>& usedIn,
+                                                          const NameFormat& format)
 {
     std::set<std::string> used = usedIn;
+    // Paste name format: one step for the whole group, the smallest that
+    // frees every matching id (and keeps them distinct).
+    std::map<std::size_t, std::string> stepped;
+    if (format.active()) {
+        for (long k = 1; k < 100000; ++k) {
+            std::map<std::size_t, std::string> trial;
+            std::set<std::string> fresh;
+            bool ok = true;
+            for (std::size_t i = 0; i < incoming.size() && ok; ++i)
+                if (auto n = format.step(incoming[i].id, k)) {
+                    ok = !used.count(*n) && fresh.insert(*n).second;
+                    trial[i] = *n;
+                }
+            if (ok) {
+                stepped = std::move(trial);
+                break;
+            }
+        }
+        for (const auto& [i, id] : stepped)
+            used.insert(id);
+    }
     std::vector<std::pair<std::string, std::string>> out;
-    for (const Part& p : incoming) {
+    for (std::size_t i = 0; i < incoming.size(); ++i) {
+        const Part& p = incoming[i];
         std::string id;
-        if (isAutoId(p.id)) {
+        if (auto st = stepped.find(i); st != stepped.end()) {
+            id = st->second;
+        } else if (isAutoId(p.id)) {
             id = nextFreeId(splitTrailingNumber(p.id).first, used);
         } else if (!used.count(p.id)) {
             id = p.id;
@@ -54,9 +131,10 @@ Fragment extractFragment(const Document& doc, const std::set<std::string>& ids)
     return f;
 }
 
-std::vector<std::string> insertFragment(Document& doc, Fragment frag, double dx, double dy, int* dropped)
+std::vector<std::string> insertFragment(Document& doc, Fragment frag, double dx, double dy, int* dropped,
+                                        const NameFormat& format)
 {
-    const auto map = remapIds(frag.parts, usedIds(doc));
+    const auto map = remapIds(frag.parts, usedIds(doc), format);
     // Several incoming parts can share an old id (hand-edited JSON); wires
     // follow the first one, which matches how Wokwi resolves ids.
     std::map<std::string, std::string> lookup;
@@ -85,6 +163,51 @@ std::vector<std::string> insertFragment(Document& doc, Fragment frag, double dx,
     if (dropped)
         *dropped = drop;
     return newIds;
+}
+
+std::map<std::string, std::string> replaceInIds(const Document& doc, const std::vector<std::string>& ids,
+                                                const std::string& from, const std::string& to, std::string* error)
+{
+    std::map<std::string, std::string> out;
+    if (from.empty())
+        return out;
+    const std::set<std::string> renamedSet(ids.begin(), ids.end());
+    std::set<std::string> taken;
+    for (const Part& p : doc.parts)
+        if (!renamedSet.count(p.id))
+            taken.insert(p.id); // parts that keep their ids
+    std::set<std::string> result;
+    for (const std::string& id : ids) {
+        std::string n = id;
+        for (std::size_t pos = 0; (pos = n.find(from, pos)) != std::string::npos; pos += to.size())
+            n.replace(pos, from.size(), to);
+        if (n.empty()) {
+            if (error)
+                *error = id + " would get an empty name";
+            return {};
+        }
+        if (taken.count(n) || !result.insert(n).second) {
+            if (error)
+                *error = id + " would become " + n + ", which is already used";
+            return {};
+        }
+        if (n != id)
+            out[id] = n;
+    }
+    return out;
+}
+
+void renameParts(Document& doc, const std::map<std::string, std::string>& rename)
+{
+    for (Part& p : doc.parts)
+        if (auto it = rename.find(p.id); it != rename.end())
+            p.id = it->second;
+    for (Wire& w : doc.wires) {
+        if (auto it = rename.find(w.from.part); it != rename.end())
+            w.from.part = it->second;
+        if (auto it = rename.find(w.to.part); it != rename.end())
+            w.to.part = it->second;
+    }
 }
 
 Removed removeItems(Document& doc, const std::set<std::string>& partIds, const std::set<std::size_t>& wireIdx)
