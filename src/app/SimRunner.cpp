@@ -27,6 +27,7 @@ SimRunner::SimRunner(EditorSession* s, std::shared_ptr<chiply::sim::ChipBackend>
     m_nl = std::make_unique<chiply::Netlist>(chiply::Netlist::build(m_doc, chiply::PartLibrary::builtin()));
     chiply::sim::Options opt;
     opt.chip = std::move(chip);
+    opt.baseDir = s->baseDir().toStdString(); // ROM files
     m_engine = opt.chip ? QString::fromStdString(opt.chip->name()) : tr("built-in");
     m_sim = std::make_unique<chiply::sim::Simulator>(*m_nl, opt);
     m_trace = std::make_shared<chiply::sim::Trace>();

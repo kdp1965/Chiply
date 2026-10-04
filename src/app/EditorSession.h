@@ -77,6 +77,12 @@ public:
     // empty string on success.
     QString renamePart(const std::string& from, const std::string& to);
     void setPartAttr(const std::string& id, const std::string& key, const std::string& value);
+    // Changes a part's type, keeping its id, place and attrs (undoable); used
+    // to resize a RAM/ROM. Wires to pins the new type lacks are kept (DRC
+    // reports them).
+    void setPartType(const std::string& id, const std::string& type);
+    // The design's folder (ROM files are read from it); "" when untitled.
+    QString baseDir() const;
     void setWireColor(int wireIndex, const std::string& color);
     void setSelectedWiresColor(const std::string& color);
     void deleteWire(int wireIndex);

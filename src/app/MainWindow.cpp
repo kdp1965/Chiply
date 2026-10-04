@@ -703,6 +703,7 @@ std::shared_ptr<chiply::sim::ChipBackend> MainWindow::buildVerilatorChip(EditorS
         return nullptr;
     }
     const chiply::Document doc = s->document(); // the dialog is modal: no edits meanwhile
+    const std::string baseDir = s->baseDir().toStdString();
     std::atomic<bool> cancel{false}, done{false};
     std::mutex mu;
     std::string status = "Starting";
@@ -712,6 +713,7 @@ std::shared_ptr<chiply::sim::ChipBackend> MainWindow::buildVerilatorChip(EditorS
     std::thread worker([&] {
         chiply::vl::BuildOptions bo;
         bo.cancel = &cancel;
+        bo.baseDir = baseDir;
         bo.status = [&](const std::string& line) {
             std::lock_guard<std::mutex> g(mu);
             status = line;
@@ -820,6 +822,7 @@ void MainWindow::exportVerilog()
         if (!chiply::drc::isValidVerilogId(o.moduleName))
             o.moduleName = module.toStdString();
         o.sourceName = fi.fileName().toStdString();
+        o.baseDir = s->baseDir().toStdString();
         const std::string v = chiply::writeVerilog(s->document(), chiply::PartLibrary::builtin(), o);
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate) || f.write(v.data(), qint64(v.size())) != qint64(v.size()))
@@ -885,6 +888,7 @@ void MainWindow::exportTtProject()
         chiply::VerilogOptions o;
         o.moduleName = module.toStdString();
         o.sourceName = QFileInfo(s->filePath()).fileName().toStdString();
+        o.baseDir = s->baseDir().toStdString();
         QString report;
         for (const std::string& line : chiply::exportTtProject(s->document(), chiply::PartLibrary::builtin(), dir.toStdString(), o))
             report += QString::fromStdString(line) + QLatin1Char('\n');

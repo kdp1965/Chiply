@@ -44,6 +44,7 @@ struct BuildOptions {
     std::function<void(const std::string&)> status; // progress lines (any thread)
     const std::atomic<bool>* cancel = nullptr;      // stop between steps
     int jobs = 0;                                   // parallel compiles; 0 = all cores
+    std::string baseDir;                            // the design's folder (ROM files)
 };
 
 struct BuildInfo {

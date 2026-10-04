@@ -50,6 +50,8 @@ struct Options {
     // cells are not simulated here; the backend computes the chip nets from
     // the Tiny Tapeout inputs. Null: everything built in.
     std::shared_ptr<ChipBackend> chip;
+    // Folder that relative ROM "file" attrs are read from (the design's).
+    std::string baseDir;
 };
 
 // "10000", "10k", "2.5kHz", "1M", "1MHz" -> Hz; nullopt if unparsable.
@@ -129,7 +131,8 @@ private:
         Chip,     // the chip in a ChipBackend (one primitive; see m_chip*)
         // Chiply extended cells (PLAN.md 7.1); inputs in pin order.
         And3, And4, Nand3, Nand4, Or3, Or4, Nor3, Nor4, Xor3, Maj3, Mux4,
-        A21oi, A21o, O21ai, O21a, A22oi, O22ai
+        A21oi, A21o, O21ai, O21a, A22oi, O22ai,
+        Mem       // RAM / ROM (PLAN.md 7.3; see m_mems)
     };
     // Pad < Weak < Strong: a Tiny Tapeout input pad's built-in pull-down
     // loses to a resistor, which loses to any driver.
@@ -143,6 +146,20 @@ private:
         V prevClk = V::X;
         bool pending = false;
         Time delay = 0;
+        int mem = -1;                  // Kind::Mem: index into m_mems
+    };
+    struct Mem {
+        bool rom = false;
+        int width = 0;
+        int clk = -1, we = -1;       // nets (RAM)
+        std::vector<int> addr, din;  // nets, bit 0 first
+        std::vector<int> outSlots;   // q0..
+        std::vector<V> bits;         // depth * width, word-major
+        V prevClk = V::X;
+        // A write captured at a clock edge, applied in the update phase.
+        bool pending = false;
+        int wAddr = -1;              // -1: address unknown (all words become X)
+        std::vector<V> wData;
     };
     struct Slot {
         int net;
@@ -204,6 +221,11 @@ private:
     std::vector<int> m_chipSlots;
     std::vector<std::uint8_t> m_chipValues;
     void evaluateChip();
+    std::vector<Mem> m_mems;
+    void evaluateMem(int prim);
+    void readMem(Mem& m);
+    void applyNba(int prim);
+    void initMem(Mem& m);
 
     std::vector<int> m_active, m_cur;
     std::vector<int> m_nba;

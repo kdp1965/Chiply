@@ -1,5 +1,7 @@
 #include "core/Drc.h"
 
+#include "core/Memory.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -30,6 +32,8 @@ const std::vector<CheckInfo> kChecks = {
      "A flip-flop clock driven by a gate instead of a clock input or a flip-flop."},
     {"stacked-parts", "Stacked parts", Severity::Warning, true,
      "Two parts of the same type at the same position (an invisible duplicate)."},
+    {"memory-contents", "ROM contents", Severity::Error, true,
+     "A ROM whose data or file cannot be read, has more words than the ROM, or words wider than it."},
     {"extension-part", "Chiply extension part", Severity::Warning, true,
      "A Chiply-only part (Wokwi cannot load the design). Reported in Wokwi mode only."},
     {"unconnected-output", "Unconnected output", Severity::Info, false, "An output that drives nothing."},
@@ -50,7 +54,7 @@ bool isTtBlock(const std::string& type) { return type.rfind("board-tt-block", 0)
 // the Tiny Tapeout blocks.
 bool chipPin(const Device& d, std::size_t pin)
 {
-    if (isLogicCell(d.def) || (d.def && d.def->block))
+    if (isLogicCell(d.def) || (d.def && (d.def->block || d.def->memory)))
         return true;
     if (d.type == "wokwi-vcc" || d.type == "wokwi-gnd")
         return true;
@@ -192,6 +196,17 @@ void Engine::setExtensionsAllowed(bool on)
     }
 }
 
+void Engine::setBaseDir(const std::string& dir)
+{
+    if (dir == m_baseDir)
+        return;
+    m_baseDir = dir;
+    if (m_have) {
+        const Document doc = m_doc;
+        runFull(doc);
+    }
+}
+
 void Engine::resetChecks()
 {
     clear();
@@ -311,7 +326,13 @@ void Engine::checkPart(int di)
     if (!m_extensionsAllowed && isExtensionType(d.type))
         add({"extension-part", {}, d.partId + " (" + d.def->label + ") is a Chiply extension: Wokwi cannot load this design",
              {d.partId}, {}, "extension-part:" + d.partId});
-    if (isLogicCell(d.def) && !isValidVerilogId(d.partId))
+    if (d.def->memory && d.def->memory->rom && part) {
+        std::string err;
+        memoryContents(*part, *d.def->memory, m_baseDir, &err);
+        if (!err.empty())
+            add({"memory-contents", {}, d.partId + ": " + err, {d.partId}, {}, "memory-contents:" + d.partId});
+    }
+    if ((isLogicCell(d.def) || d.def->memory) && !isValidVerilogId(d.partId))
         add({"invalid-id", {}, "\"" + d.partId + "\" is not usable as a Verilog instance name", {d.partId}, {},
              "invalid-id:" + d.partId});
     for (std::size_t i = 0; i < d.pinNames.size(); ++i) {

@@ -29,6 +29,17 @@
 
 namespace chiply {
 
+// The auto symbol shared by custom blocks and memories: a box with `label`
+// at the top, `left` pins (inputs) and `right` pins (outputs, inouts), bit 0
+// at the top, all on the 0.1 inch grid, width from the pin names. In px.
+struct AutoPin {
+    std::string name;
+    PinDir dir = PinDir::In;
+    bool clock = false;
+};
+PartDef autoSymbolPart(const std::string& type, const std::string& label, const std::vector<AutoPin>& left,
+                       const std::vector<AutoPin>& right);
+
 // Reads <folder>/block.json. On failure returns nullopt and says why.
 std::optional<BlockInfo> loadBlock(const std::string& folder, std::string* error);
 

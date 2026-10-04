@@ -32,14 +32,23 @@ using namespace chiply;
 
 namespace {
 
+// The folder of a file path ("" for a bare name): ROM files are read from
+// the design's folder.
+std::string folderOf(const std::string& path)
+{
+    const auto slash = path.find_last_of('/');
+    return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
+}
+
 // The chip in Verilator (PLAN.md 6.6); progress on stderr.
-std::shared_ptr<chiply::sim::ChipBackend> verilatorChip(const Document& doc)
+std::shared_ptr<chiply::sim::ChipBackend> verilatorChip(const Document& doc, const std::string& baseDir)
 {
     std::string why;
     const auto tools = vl::findTools(&why);
     if (!tools)
         throw std::runtime_error(why);
     vl::BuildOptions bo;
+    bo.baseDir = baseDir;
     vl::BuildInfo info;
     try {
         auto chip = vl::buildChip(doc, *tools, bo, &info);
@@ -76,7 +85,8 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
             opt.wokwiLogic = false;
     for (const std::string& l : lines)
         if (l.rfind("option verilator", 0) == 0)
-            opt.chip = verilatorChip(r.doc);
+            opt.chip = verilatorChip(r.doc, folderOf(diagram));
+    opt.baseDir = folderOf(diagram);
     Simulator sim(nl, opt);
     for (const std::string& w : sim.warnings())
         std::cerr << "warning: " << w << "\n";
@@ -195,6 +205,7 @@ int drcCheck(int argc, char** argv)
         }
     }
     const LoadResult r = loadWokwiFile(argv[2]);
+    e.setBaseDir(folderOf(argv[2]));
     const drc::Stats& st = e.runFull(r.doc);
     for (const drc::Violation& v : e.violations())
         std::cout << drc::severityName(v.severity) << ": [" << v.check << "] " << v.message << "\n";
@@ -240,8 +251,9 @@ int truthTable(int argc, char** argv)
     }
     LoadResult r = loadWokwiFile(diagram);
     const Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
+    opt.baseDir = folderOf(diagram);
     if (useVerilator)
-        opt.chip = verilatorChip(r.doc);
+        opt.chip = verilatorChip(r.doc, opt.baseDir);
     Simulator sim(nl, opt);
     std::vector<int> in(8, -1), out(8, -1);
     std::string inId, outId;
@@ -412,7 +424,10 @@ int main(int argc, char** argv)
             if (vo.moduleName.empty())
                 throw std::runtime_error("no top_module in info.yaml: give --module tt_um_<name>");
             vo.sourceName = path.substr(path.find_last_of('/') + 1);
+            vo.baseDir = folderOf(path);
             drc::Engine e;
+            e.setExtensionsAllowed(true); // extension parts are a mode choice, not an export error
+            e.setBaseDir(vo.baseDir);
             e.runFull(r.doc);
             if (const auto errors = e.count(drc::Severity::Error); errors && !force) {
                 for (const drc::Violation& v : e.violations())
@@ -450,8 +465,11 @@ int main(int argc, char** argv)
             if (vo.moduleName.empty())
                 vo.moduleName = defaultModuleName(stem);
             vo.sourceName = path.substr(path.find_last_of('/') + 1);
+            vo.baseDir = folderOf(path);
             // A full DRC first: errors stop the export (--force overrides).
             drc::Engine e;
+            e.setExtensionsAllowed(true);
+            e.setBaseDir(vo.baseDir);
             e.runFull(r.doc);
             if (const auto errors = e.count(drc::Severity::Error); errors && !force) {
                 for (const drc::Violation& v : e.violations())

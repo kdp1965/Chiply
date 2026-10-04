@@ -1,8 +1,10 @@
 #include "core/Verilog.h"
 
 #include "core/Blocks.h"
+#include "core/Memory.h"
 
 #include <cctype>
+#include <cstdio>
 #include <functional>
 #include <filesystem>
 #include <fstream>
@@ -21,7 +23,8 @@ bool usesChiplyCells(const Document& doc)
 {
     for (const Part& p : doc.parts)
         if (isExtensionType(p.type))
-            if (const PartDef* def = PartLibrary::builtin().find(p.type); def && def->verilog.contains("cell"))
+            if (const PartDef* def = PartLibrary::builtin().find(p.type);
+                def && (def->verilog.contains("cell") || (def->memory && !def->memory->rom)))
                 return true;
     return false;
 }
@@ -193,7 +196,7 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
             num(net);
             if (net >= 0 && init[size_t(net)].empty())
                 init[size_t(net)] = def->verilog["constant"].get<std::string>();
-        } else if (def->verilog.contains("cell") || def->block) {
+        } else if (def->verilog.contains("cell") || def->block || def->memory) {
             for (const PinDef& pin : def->pins) {
                 const int net = pinNet(p, pin.name);
                 if (connected(net))
@@ -258,6 +261,23 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
             o << blockInstance(p, *def->block, [&](const std::string& pin) { return name(pinNet(p, pin)); });
             continue;
         }
+        if (def && def->memory) {
+            const MemoryInfo& m = *def->memory;
+            BlockInfo b;
+            b.module = m.rom ? opt.moduleName + "_" + p.id + "_rom" : std::string("chiply_ram");
+            if (!m.rom) {
+                b.ports.push_back({"clk", PinDir::In, 1, true, ""});
+                b.ports.push_back({"we", PinDir::In, 1, false, ""});
+            }
+            b.ports.push_back({"addr", PinDir::In, m.abits, false, "a"});
+            if (!m.rom)
+                b.ports.push_back({"din", PinDir::In, m.width, false, "d"});
+            b.ports.push_back({"dout", PinDir::Out, m.width, false, "q"});
+            if (!m.rom)
+                b.params = {{"ABITS", m.abits}, {"WIDTH", m.width}};
+            o << blockInstance(p, b, [&](const std::string& pin) { return name(pinNet(p, pin)); });
+            continue;
+        }
         if (!def || !def->verilog.is_object() || !def->verilog.contains("cell"))
             continue;
         const Json& ports = def->verilog["ports"];
@@ -272,6 +292,27 @@ std::string writeVerilog(const Document& doc, const PartLibrary& lib, const Veri
         o << "\n  );\n";
     }
     o << "endmodule\n";
+    // ROM contents as case tables (combinational logic, fine for an ASIC).
+    for (const Part& p : doc.parts) {
+        const PartDef* def = lib.find(p.type);
+        if (!def || !def->memory || !def->memory->rom)
+            continue;
+        const MemoryInfo& m = *def->memory;
+        std::string err;
+        const auto words = memoryContents(p, m, opt.baseDir, &err);
+        if (!err.empty())
+            throw ExportError(p.id + ": " + err);
+        char hexw[16];
+        o << "\n(* keep_hierarchy *)\nmodule " << opt.moduleName << "_" << p.id << "_rom (\n"
+          << "    input  wire [" << m.abits - 1 << ":0] addr,\n"
+          << "    output reg  [" << m.width - 1 << ":0] dout\n);\n"
+          << "    always @(*)\n        case (addr)\n";
+        for (int a = 0; a < m.depth; ++a) {
+            std::snprintf(hexw, sizeof hexw, "%x", words[std::size_t(a)]);
+            o << "            " << m.abits << "'d" << a << ": dout = " << m.width << "'h" << hexw << ";\n";
+        }
+        o << "            default: dout = " << m.width << "'h0;\n        endcase\nendmodule\n";
+    }
     return o.str();
 }
 

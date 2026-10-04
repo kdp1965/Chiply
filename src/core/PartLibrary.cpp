@@ -1,5 +1,9 @@
 #include "core/PartLibrary.h"
 
+#include "core/Memory.h"
+
+#include <mutex>
+
 #include <stdexcept>
 
 namespace chiply {
@@ -80,14 +84,34 @@ void PartLibrary::loadJson(const std::string& text)
     }
 }
 
+namespace {
+// Guards lookups against memory types being added on first use.
+std::recursive_mutex& libraryMutex()
+{
+    static std::recursive_mutex m;
+    return m;
+}
+} // namespace
+
 const PartDef* PartLibrary::find(const std::string& type) const
 {
+    std::lock_guard<std::recursive_mutex> lock(libraryMutex());
     auto it = m_index.find(type);
-    return it == m_index.end() ? nullptr : &m_parts[it->second];
+    if (it != m_index.end())
+        return &m_parts[it->second];
+    // RAM / ROM of any supported size: made on first use (PLAN.md 7.3).
+    if (auto mem = parseMemoryType(type)) {
+        PartDef d = memoryPartDef(*mem);
+        d.hidden = true; // Add Part offers the default sizes only
+        auto* self = const_cast<PartLibrary*>(this);
+        return &self->addOrReplace(std::move(d));
+    }
+    return nullptr;
 }
 
 const PartDef& PartLibrary::addOrReplace(PartDef def)
 {
+    std::lock_guard<std::recursive_mutex> lock(libraryMutex());
     auto it = m_index.find(def.type);
     if (it != m_index.end()) {
         m_parts[it->second] = std::move(def);
@@ -103,6 +127,9 @@ PartLibrary& PartLibrary::global()
     static PartLibrary lib = [] {
         PartLibrary l;
         l.loadJson(kBuiltinPartsJson);
+        // Memories offered in Add Part; other sizes are made on first use.
+        l.addOrReplace(memoryPartDef(*parseMemoryType(memoryType(false, 16, 8))));
+        l.addOrReplace(memoryPartDef(*parseMemoryType(memoryType(true, 16, 8))));
         return l;
     }();
     return lib;

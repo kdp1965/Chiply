@@ -24,6 +24,7 @@ struct VerilogOptions {
     // First line of the file; "" writes a Chiply line naming the source.
     std::string headerComment;
     std::string sourceName;  // used in the default header
+    std::string baseDir;     // resolves relative ROM "file" attrs (the design's folder)
 };
 
 struct ExportError : std::runtime_error {

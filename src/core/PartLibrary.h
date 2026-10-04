@@ -34,6 +34,7 @@ struct BlockPort {
     PinDir dir = PinDir::In;
     int width = 1;   // >1: one pin per bit, name0..name<width-1>
     bool clock = false;
+    std::string pinBase; // pin names use this instead of name when set (RAM: addr -> a0..)
 };
 struct BlockInfo {
     std::string name;     // part type "chiply-block-<name>"
@@ -47,8 +48,18 @@ struct BlockInfo {
     // Pin name of bit `bit` of a port (the port name itself when 1 bit wide).
     static std::string pinName(const BlockPort& p, int bit)
     {
-        return p.width == 1 ? p.name : p.name + std::to_string(bit);
+        const std::string& base = p.pinBase.empty() ? p.name : p.pinBase;
+        return p.width == 1 ? base : base + std::to_string(bit);
     }
+};
+
+// A built-in RAM or ROM (PLAN.md 7.3), part type
+// "chiply-ram-<depth>x<width>" / "chiply-rom-<depth>x<width>".
+struct MemoryInfo {
+    bool rom = false;
+    int depth = 16; // words, a power of two
+    int width = 8;  // bits per word
+    int abits = 4;  // log2(depth)
 };
 
 struct PartDef {
@@ -63,7 +74,9 @@ struct PartDef {
     Json verilog = Json::object(); // {cell, ports{PIN: port}} or {constant}
     Json attrs = Json::object();   // defaults for new parts
     std::string source;
-    std::shared_ptr<const BlockInfo> block; // custom blocks only
+    std::shared_ptr<const BlockInfo> block;   // custom blocks only
+    std::shared_ptr<const MemoryInfo> memory; // RAM / ROM only
+    bool hidden = false;                      // not offered in Add Part (other memory sizes)
 
     const PinDef* findPin(const std::string& name) const;
 };

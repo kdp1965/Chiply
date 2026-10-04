@@ -94,3 +94,19 @@ endmodule
 module o22ai_cell (input wire a1, input wire a2, input wire b1, input wire b2, output wire out);
     assign out = !((a1 | a2) & (b1 | b2));
 endmodule
+
+// RAM (Chiply memory part chiply-ram-<depth>x<width>): write on the rising
+// clock edge when we = 1; the read follows the address.
+(* keep_hierarchy *)
+module chiply_ram #(parameter ABITS = 4, parameter WIDTH = 8) (
+    input  wire             clk,
+    input  wire             we,
+    input  wire [ABITS-1:0] addr,
+    input  wire [WIDTH-1:0] din,
+    output wire [WIDTH-1:0] dout
+);
+    reg [WIDTH-1:0] mem [0:(1 << ABITS) - 1];
+    always @(posedge clk)
+        if (we) mem[addr] <= din;
+    assign dout = mem[addr];
+endmodule

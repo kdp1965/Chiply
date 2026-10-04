@@ -111,52 +111,55 @@ std::optional<BlockInfo> loadBlock(const std::string& folder, std::string* error
     return b;
 }
 
-PartDef blockPartDef(const BlockInfo& block)
+PartDef autoSymbolPart(const std::string& type, const std::string& label, const std::vector<AutoPin>& left,
+                       const std::vector<AutoPin>& right)
 {
-    const BlockInfo& b = block;
-    const std::string& label = b.label;
-    const std::string& prefix = b.prefix;
-    std::vector<std::pair<std::string, const BlockPort*>> left, right;
-    for (const BlockPort& p : b.ports)
-        for (int bit = 0; bit < p.width; ++bit)
-            (p.dir == PinDir::In ? left : right).push_back({BlockInfo::pinName(p, bit), &p});
     std::size_t maxL = 0, maxR = 0;
-    for (const auto& [n, p] : left)
-        maxL = std::max(maxL, n.size());
-    for (const auto& [n, p] : right)
-        maxR = std::max(maxR, n.size());
+    for (const AutoPin& p : left)
+        maxL = std::max(maxL, p.name.size());
+    for (const AutoPin& p : right)
+        maxR = std::max(maxR, p.name.size());
     // Labels are drawn about 0.65 grid high (~3.7 px per character).
     const double inner = std::max({6 * kGrid, double(maxL + maxR) * 3.9 + 2 * kGrid, double(label.size()) * 4.6 + kGrid});
     const double w = (std::ceil(inner / kGrid) + 4) * kGrid; // whole grid steps
     const std::size_t rows = std::max(left.size(), right.size());
     const double h = double(rows + 2) * kGrid;
-
     PartDef d;
-    d.type = "chiply-block-" + b.name;
+    d.type = type;
     d.label = label;
-    d.category = "Custom";
-    d.prefix = prefix;
     d.symbol = "block";
     d.width = w;
     d.height = h;
     for (std::size_t i = 0; i < left.size(); ++i) {
         PinDef p;
-        p.name = left[i].first;
+        p.name = left[i].name;
         p.x = 0;
         p.y = double(i + 2) * kGrid;
-        p.dir = PinDir::In;
-        p.clock = left[i].second->clock;
+        p.dir = left[i].dir;
+        p.clock = left[i].clock;
         d.pins.push_back(p);
     }
     for (std::size_t i = 0; i < right.size(); ++i) {
         PinDef p;
-        p.name = right[i].first;
+        p.name = right[i].name;
         p.x = w;
         p.y = double(i + 2) * kGrid;
-        p.dir = right[i].second->dir;
-        p.clock = right[i].second->clock;
+        p.dir = right[i].dir;
+        p.clock = right[i].clock;
         d.pins.push_back(p);
     }
+    return d;
+}
+
+PartDef blockPartDef(const BlockInfo& b)
+{
+    std::vector<AutoPin> left, right;
+    for (const BlockPort& p : b.ports)
+        for (int bit = 0; bit < p.width; ++bit)
+            (p.dir == PinDir::In ? left : right).push_back({BlockInfo::pinName(p, bit), p.dir, p.clock});
+    PartDef d = autoSymbolPart("chiply-block-" + b.name, b.label, left, right);
+    d.category = "Custom";
+    d.prefix = b.prefix;
     d.verilog = {{"block", b.module}};
     Json attrs = Json::object();
     for (const auto& [k, v] : b.params.items())

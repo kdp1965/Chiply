@@ -10,6 +10,8 @@
 
 #include "Theme.h"
 
+#include <QApplication>
+#include <QComboBox>
 #include <QDockWidget>
 #include <QLabel>
 #include <QListWidget>
@@ -207,6 +209,37 @@ private slots:
         QSettings().remove("extensions/enabled");
         w.findChild<QAction*>("reloadBlocksAction")->trigger(); // rebuilds every tab
         QVERIFY(s->usesBlocks());
+    }
+
+    void memorySizeFromTheInspector()
+    {
+        MainWindow w;
+        w.show();
+        auto* s = qobject_cast<EditorSession*>(w.findChild<QTabWidget*>()->currentWidget()->property("session").value<QObject*>());
+        chiply::Document d = s->document();
+        chiply::Part ram;
+        ram.type = "chiply-ram-16x8";
+        ram.id = "ram1";
+        d.parts.push_back(ram);
+        s->replaceDocument(d, {"ram1"});
+        QApplication::processEvents();
+        auto* depth = w.findChild<QComboBox*>("memoryDepth");
+        auto* width = w.findChild<QComboBox*>("memoryWidth");
+        QVERIFY(depth && width);
+        QCOMPARE(depth->currentText(), QStringLiteral("16"));
+        QCOMPARE(width->currentText(), QStringLiteral("8"));
+        depth->setCurrentText(QStringLiteral("64"));
+        emit depth->activated(depth->currentIndex());
+        QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-64x8"));
+        QApplication::processEvents();
+        width = w.findChild<QComboBox*>("memoryWidth"); // the Inspector was rebuilt
+        width->setCurrentText(QStringLiteral("4"));
+        emit width->activated(width->currentIndex());
+        QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-64x4"));
+        s->undoStack()->undo();
+        QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-64x8"));
+        s->undoStack()->undo();
+        QCOMPARE(s->document().findPart("ram1")->type, std::string("chiply-ram-16x8"));
     }
 
     void selectionDoesNotShiftCanvas()

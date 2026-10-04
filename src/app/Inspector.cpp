@@ -1,10 +1,13 @@
 #include "Inspector.h"
 
+#include "core/Memory.h"
+
 #include "EditorSession.h"
 #include "Theme.h"
 #include "core/PartLibrary.h"
 
 #include <QComboBox>
+#include <QHBoxLayout>
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -127,6 +130,35 @@ void Inspector::rebuild()
         type->setTextInteractionFlags(Qt::TextSelectableByMouse);
         form->addRow(tr("Type"), type);
         form->addRow(tr("Position"), new QLabel(QString("x %1, y %2, %3°").arg(p->left).arg(p->top).arg(p->rotate), m_body));
+        if (def && def->memory) {
+            // RAM / ROM size: the size is the part type (it decides the pins).
+            const chiply::MemoryInfo mem = *def->memory;
+            auto* row = new QWidget(m_body);
+            auto* h = new QHBoxLayout(row);
+            h->setContentsMargins(0, 0, 0, 0);
+            auto* depth = new QComboBox(row);
+            depth->setObjectName("memoryDepth");
+            for (int d = 2; d <= 256; d *= 2)
+                depth->addItem(QString::number(d), d);
+            depth->setCurrentText(QString::number(mem.depth));
+            auto* width = new QComboBox(row);
+            width->setObjectName("memoryWidth");
+            for (int w = 1; w <= 16; ++w)
+                width->addItem(QString::number(w), w);
+            width->setCurrentText(QString::number(mem.width));
+            h->addWidget(depth);
+            h->addWidget(new QLabel(tr("words x"), row));
+            h->addWidget(width);
+            h->addWidget(new QLabel(tr("bits"), row));
+            h->addStretch();
+            auto apply = [this, id = p->id, rom = mem.rom, depth, width] {
+                m_s->setPartType(id, chiply::memoryType(rom, depth->currentData().toInt(), width->currentData().toInt()));
+            };
+            connect(depth, &QComboBox::activated, this, apply);
+            connect(width, &QComboBox::activated, this, apply);
+            row->setToolTip(tr("Changing the size changes the pins; wires to pins that go away are reported by DRC"));
+            form->addRow(tr("Size"), row);
+        }
 
         // Attributes: everything in the part plus the library defaults.
         chiply::Json attrs = def ? def->attrs : chiply::Json::object();

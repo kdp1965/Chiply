@@ -49,6 +49,8 @@ void PartPalette::refill(const QString& filter)
     std::map<int, std::vector<const chiply::PartDef*>> groups;
     const bool extensions = EditorSession::extensionsEnabled();
     for (const chiply::PartDef& d : chiply::PartLibrary::builtin().parts()) {
+        if (d.hidden)
+            continue; // other memory sizes: change the size in the Inspector
         if (!extensions && chiply::isExtensionType(d.type))
             continue; // Wokwi mode: only Wokwi's parts (PLAN.md 7.1)
         const QString hay = QString::fromStdString(d.label + " " + d.type + " " + d.category + " " + d.prefix);

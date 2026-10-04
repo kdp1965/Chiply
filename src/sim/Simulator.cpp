@@ -1,5 +1,7 @@
 #include "sim/Simulator.h"
 
+#include "core/Memory.h"
+
 #include <cctype>
 #include <cmath>
 #include <map>
@@ -183,6 +185,52 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             c.half = std::max<Time>(1, Time(std::llround(1e12 / (2 * c.hz))));
             c.slot = addSlot(pinNet("CLK"));
             m_clocks.push_back(c);
+        } else if (d.def && d.def->memory) {
+            if (m_opt.chip)
+                continue; // part of the chip in the backend
+            const MemoryInfo& mi = *d.def->memory;
+            Mem m;
+            m.rom = mi.rom;
+            m.width = mi.width;
+            for (int i = 0; i < mi.abits; ++i)
+                m.addr.push_back(pinNet("a" + std::to_string(i)));
+            if (!mi.rom) {
+                m.clk = pinNet("clk");
+                m.we = pinNet("we");
+                for (int i = 0; i < mi.width; ++i)
+                    m.din.push_back(pinNet("d" + std::to_string(i)));
+            }
+            for (int i = 0; i < mi.width; ++i)
+                m.outSlots.push_back(addSlot(pinNet("q" + std::to_string(i))));
+            m.bits.assign(std::size_t(mi.depth) * std::size_t(mi.width), V::L);
+            if (mi.rom) {
+                std::string err;
+                // Contents come from the part's attrs (the netlist keeps them).
+                Part tmp;
+                tmp.attrs = d.attrs ? *d.attrs : Json::object();
+                const auto words = memoryContents(tmp, mi, m_opt.baseDir, &err);
+                if (!err.empty())
+                    m_warnings.push_back(d.partId + ": " + err);
+                for (int w = 0; w < mi.depth; ++w)
+                    for (int b = 0; b < mi.width; ++b)
+                        m.bits[std::size_t(w * mi.width + b)] = fromBool((words[std::size_t(w)] >> b) & 1);
+            }
+            Prim p;
+            p.kind = Kind::Mem;
+            p.mem = int(m_mems.size());
+            const int idx = int(m_prims.size());
+            auto listen = [&](int net) {
+                if (net >= 0)
+                    m_fanout[size_t(net)].push_back(idx);
+            };
+            for (int net : m.addr)
+                listen(net);
+            listen(m.clk);
+            listen(m.we);
+            for (int net : m.din)
+                listen(net);
+            m_mems.push_back(std::move(m));
+            m_prims.push_back(p);
         } else if (d.def && d.def->block) {
             // Custom blocks are Verilog: the Verilator engine runs them.
             if (!m_opt.chip)
@@ -487,6 +535,7 @@ void Simulator::evaluate(int idx)
         setSlot(p.out[1], strongValue(p.in[0]));
         return;
     case Kind::Chip: evaluateChip(); return;
+    case Kind::Mem: evaluateMem(idx); return;
     default: break;
     }
 
@@ -559,13 +608,8 @@ bool Simulator::settle()
                 head = 0;
                 std::vector<int> nba;
                 nba.swap(m_nba);
-                for (int idx : nba) {
-                    Prim& p = m_prims[size_t(idx)];
-                    p.pending = false;
-                    p.q = p.nq;
-                    setSlot(p.out[0], p.q);
-                    setSlot(p.out[1], vnot(p.q));
-                }
+                for (int idx : nba)
+                    applyNba(idx);
                 flush();
                 continue;
             }
@@ -595,13 +639,8 @@ bool Simulator::settle()
         if (m_active.empty()) {
             std::vector<int> nba;
             nba.swap(m_nba);
-            for (int idx : nba) {
-                Prim& p = m_prims[size_t(idx)];
-                p.pending = false;
-                p.q = p.nq;
-                setSlot(p.out[0], p.q);
-                setSlot(p.out[1], vnot(p.q));
-            }
+            for (int idx : nba)
+                applyNba(idx);
             flush();
             continue;
         }
@@ -660,6 +699,102 @@ V Simulator::value(int net) const
     return net < 0 ? V::Z : m_groupValue[size_t(m_groupOf[size_t(net)])];
 }
 
+void Simulator::applyNba(int idx)
+{
+    Prim& p = m_prims[size_t(idx)];
+    if (p.kind == Kind::Mem) {
+        Mem& m = m_mems[size_t(p.mem)];
+        m.pending = false;
+        const std::size_t words = m.bits.size() / std::size_t(m.width);
+        if (m.wAddr < 0) {
+            // Unknown address: any word may have been written.
+            for (V& b : m.bits)
+                b = V::X;
+        } else if (std::size_t(m.wAddr) < words) {
+            for (int b = 0; b < m.width; ++b)
+                m.bits[std::size_t(m.wAddr * m.width + b)] = m.wData[std::size_t(b)];
+        }
+        readMem(m);
+        return;
+    }
+    p.pending = false;
+    p.q = p.nq;
+    setSlot(p.out[0], p.q);
+    setSlot(p.out[1], vnot(p.q));
+}
+
+void Simulator::readMem(Mem& m)
+{
+    auto val = [&](int net) {
+        const V v = net >= 0 ? m_groupValue[size_t(m_groupOf[size_t(net)])] : V::Z;
+        return m_opt.wokwiLogic ? (v == V::H ? V::H : V::L) : in(v);
+    };
+    int a = 0;
+    bool known = true;
+    for (std::size_t i = 0; i < m.addr.size(); ++i) {
+        const V v = val(m.addr[i]);
+        if (v == V::H)
+            a |= 1 << i;
+        else if (v != V::L)
+            known = false;
+    }
+    for (int b = 0; b < m.width; ++b)
+        setSlot(m.outSlots[size_t(b)], known ? m.bits[std::size_t(a * m.width + b)] : V::X);
+}
+
+void Simulator::evaluateMem(int idx)
+{
+    Mem& m = m_mems[size_t(m_prims[size_t(idx)].mem)];
+    if (!m.rom) {
+        auto val = [&](int net) {
+            const V v = net >= 0 ? m_groupValue[size_t(m_groupOf[size_t(net)])] : V::Z;
+            return m_opt.wokwiLogic ? (v == V::H ? V::H : V::L) : in(v);
+        };
+        const V clk = val(m.clk);
+        const bool edge = !m_initialising && rising(m.prevClk, clk); // as the flip-flops
+        m.prevClk = clk;
+        if (edge) {
+            const V we = val(m.we);
+            if (we != V::L) {
+                int a = 0;
+                bool known = true;
+                for (std::size_t i = 0; i < m.addr.size(); ++i) {
+                    const V v = val(m.addr[i]);
+                    if (v == V::H)
+                        a |= 1 << i;
+                    else if (v != V::L)
+                        known = false;
+                }
+                m.wAddr = known ? a : -1;
+                m.wData.assign(std::size_t(m.width), V::X);
+                for (int b = 0; b < m.width; ++b)
+                    m.wData[std::size_t(b)] = we == V::H ? val(m.din[size_t(b)]) : V::X;
+                if (we != V::H && known) // write enable unknown: the word becomes unknown
+                    m.wData.assign(std::size_t(m.width), V::X);
+                if (!m.pending) {
+                    m.pending = true;
+                    m_nba.push_back(idx);
+                }
+            }
+        }
+    }
+    readMem(m);
+}
+
+void Simulator::initMem(Mem& m)
+{
+    if (m.rom)
+        return;
+    for (V& b : m.bits)
+        switch (m_opt.flopStart) {
+        case FlopStart::Zero: b = V::L; break;
+        case FlopStart::Unknown: b = V::X; break;
+        case FlopStart::Random: b = (m_rng() & 1) ? V::H : V::L; break;
+        }
+    m.pending = false;
+    m.prevClk = V::X;
+}
+
 void Simulator::evaluateChip()
 {
     // A two-state engine: an input is 1 only if it is driven to 1.
@@ -682,6 +817,8 @@ void Simulator::initialise()
 {
     if (m_opt.chip)
         m_opt.chip->reset(m_opt.flopStart, m_rng());
+    for (Mem& m : m_mems)
+        initMem(m);
     for (Prim& p : m_prims) {
         if (isFlop(int(p.kind))) {
             switch (m_opt.flopStart) {

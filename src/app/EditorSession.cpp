@@ -184,6 +184,7 @@ void EditorSession::load(const QString& path)
     loadProbes();
     loadSidecar();
     m_drc.clear();
+    m_drc.setBaseDir(baseDir().toStdString());
     runDrc(true);
     emit titleChanged();
 }
@@ -229,6 +230,7 @@ void EditorSession::save(const QString& path)
     if (QFileInfo(target).absolutePath() != QFileInfo(m_path).absolutePath())
         chiply::scanBlocks(chiply::blockRoots(target.toStdString())); // a new folder: its blocks
     m_path = target;
+    m_drc.setBaseDir(baseDir().toStdString());
     saveSidecar();
     saveProbes(); // a Save As keeps the probes under the new name
     m_undo.setClean();
@@ -716,6 +718,24 @@ void EditorSession::setPartAttr(const std::string& id, const std::string& key, c
     p->attrs[key] = value;
     m_undo.push(new DocumentCommand(this, tr("Set %1.%2").arg(QString::fromStdString(id), QString::fromStdString(key)),
                                     m_doc, after, {id}, {id}));
+}
+
+void EditorSession::setPartType(const std::string& id, const std::string& type)
+{
+    if (m_sim)
+        return;
+    chiply::Document after = m_doc;
+    chiply::Part* p = after.findPart(id);
+    if (!p || p->type == type || !chiply::PartLibrary::builtin().find(type))
+        return;
+    p->type = type;
+    m_undo.push(new DocumentCommand(this, tr("Change %1 to %2").arg(QString::fromStdString(id), QString::fromStdString(type)),
+                                    m_doc, after, {id}, {id}));
+}
+
+QString EditorSession::baseDir() const
+{
+    return m_path.isEmpty() ? QString() : QFileInfo(m_path).absolutePath();
 }
 
 void EditorSession::setWireColor(int wireIndex, const std::string& color)

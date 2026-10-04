@@ -66,6 +66,8 @@ public:
     // Extended mode (PLAN.md 7.1): extension parts are fine. In Wokwi mode
     // the extension-part check lists them. Changing it re-checks everything.
     void setExtensionsAllowed(bool on);
+    // Folder that relative ROM "file" attrs are read from. Re-checks everything.
+    void setBaseDir(const std::string& dir);
     bool extensionsAllowed() const { return m_extensionsAllowed; }
 
     // Which checks run. Turning a check on re-checks the whole design for it.
@@ -106,6 +108,7 @@ private:
     const PartLibrary& m_lib;
     std::set<std::string> m_enabled;
     bool m_extensionsAllowed = false;
+    std::string m_baseDir;
     Document m_doc;  // last checked
     Netlist m_nl;    // its netlist (devices point into m_doc)
     bool m_have = false;
