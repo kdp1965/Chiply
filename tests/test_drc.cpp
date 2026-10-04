@@ -166,6 +166,31 @@ TEST_CASE("each check on a small design", "[drc]")
     }
 }
 
+TEST_CASE("an undriven junction is reported at the junction", "[drc]")
+{
+    const std::string parts = part("wokwi-junction", "j1", 0, 0) + "," + part("wokwi-junction", "j2", 50, 0) + ","
+        + part("wokwi-gate-and-2", "and1", 100, 0) + "," + part("wokwi-gate-not", "not1", 100, 60) + ","
+        + part("wokwi-vcc", "vcc1", -50, 0) + "," + part("wokwi-gate-not", "not2", 200, 60);
+    const std::string feeds = wire("j1:J", "and1:A") + "," + wire("j1:J", "j2:J") + "," + wire("j2:J", "and1:B") + ","
+        + wire("j2:J", "not1:IN") + "," + wire("and1:OUT", "not2:IN");
+    Engine e;
+    e.update(design(parts, feeds));
+    REQUIRE(keys(e) == std::set<std::string>{"unconnected-input:j1:J"}); // once, not per input
+    const Violation v = e.violations()[0];
+    CHECK(v.message == "j1 has no driver; it feeds and1:A, and1:B, not1:IN (through 2 junctions)");
+    CHECK(v.parts == std::vector<std::string>{"j1"});
+    CHECK(v.pins.size() == 1);
+    CHECK(v.pins[0].str() == "j1:J");
+    // Driving the junction clears it (incrementally, as a full pass would).
+    const Document driven = design(parts, feeds + "," + wire("vcc1:VCC", "j1:J"));
+    e.update(driven);
+    CHECK(keys(e).empty());
+    CHECK(keys(e) == fullKeys(driven, e.enabledChecks()));
+    // Without a junction, each undriven input is still reported at the pin.
+    e.runFull(design(part("wokwi-gate-and-2", "and1") + "," + part("wokwi-gate-not", "not1", 100), wire("and1:A", "not1:IN")));
+    CHECK(keys(e) == std::set<std::string>{"unconnected-input:and1:A", "unconnected-input:and1:B", "unconnected-input:not1:IN"});
+}
+
 TEST_CASE("the reference design's known problems", "[drc]")
 {
     const Document d = loadWokwi(readAll(std::string(CHIPLY_REFERENCE_DIR) + "/wokwi_414123795172381697.diagram.json")).doc;
@@ -232,7 +257,7 @@ TEST_CASE("incremental results always equal a full pass", "[drc]")
     std::mt19937 rng(1234);
     auto pick = [&](std::size_t n) { return std::uniform_int_distribution<std::size_t>(0, n - 1)(rng); };
     for (int step = 0; step < 300; ++step) {
-        const int kind = int(pick(7));
+        const int kind = int(pick(8));
         if (kind == 0 && d.parts.size() > 10) { // delete a part (its wires dangle)
             d.parts.erase(d.parts.begin() + std::ptrdiff_t(pick(d.parts.size())));
         } else if (kind == 1 && !d.wires.empty()) { // delete a wire
@@ -271,6 +296,20 @@ TEST_CASE("incremental results always equal a full pass", "[drc]")
                 w.from = {p.id, p.type == "wokwi-vcc" ? "VCC" : "OUT"};
                 w.to = {b.id, db->pins[pick(db->pins.size())].name};
                 d.wires.push_back(w);
+            }
+        } else if (kind == 7) { // a junction between two random pins
+            Part j;
+            j.type = "wokwi-junction";
+            j.id = "jn" + std::to_string(step);
+            d.parts.push_back(j);
+            for (int k = 0; k < 2; ++k) {
+                const Part& b = d.parts[pick(d.parts.size())];
+                if (const PartDef* db = PartLibrary::builtin().find(b.type); db && !db->pins.empty()) {
+                    Wire w;
+                    w.from = {j.id, "J"};
+                    w.to = {b.id, db->pins[pick(db->pins.size())].name};
+                    d.wires.push_back(w);
+                }
             }
         } else { // change a bidirectional block's bit
             for (Part& p : d.parts)

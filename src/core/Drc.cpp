@@ -346,7 +346,12 @@ void Engine::checkPart(int di)
                 add({"unconnected-input", {}, pr.str() + " is not connected", {d.partId}, {pr},
                      "unconnected-input:" + pr.str()});
             } else {
-                if (!netDriven(net)) {
+                // A net through a junction is reported once, at the junction
+                // (checkNet), not at every input it feeds.
+                bool viaJunction = false;
+                for (const NetPin& np : n.pins)
+                    viaJunction |= m_nl.devices[size_t(np.device)].type == "wokwi-junction";
+                if (!viaJunction && !netDriven(net)) {
                     std::vector<std::string> others;
                     std::vector<std::string> owners{d.partId};
                     for (const NetPin& np : n.pins)
@@ -389,6 +394,37 @@ void Engine::checkPart(int di)
 void Engine::checkNet(int ni)
 {
     const Net& n = m_nl.nets[size_t(ni)];
+    // Inputs fed from a junction that nothing drives: one violation, at the
+    // junction (the first by id if there are several), listing the inputs.
+    {
+        std::vector<std::string> junctions, inputs, owners;
+        for (const NetPin& np : n.pins) {
+            const Device& d = m_nl.devices[size_t(np.device)];
+            owners.push_back(d.partId);
+            if (d.type == "wokwi-junction")
+                junctions.push_back(d.partId);
+            else if (chipPin(d, size_t(np.pin)) && d.pinDirs[size_t(np.pin)] == PinDir::In && d.def
+                     && d.def->findPin(d.pinNames[size_t(np.pin)]))
+                inputs.push_back(ref(d, np.pin));
+        }
+        if (!junctions.empty() && !inputs.empty() && !netDriven(ni)) {
+            std::sort(junctions.begin(), junctions.end());
+            std::sort(inputs.begin(), inputs.end());
+            std::sort(owners.begin(), owners.end());
+            owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+            std::vector<std::string> listed = inputs;
+            if (listed.size() > 6) {
+                listed.resize(6);
+                listed.push_back("... (" + std::to_string(inputs.size()) + " inputs)");
+            }
+            const std::string& j = junctions.front();
+            std::string msg = j + " has no driver; it feeds " + join(listed);
+            if (junctions.size() > 1)
+                msg += " (through " + std::to_string(junctions.size()) + " junctions)";
+            Violation v{"unconnected-input", {}, msg, {j}, {PinRef{j, "J"}}, "unconnected-input:" + j + ":J"};
+            add(v, owners);
+        }
+    }
     std::vector<std::string> drivers, owners;
     std::vector<PinRef> pins;
     bool vcc = false, gnd = false;
