@@ -28,6 +28,8 @@ const std::vector<CheckInfo> kChecks = {
      "A Tiny Tapeout bidirectional block with a missing, invalid or repeated verilogBit."},
     {"unconnected-input", "Unconnected input", Severity::Warning, true,
      "An input pin with no wire, or whose net has no driver."},
+    {"unconnected-junction", "Unconnected junction", Severity::Warning, true,
+     "A junction that nothing drives but that feeds inputs (e.g. a hookup point of a module still to be connected)."},
     {"clock-from-logic", "Clock from logic", Severity::Warning, true,
      "A flip-flop clock driven by a gate instead of a clock input or a flip-flop."},
     {"stacked-parts", "Stacked parts", Severity::Warning, true,
@@ -347,7 +349,7 @@ void Engine::checkPart(int di)
                      "unconnected-input:" + pr.str()});
             } else {
                 // A net through a junction is reported once, at the junction
-                // (checkNet), not at every input it feeds.
+                // (unconnected-junction in checkNet), not at every input.
                 bool viaJunction = false;
                 for (const NetPin& np : n.pins)
                     viaJunction |= m_nl.devices[size_t(np.device)].type == "wokwi-junction";
@@ -395,7 +397,8 @@ void Engine::checkNet(int ni)
 {
     const Net& n = m_nl.nets[size_t(ni)];
     // Inputs fed from a junction that nothing drives: one violation, at the
-    // junction (the first by id if there are several), listing the inputs.
+    // junction (the first by id if there are several), listing the inputs,
+    // under its own check so real unconnected inputs stand apart.
     {
         std::vector<std::string> junctions, inputs, owners;
         for (const NetPin& np : n.pins) {
@@ -421,7 +424,7 @@ void Engine::checkNet(int ni)
             std::string msg = j + " has no driver; it feeds " + join(listed);
             if (junctions.size() > 1)
                 msg += " (through " + std::to_string(junctions.size()) + " junctions)";
-            Violation v{"unconnected-input", {}, msg, {j}, {PinRef{j, "J"}}, "unconnected-input:" + j + ":J"};
+            Violation v{"unconnected-junction", {}, msg, {j}, {PinRef{j, "J"}}, "unconnected-junction:" + j};
             add(v, owners);
         }
     }

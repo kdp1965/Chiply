@@ -444,7 +444,8 @@ Each check has an id, a default severity and an on/off switch. Switches live in 
 
 | Check id | Default | Severity | What it reports |
 |---|---|---|---|
-| `unconnected-input` | on | warning | an `in` pin with no wire, or whose net has no driver (message says which); when the undriven net runs through a junction it is reported once, at the junction, listing the inputs it feeds |
+| `unconnected-input` | on | warning | an `in` pin with no wire, or whose net has no driver (message says which); an undriven net that runs through a junction is reported by `unconnected-junction` instead |
+| `unconnected-junction` | on | warning | a junction that nothing drives but that feeds inputs, reported once at the junction with the inputs it feeds; its own group in the Violations pane so the real unconnected inputs stand apart (modules whose junctions are hookup points for copy/paste or, later, off-page connectors), and it can be turned off on its own |
 | `multiple-drivers` | on | error | a net with two or more driver pins (`out`, `inout`, `power`): two outputs tied together, an output tied to VCC/GND, etc. Lists every driver |
 | `short-circuit` | on | error | VCC and GND symbols on the same net (Wokwi's "Short circuit") |
 | `clock-from-logic` | on | warning | a flip-flop clock driven by combinational logic instead of a clock source or flip-flop output (Wokwi's "Clock driven by combinatorial logic") |

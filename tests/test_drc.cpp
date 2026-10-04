@@ -175,12 +175,18 @@ TEST_CASE("an undriven junction is reported at the junction", "[drc]")
         + wire("j2:J", "not1:IN") + "," + wire("and1:OUT", "not2:IN");
     Engine e;
     e.update(design(parts, feeds));
-    REQUIRE(keys(e) == std::set<std::string>{"unconnected-input:j1:J"}); // once, not per input
+    REQUIRE(keys(e) == std::set<std::string>{"unconnected-junction:j1"}); // once, not per input, in its own check
+    CHECK(e.violations()[0].check == "unconnected-junction");
+    CHECK(findCheck("unconnected-junction")->title == "Unconnected junction");
     const Violation v = e.violations()[0];
     CHECK(v.message == "j1 has no driver; it feeds and1:A, and1:B, not1:IN (through 2 junctions)");
     CHECK(v.parts == std::vector<std::string>{"j1"});
     CHECK(v.pins.size() == 1);
     CHECK(v.pins[0].str() == "j1:J");
+    // It can be turned off on its own (modules with hookup points).
+    e.setEnabled("unconnected-junction", false);
+    CHECK(keys(e).empty());
+    e.setEnabled("unconnected-junction", true);
     // Driving the junction clears it (incrementally, as a full pass would).
     const Document driven = design(parts, feeds + "," + wire("vcc1:VCC", "j1:J"));
     e.update(driven);
