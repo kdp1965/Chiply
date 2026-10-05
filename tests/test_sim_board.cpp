@@ -149,6 +149,57 @@ TEST_CASE("resistors pull weakly; strong drivers win; opposite pulls give X")
     CHECK(down.get("n1:OUT") == V::H);
 }
 
+TEST_CASE("a switch wired straight to logic reads 0 when open")
+{
+    // No Tiny Tapeout block: DIP switch 1 from VCC to an inverter, DIP
+    // switch 2 from GND to a net with a pull-up resistor, a slide switch
+    // and a pushbutton feeding buffers.
+    const char* json = R"({"parts":[
+      {"type":"wokwi-dip-switch-8","id":"sw1","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-vcc","id":"v","top":0,"left":0,"attrs":{}},{"type":"wokwi-gnd","id":"g","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-gate-not","id":"n1","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-gate-buffer","id":"b2","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-resistor","id":"r1","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-slide-switch","id":"sl","top":0,"left":0,"attrs":{"value":"1"}},
+      {"type":"wokwi-gate-buffer","id":"b3","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-pushbutton","id":"pb","top":0,"left":0,"attrs":{}},
+      {"type":"wokwi-gate-buffer","id":"b4","top":0,"left":0,"attrs":{}}],
+     "connections":[["v:VCC","sw1:1a","red",[]],["sw1:1b","n1:IN","green",[]],
+       ["g:GND","sw1:2a","black",[]],["sw1:2b","b2:IN","green",[]],["v:VCC","r1:1","red",[]],["r1:2","b2:IN","green",[]],
+       ["v:VCC","sl:1","red",[]],["sl:2","b3:IN","green",[]],
+       ["v:VCC","pb:1.l","red",[]],["pb:2.l","b4:IN","green",[]]]})";
+    Board b(json);
+    CHECK(b.get("sw1:1b") == V::L); // open: 0, not floating
+    CHECK(b.get("n1:OUT") == V::H);
+    b.sim->setSwitch("sw1", 0, true);
+    CHECK(b.get("sw1:1b") == V::H);
+    CHECK(b.get("n1:OUT") == V::L);
+    b.sim->setSwitch("sw1", 0, false);
+    CHECK(b.get("sw1:1b") == V::L);
+    // A pull-up resistor beats the contact's pull-down; the closed switch beats both.
+    CHECK(b.get("b2:IN") == V::H);
+    b.sim->setSwitch("sw1", 1, true);
+    CHECK(b.get("b2:IN") == V::L);
+    // Slide switch: value 1 connects the middle to pin 3 (nothing there).
+    CHECK(b.get("b3:IN") == V::L);
+    b.sim->setSwitch("sl", 0, false); // middle to pin 1 (VCC)
+    CHECK(b.get("b3:IN") == V::H);
+    // Pushbutton.
+    CHECK(b.get("b4:IN") == V::L);
+    b.sim->setPressed("pb", true);
+    CHECK(b.get("b4:IN") == V::H);
+    b.sim->setPressed("pb", false);
+    CHECK(b.get("b4:IN") == V::L);
+
+    // Chip-only simulation leaves the nets to the testbench: no pull-downs.
+    Document doc = loadWokwi(json).doc;
+    const Netlist nl = Netlist::build(doc, PartLibrary::builtin());
+    Options chip;
+    chip.board = false;
+    Simulator s(nl, chip);
+    CHECK(s.value(*PinRef::parse("sw1:1b")) == V::Z);
+}
+
 TEST_CASE("RESET pull-up beats the pad pull-down")
 {
     Board b(templateJson());

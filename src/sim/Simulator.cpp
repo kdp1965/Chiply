@@ -2,6 +2,8 @@
 
 #include "core/Memory.h"
 
+#include <algorithm>
+
 #include <cctype>
 #include <cmath>
 #include <map>
@@ -96,6 +98,19 @@ Simulator::Simulator(const Netlist& nl, Options opt)
     };
 
     std::vector<int> padPulls; // nets with a pad pull-down
+    // The contacts of switches and buttons get the same very weak pull-down
+    // as the Tiny Tapeout pads: a switch wired straight to logic reads (and
+    // shows) 0 when it is open, as on Wokwi, instead of floating. Anything
+    // else on the net wins: a driver, or a pull-up resistor.
+    auto switchContacts = [&](const Switch& sw) {
+        if (!m_opt.board)
+            return; // chip only: the testbench drives the nets
+        for (const auto* pairs : {&sw.closedWhenOn, &sw.closedWhenOff})
+            for (const auto& [a, b] : *pairs) {
+                padPulls.push_back(a);
+                padPulls.push_back(b);
+            }
+    };
     for (const Device& d : nl.devices) {
         auto pinNet = [&](const std::string& name) {
             for (std::size_t i = 0; i < d.pinNames.size(); ++i)
@@ -167,14 +182,17 @@ Simulator::Simulator(const Netlist& nl, Options opt)
             addPrim(Kind::Res, {pinNet("1"), pinNet("2")}, {pinNet("1"), pinNet("2")}, Strength::Weak);
         } else if (d.type == "wokwi-pushbutton") {
             m_switches.push_back({d.partId, d.type, {{pinNet("1.l"), pinNet("2.l")}}, {}, {false}});
+            switchContacts(m_switches.back());
         } else if (d.type == "wokwi-slide-switch") {
             // Wokwi: value "1" connects the middle pin to pin 3, else to pin 1.
             m_switches.push_back({d.partId, d.type, {{pinNet("2"), pinNet("3")}}, {{pinNet("2"), pinNet("1")}}, {attr == "1"}});
+            switchContacts(m_switches.back());
         } else if (d.type == "wokwi-dip-switch-8") {
             Switch s{d.partId, d.type, {}, {}, std::vector<bool>(8, false)};
             for (int b = 1; b <= 8; ++b)
                 s.closedWhenOn.push_back({pinNet(std::to_string(b) + "a"), pinNet(std::to_string(b) + "b")});
             m_switches.push_back(std::move(s));
+            switchContacts(m_switches.back());
         } else if (d.type == "wokwi-clock-generator") {
             ClockGen c;
             c.partId = d.partId;
@@ -276,6 +294,8 @@ Simulator::Simulator(const Netlist& nl, Options opt)
         for (int net : m_opt.chip->nets())
             m_chipSlots.push_back(addSlot(net, Strength::Strong));
     }
+    std::sort(padPulls.begin(), padPulls.end());
+    padPulls.erase(std::unique(padPulls.begin(), padPulls.end()), padPulls.end()); // one pull per net
     for (int net : padPulls) {
         const int slot = addSlot(net, Strength::Pad);
         if (slot >= 0)
