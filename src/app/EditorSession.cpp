@@ -1457,6 +1457,11 @@ void EditorSession::finishPaste(bool keep)
 
 std::string EditorSession::defaultWireColor(const chiply::PinRef& from) const
 {
+    // A pin that is already wired: the new wire continues in the colour of
+    // the connection made there last.
+    for (auto w = m_doc.wires.rbegin(); w != m_doc.wires.rend(); ++w)
+        if ((w->from == from || w->to == from) && !w->color.empty())
+            return w->color;
     if (const chiply::Part* p = m_doc.findPart(from.part))
         if (const chiply::PartDef* d = chiply::PartLibrary::builtin().find(p->type))
             if (const chiply::PinDef* pin = d->findPin(from.pin)) {

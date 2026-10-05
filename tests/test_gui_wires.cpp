@@ -122,6 +122,40 @@ private slots:
         v->centerOn(pin("flop238:NOTQ"));
     }
 
+    void newWireTakesTheColourOfThePinsConnection()
+    {
+        // flop238:NOTQ has no wire yet: the first one is the default green.
+        const QPointF a = pin("flop238:NOTQ"), b = pin("flop239:D");
+        for (const Wire& w : s->document().wires)
+            QVERIFY(w.from.str() != "flop238:NOTQ" && w.to.str() != "flop238:NOTQ");
+        click(a);
+        click(b);
+        QCOMPARE(lastWire().color, std::string("green"));
+        // Recolour it; a second wire from the same pin starts in that colour.
+        s->setWireColor(int(s->document().wires.size()) - 1, "magenta");
+        click(a);
+        QVERIFY(v->drawingWire());
+        click(pin("flop239:CLK"));
+        QCOMPARE(lastWire().from.str(), std::string("flop238:NOTQ"));
+        QCOMPARE(lastWire().color, std::string("magenta"));
+        // So does a wire started from the pin at the first wire's other end.
+        click(b);
+        click(pin("flop238:CLK"));
+        QCOMPARE(lastWire().from.str(), std::string("flop239:D"));
+        QCOMPARE(lastWire().color, std::string("magenta"));
+        // A colour key still overrides while drawing.
+        click(a);
+        QTest::keyClick(v, Qt::Key_6);
+        click(pin("flop240:D"));
+        QCOMPARE(lastWire().color, std::string("blue"));
+        // The most recent connection on the pin decides.
+        click(a);
+        click(pin("flop240:CLK"));
+        QCOMPARE(lastWire().color, std::string("blue"));
+        for (int i = 0; i < 6; ++i)
+            s->undoStack()->undo();
+    }
+
     void pressDragRelease()
     {
         const QPointF a = pin("flop238:NOTQ"), b = pin("flop239:D");
