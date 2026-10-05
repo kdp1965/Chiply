@@ -5,6 +5,8 @@
 #include "PartPalette.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
+#include "SimRunner.h"
+#include "core/Sheets.h"
 #include <QGraphicsScene>
 #include "core/Geometry.h"
 
@@ -13,6 +15,10 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
+#include <QPushButton>
 #include <QFileInfo>
 #include <QImage>
 #include <QLabel>
@@ -298,6 +304,109 @@ private slots:
         const QString t = w.findChild<QLabel*>("cursorPos")->text();
         QVERIFY2(t.startsWith("x 96.") || t.startsWith("x 95.") || t.startsWith("x 97."), qPrintable(t));
         QVERIFY2(t.contains("y 48.") || t.contains("y 47.") || t.contains("y 49."), qPrintable(t));
+    }
+
+    void sheetsInTheApp()
+    {
+        // A writable copy of the demo (a design, and two sheets beside it).
+        QTemporaryDir dir;
+        QDir().mkpath(dir.filePath("sheets"));
+        for (const char* f : {"design.json", "sheets/fulladd.json", "sheets/add2.json"})
+            QVERIFY(QFile::copy(QStringLiteral(CHIPLY_TEST_DATA_DIR "/sheets_demo/") + f, dir.filePath(f)));
+        QSettings().setValue("extensions/enabled", true);
+        MainWindow w;
+        w.resize(1300, 800);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        auto* tabs = w.findChild<QTabWidget*>();
+        auto session = [&] { return qobject_cast<EditorSession*>(tabs->currentWidget()->property("session").value<QObject*>()); };
+        auto partItem = [&](EditorSession* s, const char* id) -> PartItem* {
+            for (QGraphicsItem* it : s->view()->scene()->items())
+                if (it->type() == PartItem::Type && static_cast<PartItem*>(it)->partId() == id)
+                    return static_cast<PartItem*>(it);
+            return nullptr;
+        };
+        QVERIFY(w.openFile(dir.filePath("design.json")));
+        EditorSession* top = session();
+        QVERIFY(partItem(top, "u1") && partItem(top, "u1")->def() && partItem(top, "u1")->def()->sheet);
+        QVERIFY(top->violations().empty()); // Extended mode: nothing to report
+        {
+            PartPalette pal;
+            auto* list = pal.findChild<QListWidget*>();
+            QStringList types;
+            for (int i = 0; i < list->count(); ++i)
+                types << list->item(i)->data(Qt::UserRole).toString();
+            for (const char* t : {"chiply-port-in", "chiply-port-out", "chiply-sheet-add2", "chiply-sheet-fulladd"})
+                QVERIFY2(types.contains(t), t);
+        }
+
+        // Simulate: values on the instances' pins show on the canvas.
+        w.findChild<QAction*>("playAction")->trigger();
+        w.findChild<QAction*>("playAction")->trigger(); // pause
+        QVERIFY(top->sim() && top->sim()->error().isEmpty());
+        auto& sim = top->sim()->simulator();
+        sim.drive(chiply::PinRef{"ttin", "EXTIN0"}, chiply::sim::V::H); // a0 = 1
+        sim.drive(chiply::PinRef{"ttin", "EXTIN2"}, chiply::sim::V::H); // b0 = 1
+        sim.settle();
+        top->sim()->refresh();
+        QCOMPARE(top->sim()->valueText("u1", "s0"), QStringLiteral("0")); // 1 + 1 = 10
+        QCOMPARE(top->sim()->valueText("u1", "s1"), QStringLiteral("1"));
+        int checked = 0;
+        for (QGraphicsItem* it : top->view()->scene()->items())
+            if (it->type() == WireItem::Type) {
+                auto* wi = static_cast<WireItem*>(it);
+                const std::string from = top->document().wires[size_t(wi->index())].from.str();
+                if (from == "u1:s1") {
+                    QCOMPARE(wi->simValue(), 1);
+                    ++checked;
+                } else if (from == "u1:s0") {
+                    QCOMPARE(wi->simValue(), 0);
+                    ++checked;
+                }
+            }
+        QCOMPARE(checked, 2);
+        w.findChild<QAction*>("stopAction")->trigger();
+
+        // The Inspector opens an instance's sheet in its own tab.
+        top->view()->selectOnly(partItem(top, "u2"));
+        QApplication::processEvents();
+        auto* open = w.findChild<QPushButton*>("openSheetButton");
+        QVERIFY(open);
+        open->click();
+        QCOMPARE(tabs->count(), 2);
+        EditorSession* sheet = session();
+        QVERIFY(sheet != top && sheet->filePath().endsWith("fulladd.json"));
+
+        // The sheet on its own: a click on a Sheet input drives it.
+        w.findChild<QAction*>("playAction")->trigger();
+        w.findChild<QAction*>("playAction")->trigger();
+        QVERIFY(partItem(sheet, "sum")->simActive());
+        QCOMPARE(partItem(sheet, "sum")->simBits(), 0u);
+        SchematicView* sv = sheet->view();
+        sv->resetTransform();
+        sv->centerOn(QPointF(300, 60));
+        QTest::mouseClick(sv->viewport(), Qt::LeftButton, {}, sv->mapFromScene(QPointF(30, 96 + 9.6))); // port "cin"
+        QCOMPARE(partItem(sheet, "cin")->simBits(), 1u);
+        QCOMPARE(partItem(sheet, "sum")->simBits(), 1u); // 0 + 0 + 1
+        QTest::mouseClick(sv->viewport(), Qt::LeftButton, {}, sv->mapFromScene(QPointF(30, 96 + 9.6)));
+        QCOMPARE(partItem(sheet, "sum")->simBits(), 0u); // clicked again: back to 0
+        w.findChild<QAction*>("stopAction")->trigger();
+
+        // Renaming a port and saving the sheet updates the design that uses it.
+        QCOMPARE(sheet->renamePart("sum", "s"), QString());
+        sheet->save();
+        emit tabs->currentChanged(tabs->currentIndex());
+        QVERIFY(w.findChild<QAction*>("reloadBlocksAction"));
+        w.findChild<QAction*>("reloadBlocksAction")->trigger();
+        const chiply::PartDef* def = chiply::PartLibrary::builtin().find("chiply-sheet-fulladd");
+        QVERIFY(def && def->findPin("s") && !def->findPin("sum"));
+        bool dangling = false;
+        for (const auto& v : top->violations())
+            dangling |= v.check == "dangling-wire" && v.message.find("u2:sum") != std::string::npos;
+        QVERIFY(dangling); // the wire to the old pin is reported
+        QSettings().remove("extensions/enabled");
+        // Put the shared definitions back for the tests that follow.
+        chiply::scanSheets({std::string(CHIPLY_TEST_DATA_DIR) + "/sheets_demo/sheets"});
     }
 
     void selectionDoesNotShiftCanvas()

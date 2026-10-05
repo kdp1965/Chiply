@@ -12,6 +12,7 @@
 #include "WaveformView.h"
 #include "ViolationsPane.h"
 #include "core/Blocks.h"
+#include "core/Sheets.h"
 #include "core/Verilog.h"
 #include "vl/VerilatorChip.h"
 #include "core/WokwiJson.h"
@@ -119,6 +120,7 @@ MainWindow::MainWindow(QWidget* parent)
     statusBar()->addPermanentWidget(m_zoomLabel);
 
     chiply::scanBlocks({chiply::defaultUserBlocksDir()}); // the user's block library
+    chiply::scanSheets({chiply::defaultUserSheetsDir()}); // and sheet library
     buildMenus();
     resize(1400, 900);
     restoreLayout();
@@ -320,26 +322,7 @@ void MainWindow::buildMenus()
                                       "Designs that use them no longer load in Wokwi."));
     connect(m_extensionsAction, &QAction::toggled, this, &MainWindow::setExtensions);
     // Custom blocks (PLAN.md 7.2): <design>/blocks and the user library.
-    QAction* reloadBlocks = edit->addAction(tr("Reload Custom &Blocks"), this, [this] {
-        QStringList warnings;
-        QStringList names;
-        auto add = [&](const chiply::BlockScan& scan) {
-            for (const std::string& w : scan.warnings)
-                warnings << QString::fromStdString(w);
-            for (const std::string& n : scan.loaded)
-                if (!names.contains(QString::fromStdString(n)))
-                    names << QString::fromStdString(n);
-        };
-        add(chiply::scanBlocks({chiply::defaultUserBlocksDir()}));
-        for (int i = 0; i < m_tabs->count(); ++i) {
-            EditorSession* s = sessionAt(i);
-            add(chiply::scanBlocks(chiply::blockRoots(s->filePath().toStdString())));
-            s->refreshParts();
-        }
-        if (!warnings.isEmpty())
-            QMessageBox::warning(this, tr("Custom Blocks"), warnings.join(QStringLiteral("\n\n")));
-        statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks found") : tr("Custom blocks: %1").arg(names.join(QStringLiteral(", "))), 6000);
-    });
+    QAction* reloadBlocks = edit->addAction(tr("Reload &Blocks and Sheets"), this, [this] { reloadLibraries(true); });
     reloadBlocks->setObjectName("reloadBlocksAction");
     // Bus routing (PLAN.md 4.6).
     QAction* busRoute = edit->addAction(tr("B&us Route from Selected Parts"));
@@ -357,6 +340,11 @@ void MainWindow::buildMenus()
     QAction* replaceNames = edit->addAction(tr("Find and Replace in &Names..."), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
                                             this, &MainWindow::replaceInNames);
     replaceNames->setObjectName("replaceNamesAction");
+    edit->addAction(tr("Open S&heet Library Folder"), this, [] {
+        const QString dir = QString::fromStdString(chiply::defaultUserSheetsDir());
+        QDir().mkpath(dir);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
     edit->addAction(tr("Open Block &Library Folder"), this, [] {
         const QString dir = QString::fromStdString(chiply::defaultUserBlocksDir());
         QDir().mkpath(dir);
@@ -401,6 +389,7 @@ void MainWindow::buildMenus()
     });
 
     m_inspector = new Inspector(this);
+    connect(m_inspector, &Inspector::openFileRequested, this, [this](const QString& path) { openFile(path); });
     auto* inspDock = new QDockWidget(tr("Inspector"), this);
     inspDock->setObjectName("inspector");
     inspDock->setWidget(m_inspector);
@@ -977,6 +966,49 @@ void MainWindow::exportTtProject()
     }
 }
 
+void MainWindow::reloadLibraries(bool report)
+{
+    // Custom blocks and sheets: the user libraries, then each open design's
+    // own folders (which win for the same name).
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (sessionAt(i)->simulating()) { // a running simulation uses the definitions
+            if (report)
+                statusBar()->showMessage(tr("Stop the simulation before reloading blocks and sheets"), 6000);
+            return;
+        }
+    QStringList warnings, names;
+    auto add = [&](const std::vector<std::string>& loaded, const std::vector<std::string>& warn) {
+        for (const std::string& w : warn)
+            warnings << QString::fromStdString(w);
+        for (const std::string& n : loaded)
+            if (!names.contains(QString::fromStdString(n)))
+                names << QString::fromStdString(n);
+    };
+    {
+        const chiply::BlockScan b = chiply::scanBlocks({chiply::defaultUserBlocksDir()});
+        add(b.loaded, b.warnings);
+        const chiply::SheetScan sh = chiply::scanSheets({chiply::defaultUserSheetsDir()});
+        add(sh.loaded, sh.warnings);
+    }
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        const std::string path = sessionAt(i)->filePath().toStdString();
+        const chiply::BlockScan b = chiply::scanBlocks(chiply::blockRoots(path));
+        add(b.loaded, b.warnings);
+        const chiply::SheetScan sh = chiply::scanSheets(chiply::sheetRoots(path));
+        add(sh.loaded, sh.warnings);
+    }
+    for (int i = 0; i < m_tabs->count(); ++i)
+        sessionAt(i)->refreshParts();
+    if (m_inspector)
+        m_inspector->setSession(current());
+    warnings.removeDuplicates();
+    if (report && !warnings.isEmpty())
+        QMessageBox::warning(this, tr("Blocks and Sheets"), warnings.join(QStringLiteral("\n\n")));
+    if (report)
+        statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks or sheets found")
+                                                 : tr("Blocks and sheets: %1").arg(names.join(QStringLiteral(", "))), 6000);
+}
+
 void MainWindow::replaceInNames()
 {
     EditorSession* s = current();
@@ -1323,6 +1355,8 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
         return false;
     }
     rememberFolder(path);
+    if (QFileInfo(path).dir().dirName() == QLatin1String("sheets"))
+        reloadLibraries(false); // a sheet was saved: designs that use it follow
     if (s->usesExtensionParts())
         statusBar()->showMessage(tr("Saved %1 (uses Chiply extension parts: Wokwi cannot load it)").arg(path), 8000);
     else

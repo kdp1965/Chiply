@@ -7,6 +7,7 @@
 #include "SimRunner.h"
 #include "SchematicItems.h"
 #include "core/Blocks.h"
+#include "core/Sheets.h"
 #include "core/Edit.h"
 #include "core/IdGen.h"
 #include "core/Geometry.h"
@@ -79,6 +80,8 @@ EditorSession::EditorSession(QObject* parent)
             // Switch k is centred at x = 8.1 + 9.6 k (unrotated, px).
             const int k = std::clamp(int(std::lround((local.x() - 8.1) / 9.6)), 0, 7);
             m_sim->toggleSwitch(p->id, k);
+        } else if (p->type == "chiply-port-in") {
+            m_sim->togglePort(p->id); // trying a sheet out: drive its input
         }
     });
     connect(m_view, &SchematicView::simRelease, this, [this] {
@@ -173,8 +176,11 @@ void EditorSession::load(const QString& path)
 {
     // Custom blocks first, so their parts have definitions (PLAN.md 7.2).
     const chiply::BlockScan scan = chiply::scanBlocks(chiply::blockRoots(path.toStdString()));
+    const chiply::SheetScan sheets = chiply::scanSheets(chiply::sheetRoots(path.toStdString()));
     chiply::LoadResult r = chiply::loadWokwiFile(path.toStdString());
     for (const std::string& w : scan.warnings)
+        r.warnings.push_back(w);
+    for (const std::string& w : sheets.warnings)
         r.warnings.push_back(w);
     m_doc = std::move(r.doc);
     m_warnings.clear();
@@ -232,8 +238,10 @@ void EditorSession::save(const QString& path)
 {
     const QString target = path.isEmpty() ? m_path : path;
     chiply::saveWokwiFile(m_doc, target.toStdString());
-    if (QFileInfo(target).absolutePath() != QFileInfo(m_path).absolutePath())
+    if (QFileInfo(target).absolutePath() != QFileInfo(m_path).absolutePath()) {
         chiply::scanBlocks(chiply::blockRoots(target.toStdString())); // a new folder: its blocks
+        chiply::scanSheets(chiply::sheetRoots(target.toStdString())); // and sheets
+    }
     m_path = target;
     m_drc.setBaseDir(baseDir().toStdString());
     saveSidecar();
@@ -1032,6 +1040,14 @@ void EditorSession::refreshParts()
     rebuildScene();
     m_drc.clear();
     runDrc(true);
+}
+
+QString EditorSession::sheetFileOf(const std::string& partId) const
+{
+    if (const chiply::Part* p = m_doc.findPart(partId))
+        if (const chiply::PartDef* d = chiply::PartLibrary::builtin().find(p->type); d && d->sheet)
+            return QString::fromStdString(d->sheet->path);
+    return {};
 }
 
 bool EditorSession::usesBlocks() const

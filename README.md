@@ -24,7 +24,8 @@ Status: early development. The design and milestones are in
 | M10a Wokwi / Extended mode; extended cells (3/4-input gates, XOR3, MAJ3, MUX4, AOI/OAI) | done |
 | M10b Custom blocks: Verilog modules behind auto symbols (`blocks/` folder and user library) | done |
 | M10c RAM and ROM (any size up to 256 words x 16 bits), simulated natively | done |
-| M10d Sub-sheets | next |
+| M10d Sub-sheets: schematics as blocks, with Sheet input / Sheet output ports | done |
+| M11 Polish and packaging | next |
 
 ## Building
 

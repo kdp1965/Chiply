@@ -322,6 +322,37 @@ void customBlock(const Ctx& k)
     }
 }
 
+// Sheet ports (PLAN.md 7.4), drawn in px: a flag pointing the way the signal
+// flows, with the port's name (the part's id) inside. Sheet input: flag,
+// then the pin on the right. Sheet output: the pin on the left, then the
+// flag. While simulating, the flag is filled when the port is 1.
+void sheetPort(const Ctx& k, bool input)
+{
+    const double h = 19.2, mid = 9.6;
+    const double x0 = input ? 0.6 : 9.6, x1 = input ? 67.2 : 76.2;
+    QPainterPath flag;
+    flag.moveTo(x0, 1.6);
+    flag.lineTo(x1 - 8, 1.6);
+    flag.lineTo(x1, mid);
+    flag.lineTo(x1 - 8, h - 1.6);
+    flag.lineTo(x0, h - 1.6);
+    flag.closeSubpath();
+    k.p->setPen(QPen(k.c.partStroke, kStroke * kMm, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    k.p->setBrush(k.sim ? (k.bit(0) ? QBrush(QColor(0xff, 0xd6, 0x00)) : QBrush(k.c.background)) : QBrush(Qt::NoBrush));
+    k.p->drawPath(flag);
+    k.p->setPen(QPen(k.c.lead, kStroke * kMm, Qt::SolidLine, Qt::FlatCap));
+    if (input)
+        k.line(x1, mid, 76.8, mid);
+    else
+        k.line(0, mid, x0, mid);
+    // The name, as large as fits.
+    const QString name = QString::fromStdString(k.part.id);
+    const double room = (x1 - 9) - (x0 + 3);
+    const double size = std::min(11.5, room / (std::max<qsizetype>(1, name.size()) * 0.56));
+    const QColor ink = (k.sim && k.bit(0)) ? QColor(0x20, 0x20, 0x20) : k.c.partStroke;
+    k.text((x0 + 3 + x1 - 9) / 2, mid, name, size, Qt::AlignCenter, &ink);
+}
+
 void inverter(const Ctx& k, bool bubble)
 {
     QPainterPath t;
@@ -736,6 +767,8 @@ void paint(QPainter* p, const PartDef& def, const Part& part, const CanvasColors
         maj3(k);
     else if (s == "block")
         customBlock(k);
+    else if (s == "port-in" || s == "port-out")
+        sheetPort(k, s == "port-in");
     else if (s == "mux4")
         mux4(k);
     else if (s == "a21oi" || s == "a21o" || s == "o21ai" || s == "o21a" || s == "a22oi" || s == "o22ai")

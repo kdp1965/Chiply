@@ -23,6 +23,9 @@ public:
     static constexpr int kDefaultWidth = 380;
     static constexpr int kMinWidth = 220;
 
+signals:
+    void openFileRequested(const QString& path); // "Open Sheet" on a sheet instance
+
 private:
     void rebuild();
     void clear();

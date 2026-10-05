@@ -22,8 +22,15 @@ constexpr Time kChunk = 20'000'000;  // simulate in 20 us chunks within a tick
 SimRunner::SimRunner(EditorSession* s, std::shared_ptr<chiply::sim::ChipBackend> chip)
     : QObject(s)
     , m_s(s)
-    , m_doc(s->document())
+    , m_top(s->document())
 {
+    try {
+        m_doc = chiply::flattenSheets(m_top, chiply::PartLibrary::builtin(), &m_flat);
+    } catch (const std::exception& e) {
+        m_doc = m_top; // simulate what can be simulated, and say why not the rest
+        m_flat = {};
+        m_setupError = QString::fromUtf8(e.what());
+    }
     m_nl = std::make_unique<chiply::Netlist>(chiply::Netlist::build(m_doc, chiply::PartLibrary::builtin()));
     chiply::sim::Options opt;
     opt.chip = std::move(chip);
@@ -115,6 +122,20 @@ void SimRunner::toggleSwitch(const std::string& partId, int index)
     }
 }
 
+void SimRunner::togglePort(const std::string& partId)
+{
+    const int net = pinNet({partId, "P"});
+    if (net < 0)
+        return;
+    auto it = m_portDrive.find(partId);
+    const V next = (it != m_portDrive.end() && it->second == V::H) ? V::L : V::H;
+    m_portDrive[partId] = next;
+    m_sim->drive(net, next);
+    m_sim->settle();
+    refresh();
+    emit changed();
+}
+
 bool SimRunner::key(const QString& text, bool pressed)
 {
     if (text.isEmpty())
@@ -138,7 +159,7 @@ bool SimRunner::key(const QString& text, bool pressed)
 
 QString SimRunner::valueText(const std::string& part, const std::string& pin) const
 {
-    const int net = m_sim->netOf({part, pin});
+    const int net = pinNet({part, pin});
     if (net < 0)
         return {};
     switch (m_sim->value(net)) {
@@ -154,7 +175,7 @@ void SimRunner::addProbe(const QString& pinRef)
 {
     const auto ref = chiply::PinRef::parse(pinRef.toStdString());
     if (ref)
-        m_trace->add(*m_sim, "probes", pinRef.toStdString(), m_sim->netOf(*ref));
+        m_trace->add(*m_sim, "probes", pinRef.toStdString(), pinNet(*ref));
 }
 
 void SimRunner::refresh()
@@ -164,10 +185,10 @@ void SimRunner::refresh()
     for (QGraphicsItem* it : scene->items()) {
         if (it->type() == WireItem::Type) {
             auto* w = static_cast<WireItem*>(it);
-            if (w->index() < 0 || w->index() >= int(m_doc.wires.size()))
+            if (w->index() < 0 || w->index() >= int(m_top.wires.size()))
                 continue;
-            const chiply::Wire& wire = m_doc.wires[size_t(w->index())];
-            const int net = m_sim->netOf(wire.from);
+            const chiply::Wire& wire = m_top.wires[size_t(w->index())];
+            const int net = pinNet(wire.from);
             w->setSimValue(net < 0 ? -1 : int(m_sim->value(net)));
         } else if (it->type() == PartItem::Type) {
             auto* p = static_cast<PartItem*>(it);
@@ -186,6 +207,8 @@ void SimRunner::refresh()
             } else if (p->def() && p->def()->type.rfind("wokwi-flip-flop", 0) == 0) {
                 const auto q = m_sim->value(chiply::PinRef{id, "Q"});
                 bits = q == chiply::sim::V::H ? 1u : (q == chiply::sim::V::L ? 0u : 2u);
+            } else if (p->def() && chiply::isPortType(p->def()->type)) {
+                bits = m_sim->value(pinNet({id, "P"})) == chiply::sim::V::H ? 1u : 0u; // filled when 1
             } else
                 live = false;
             p->setSim(live, bits);

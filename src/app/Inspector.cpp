@@ -130,6 +130,14 @@ void Inspector::rebuild()
         type->setTextInteractionFlags(Qt::TextSelectableByMouse);
         form->addRow(tr("Type"), type);
         form->addRow(tr("Position"), new QLabel(QString("x %1, y %2, %3°").arg(p->left).arg(p->top).arg(p->rotate), m_body));
+        if (const QString sheet = m_s->sheetFileOf(p->id); !sheet.isEmpty()) {
+            // A sheet instance: its schematic opens in a tab of its own.
+            auto* open = new QPushButton(tr("Open Sheet"), m_body);
+            open->setObjectName("openSheetButton");
+            open->setToolTip(sheet);
+            connect(open, &QPushButton::clicked, this, [this, sheet] { emit openFileRequested(sheet); });
+            form->addRow(tr("Sheet"), open);
+        }
         if (def && def->memory) {
             // RAM / ROM size: the size is the part type (it decides the pins).
             const chiply::MemoryInfo mem = *def->memory;

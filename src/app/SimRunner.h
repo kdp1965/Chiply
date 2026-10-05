@@ -3,6 +3,7 @@
 // interactive parts, and pushing live values to the scene.
 #include "core/Document.h"
 #include "core/Netlist.h"
+#include "core/Sheets.h"
 #include "sim/Simulator.h"
 #include "sim/Trace.h"
 
@@ -38,13 +39,16 @@ public:
     // Interaction (from clicks on the canvas or keys).
     void pressButton(const std::string& partId, bool pressed);
     void toggleSwitch(const std::string& partId, int index);
+    // A top-level Sheet input: each click drives it 1, 0, 1... (to try a
+    // sheet out on its own).
+    void togglePort(const std::string& partId);
     // Pushbuttons whose "key" attr matches; true if one was handled.
     bool key(const QString& text, bool pressed);
 
     chiply::sim::Time now() const { return m_sim->now(); }
     double speed() const { return m_speed; }       // simulated / real time
     QString valueText(const std::string& part, const std::string& pin) const;
-    QString error() const { return QString::fromStdString(m_sim->lastError()); }
+    QString error() const { return m_setupError.isEmpty() ? QString::fromStdString(m_sim->lastError()) : m_setupError; }
     chiply::sim::Simulator& simulator() { return *m_sim; }
 
     // Recording (PLAN.md 6.4): logic analyzers and the session's probes.
@@ -63,8 +67,15 @@ signals:
 private:
     void tick();
 
+    // Net of a pin of the design as drawn (sheet instance pins included).
+    int pinNet(const chiply::PinRef& ref) const { return m_sim->netOf(m_flat.resolve(ref)); }
+
     EditorSession* m_s;
-    chiply::Document m_doc;
+    chiply::Document m_top;   // the design as drawn (wire indices match the scene)
+    chiply::Document m_doc;   // the same with sheets flattened: what is simulated
+    chiply::FlatInfo m_flat;
+    QString m_setupError;
+    std::map<std::string, chiply::sim::V> m_portDrive;
     std::unique_ptr<chiply::Netlist> m_nl;
     std::unique_ptr<chiply::sim::Simulator> m_sim;
     std::shared_ptr<chiply::sim::Trace> m_trace;

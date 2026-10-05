@@ -194,6 +194,8 @@ public:
     void setExtensionsAllowed(bool on); // this session's DRC
     bool usesExtensionParts() const;
     bool usesBlocks() const;      // custom blocks (Verilator-only simulation)
+    // The diagram file behind a sheet instance ("" for other parts).
+    QString sheetFileOf(const std::string& partId) const;
     void refreshParts();          // part definitions changed (blocks reloaded)
     static bool drcLive();
     static void setDrcLive(bool on);

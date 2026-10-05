@@ -91,6 +91,7 @@ private:
     class QLabel* m_modeLabel = nullptr;
     class QLabel* m_posLabel = nullptr;
     void replaceInNames();
+    void reloadLibraries(bool report); // custom blocks and sheets, then refresh every tab
     QAction* m_extensionsAction = nullptr;
     void setExtensions(bool on);
     void updateDrcStatus();

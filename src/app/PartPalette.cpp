@@ -45,7 +45,7 @@ void PartPalette::refill(const QString& filter)
 {
     m_list->clear();
     // Category order roughly as in Wokwi's Logic-first palette.
-    static const QStringList order{"Logic", "Chiply cells", "Tiny Tapeout", "Input", "Output", "Power", "Annotation", "Passive", "Misc", "Boards"};
+    static const QStringList order{"Logic", "Chiply cells", "Sheets", "Custom", "Tiny Tapeout", "Input", "Output", "Power", "Annotation", "Passive", "Misc", "Boards"};
     std::map<int, std::vector<const chiply::PartDef*>> groups;
     const bool extensions = EditorSession::extensionsEnabled();
     for (const chiply::PartDef& d : chiply::PartLibrary::builtin().parts()) {
