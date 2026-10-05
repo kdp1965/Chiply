@@ -23,6 +23,7 @@ add_library(chiply_core STATIC
   Verilog.cpp
   Blocks.cpp
   Memory.cpp
+  BusRoute.cpp
   PartLibrary.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp

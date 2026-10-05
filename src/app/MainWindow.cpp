@@ -341,6 +341,18 @@ void MainWindow::buildMenus()
         statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks found") : tr("Custom blocks: %1").arg(names.join(QStringLiteral(", "))), 6000);
     });
     reloadBlocks->setObjectName("reloadBlocksAction");
+    // Bus routing (PLAN.md 4.6).
+    QAction* busRoute = edit->addAction(tr("B&us Route from Selected Parts"));
+    busRoute->setObjectName("busRouteAction");
+    busRoute->setCheckable(true);
+    busRoute->setChecked(QSettings().value("edit/busRouting", true).toBool());
+    busRoute->setToolTip(tr("With several parts selected, a click on a pin of one of them draws a wire from that pin on "
+                            "every selected part, routed together one grid apart"));
+    SchematicView::setBusRouting(busRoute->isChecked());
+    connect(busRoute, &QAction::toggled, this, [](bool on) {
+        QSettings().setValue("edit/busRouting", on);
+        SchematicView::setBusRouting(on);
+    });
     edit->addSeparator();
     QAction* replaceNames = edit->addAction(tr("Find and Replace in &Names..."), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
                                             this, &MainWindow::replaceInNames);
@@ -523,6 +535,14 @@ int MainWindow::addSession(EditorSession* s)
     s->view()->setProperty("session", QVariant::fromValue(s));
     connect(s, &EditorSession::titleChanged, this, &MainWindow::updateTitles);
     connect(s->view(), &SchematicView::zoomChanged, this, [this] { updateStatus(); });
+    connect(s->view(), &SchematicView::hint, this, [this, s](const QString& text) {
+        if (s != current())
+            return;
+        if (text.isEmpty())
+            statusBar()->clearMessage();
+        else
+            statusBar()->showMessage(text); // stays until the bus is done
+    });
     connect(s->view(), &SchematicView::cursorMoved, this, [this, s](QPointF p) {
         if (s == current() && m_posLabel)
             m_posLabel->setText(QStringLiteral("x %1  y %2   |").arg(p.x(), 0, 'f', 1).arg(p.y(), 0, 'f', 1));
@@ -1126,7 +1146,7 @@ void MainWindow::updateSimControls()
     if (m_editMenu)
         for (QAction* a : m_editMenu->actions())
             if (!a->isSeparator() && !a->text().startsWith(tr("&Copy")) && !a->text().startsWith(tr("Select"))
-                && a != m_extensionsAction)
+                && a != m_extensionsAction && a->objectName() != QLatin1String("busRouteAction"))
                 a->setEnabled(!active);
     if (m_addPartAction)
         m_addPartAction->setEnabled(!active);

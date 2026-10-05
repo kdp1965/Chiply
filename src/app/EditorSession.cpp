@@ -1682,6 +1682,7 @@ void EditorSession::rebuildScene()
     // Keep the selection across rebuilds (theme change, reload of items).
     const std::vector<std::string> keepParts = selectedPartIds();
     const std::vector<int> keepWires = selectedWireIndices();
+    m_view->sceneAboutToClear(); // a wire being drawn survives the rebuild
     m_scene.clear();
     const chiply::PartLibrary& lib = chiply::PartLibrary::builtin();
     m_partItems.clear();
@@ -1730,4 +1731,5 @@ void EditorSession::rebuildScene()
     }
     updateSelectionState();
     m_scene.setSceneRect(m_scene.itemsBoundingRect().adjusted(-2000, -2000, 2000, 2000));
+    m_view->sceneRebuilt();
 }

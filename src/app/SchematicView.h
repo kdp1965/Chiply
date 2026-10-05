@@ -55,6 +55,18 @@ public:
     void setSimMode(bool on);
     bool simMode() const { return m_simMode; }
     bool drawingWire() const { return m_drawing; }
+    // Bus routing: 0 = none, 1 = the bundle follows the lead, 2 = connecting
+    // the remaining wires one by one; and how many are still to connect.
+    int busPhase() const { return m_busPhase; }
+    int busRemaining() const { return int(m_bus.size()); }
+    // Preference (Edit menu): a pin click on a selected part starts a bus
+    // from every selected part with that pin.
+    static void setBusRouting(bool on) { s_busRouting = on; }
+    static bool busRouting() { return s_busRouting; }
+    // The scene is about to be cleared and rebuilt (undo, reload...): keep
+    // the drawing preview out of it, then put it back.
+    void sceneAboutToClear();
+    void sceneRebuilt();
     void cancelWire();
     void setWireColorProvider(std::function<QString(const QString& pinRef)> f) { m_colorFor = std::move(f); }
     // DRC: centre and zoom on `sceneBox` (100 %..400 %), ring `pins` and
@@ -113,6 +125,8 @@ signals:
     // wire index. They move with the selection (EditorSession).
     void segmentsSelected(std::map<int, std::vector<chiply::Point>> corners, bool add);
     void segmentsCleared();
+    // A one-line hint for the status bar (bus routing); "" clears it.
+    void hint(QString text);
     // The cursor's position in scene coordinates (status bar).
     void cursorMoved(QPointF scenePos);
     // Right-click on a pin (pinRef) or a wire (wireIndex): the Probe menu.
@@ -166,6 +180,32 @@ private:
     chiply::Point snapped(QPointF scene, Qt::KeyboardModifiers mods) const;
     std::vector<chiply::Point> legTo(chiply::Point target) const; // L-bend from the last point
     bool m_drawing = false;
+
+    // Bus routing (PLAN.md 4.6): with several parts selected, a click on a
+    // pin of one of them draws a wire from that pin on every selected part
+    // that has it. Phase 1: the bundle follows the lead (the wire being
+    // drawn). Phase 2, after the lead is connected: the others are connected
+    // one at a time, in order.
+    struct BusWire {
+        QString from;                       // "part:PIN"
+        chiply::Point start;
+        int rank = 0;                       // tracks from the lead along the arrangement
+        QString color;
+        std::vector<chiply::Point> fixed;   // phase 2: its part of the bundle
+        std::vector<chiply::Point> stub;    // phase 2: shown while it waits
+        bool legHorizontal = true;          // phase 2: first leg from `fixed`
+    };
+    std::vector<BusWire> m_bus;             // wires not yet connected; [0] is the one being drawn
+    int m_busPhase = 0;                     // 0: not a bus
+    int m_busTotal = 0;
+    bool m_busFirstHorizontal = true;       // wires leave the pins horizontally (pins in a column)
+    int m_busFirstSign = 1;
+    std::size_t m_busBase = 1;              // phase 2: points the current wire started with
+    bool startBus(PartItem* part, const chiply::PinDef* pin);
+    void beginBusWire(QPoint viewPos);      // phase 2: draw m_bus[0] from its fixed points
+    void endBus();
+    void emitBusHint();
+    static bool s_busRouting;
     bool m_eatContextMenu = false;
     bool m_endMoved = false; // an end-handle press became a drag
     // While dragging a wire end or drawing a wire: the pin under the cursor

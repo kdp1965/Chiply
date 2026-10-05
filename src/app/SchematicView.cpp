@@ -1,6 +1,9 @@
 #include "SchematicView.h"
 
+#include "core/BusRoute.h"
+
 #include <QContextMenuEvent>
+#include <QGuiApplication>
 #include <QToolTip>
 #include <utility>
 
@@ -242,14 +245,148 @@ std::vector<chiply::Point> SchematicView::legTo(chiply::Point t) const
     const chiply::Point l = m_drawPts.back();
     if (std::fabs(t.x - l.x) < 0.005 || std::fabs(t.y - l.y) < 0.005)
         return {t};
+    if (m_busPhase) {
+        // A bus turns at every click: the leg starts at right angles to the
+        // segment before it (from the pins: at right angles to their
+        // column or row), so the click fixes where the tracks run.
+        bool horizontalFirst = m_busFirstHorizontal;
+        if (m_busPhase == 2 && m_drawPts.size() == m_busBase && !m_bus.empty()) {
+            horizontalFirst = m_bus.front().legHorizontal;
+        } else if (m_drawPts.size() >= 2) {
+            const chiply::Point& a = m_drawPts[m_drawPts.size() - 2];
+            horizontalFirst = std::fabs(a.y - l.y) >= 0.005; // previous segment vertical
+        }
+        return horizontalFirst ? std::vector<chiply::Point>{{t.x, l.y}, t} : std::vector<chiply::Point>{{l.x, t.y}, t};
+    }
     if (std::fabs(t.x - l.x) >= std::fabs(t.y - l.y))
         return {{t.x, l.y}, t};
     return {{l.x, t.y}, t};
 }
 
+bool SchematicView::s_busRouting = true;
+
+bool SchematicView::startBus(PartItem* part, const chiply::PinDef* pin)
+{
+    if (!s_busRouting || !part->isSelected())
+        return false;
+    // Every selected part that has this pin (junctions included).
+    std::vector<PartItem*> parts;
+    std::vector<chiply::Point> pins;
+    std::size_t lead = 0;
+    for (QGraphicsItem* it : scene()->selectedItems()) {
+        if (it->type() != PartItem::Type)
+            continue;
+        auto* p = static_cast<PartItem*>(it);
+        const chiply::PinDef* d = p->def() ? p->def()->findPin(pin->name) : nullptr;
+        if (!d)
+            continue;
+        if (p == part)
+            lead = parts.size();
+        const QPointF sp = p->pinScenePos(*d);
+        parts.push_back(p);
+        pins.push_back({chiply::round2(sp.x()), chiply::round2(sp.y())});
+    }
+    if (parts.size() < 2)
+        return false;
+    const chiply::BusOrder order = chiply::busOrder(pins, lead);
+    m_bus.clear();
+    for (std::size_t i : order.order) {
+        BusWire w;
+        w.from = QString::fromStdString(parts[i]->partId() + ":" + pin->name);
+        w.start = pins[i];
+        w.rank = order.rank[i];
+        w.color = m_colorFor ? m_colorFor(w.from) : QStringLiteral("green");
+        w.fixed = {w.start};
+        w.stub = {w.start};
+        m_bus.push_back(std::move(w));
+    }
+    m_busPhase = 1;
+    m_busTotal = int(m_bus.size());
+    m_busFirstHorizontal = order.column;
+    // Until the cursor moves away from the pins, assume the wires leave on
+    // the side of the part the pin is on.
+    const QPointF centre = part->outlineSceneRect().center();
+    m_busFirstSign = (order.column ? pins[lead].x < centre.x() : pins[lead].y < centre.y()) ? -1 : 1;
+    m_drawing = true;
+    m_drawFrom = m_bus.front().from;
+    m_drawColor = m_bus.front().color;
+    m_drawPts = {m_bus.front().start};
+    m_drawCursor = m_drawPts.back();
+    m_drawPreview = new QGraphicsPathItem;
+    m_drawPreview->setZValue(30);
+    scene()->addItem(m_drawPreview);
+    viewport()->setCursor(Qt::CrossCursor);
+    clearSelection(); // (the part items are not used after this)
+    emitBusHint();
+    return true;
+}
+
+void SchematicView::beginBusWire(QPoint viewPos)
+{
+    const BusWire& w = m_bus.front();
+    m_drawing = true;
+    m_drawFrom = w.from;
+    m_drawColor = w.color;
+    m_drawPts = w.fixed;
+    m_busBase = m_drawPts.size();
+    m_drawCursor = m_drawPts.back();
+    m_drawPreview = new QGraphicsPathItem;
+    m_drawPreview->setZValue(30);
+    scene()->addItem(m_drawPreview);
+    viewport()->setCursor(Qt::CrossCursor);
+    m_drawPressMoved = false;
+    emitBusHint();
+    updateWirePreview(viewPos, QGuiApplication::keyboardModifiers());
+}
+
+void SchematicView::endBus()
+{
+    const bool was = m_busPhase != 0;
+    m_bus.clear();
+    m_busPhase = 0;
+    m_busTotal = 0;
+    if (was)
+        emit hint(QString());
+}
+
+void SchematicView::emitBusHint()
+{
+    if (!m_busPhase || m_bus.empty())
+        return;
+    const int n = m_busTotal - int(m_bus.size()) + 1;
+    if (m_busPhase == 1)
+        emit hint(tr("Bus route: %1 wires. Click to turn, click a pin to connect wire 1 (%2), then the others in order. Esc cancels.")
+                      .arg(m_busTotal)
+                      .arg(m_bus.front().from));
+    else
+        emit hint(tr("Bus route: click the pin for wire %1 of %2 (%3). Esc stops here.").arg(n).arg(m_busTotal).arg(m_bus.front().from));
+}
+
+void SchematicView::sceneAboutToClear()
+{
+    if (m_drawPreview && m_drawPreview->scene())
+        m_drawPreview->scene()->removeItem(m_drawPreview);
+    // Items of the old scene must not be used again.
+    m_pendingWirePart = nullptr;
+    m_pendingWirePin = nullptr;
+    m_pressItem = nullptr;
+    if (m_dragWire) {
+        m_dragWire = nullptr;
+        m_press = Press::None;
+    }
+}
+
+void SchematicView::sceneRebuilt()
+{
+    if (m_drawPreview && !m_drawPreview->scene())
+        scene()->addItem(m_drawPreview);
+}
+
 void SchematicView::startWire(PartItem* part, const chiply::PinDef* pin)
 {
     cancelWire();
+    if (startBus(part, pin))
+        return;
     const QPointF p = part->pinScenePos(*pin);
     m_drawing = true;
     m_drawFrom = QString::fromStdString(part->partId() + ":" + pin->name);
@@ -275,6 +412,7 @@ void SchematicView::cancelWire()
     m_drawing = false;
     m_drawPts.clear();
     viewport()->setCursor(Qt::ArrowCursor);
+    endBus();
 }
 
 void SchematicView::updateWirePreview(QPoint viewPos, Qt::KeyboardModifiers mods)
@@ -293,9 +431,30 @@ void SchematicView::updateWirePreview(QPoint viewPos, Qt::KeyboardModifiers mods
     for (const chiply::Point& q : legTo(m_drawCursor))
         pts.push_back(q);
     QPainterPath path;
-    path.moveTo(pts[0].x, pts[0].y);
-    for (std::size_t i = 1; i < pts.size(); ++i)
-        path.lineTo(pts[i].x, pts[i].y);
+    auto addLine = [&path](const std::vector<chiply::Point>& line) {
+        if (line.empty())
+            return;
+        path.moveTo(line[0].x, line[0].y);
+        for (std::size_t i = 1; i < line.size(); ++i)
+            path.lineTo(line[i].x, line[i].y);
+    };
+    addLine(pts);
+    if (m_busPhase == 1) {
+        // The other wires follow the lead in parallel tracks.
+        const std::vector<chiply::Point> lead = chiply::simplifyPolyline(pts);
+        if (lead.size() >= 2) {
+            const double d = m_busFirstHorizontal ? lead[1].x - lead[0].x : lead[1].y - lead[0].y;
+            const bool along = m_busFirstHorizontal ? std::fabs(lead[1].y - lead[0].y) < 0.005
+                                                    : std::fabs(lead[1].x - lead[0].x) < 0.005;
+            if (along && std::fabs(d) >= 0.005)
+                m_busFirstSign = d > 0 ? 1 : -1;
+        }
+        for (std::size_t k = 1; k < m_bus.size(); ++k)
+            addLine(chiply::busWirePath(lead, m_busFirstHorizontal, m_busFirstSign, m_bus[k].start, m_bus[k].rank, kGrid));
+    } else if (m_busPhase == 2) {
+        for (std::size_t k = 1; k < m_bus.size(); ++k) // waiting for their turn
+            addLine(m_bus[k].stub);
+    }
     m_drawPreview->setPath(path);
     QColor c(m_drawColor);
     m_drawPreview->setPen(QPen(Theme::instance().canvas().displayWireColor(c.isValid() ? c : QColor("green")), 2.0,
@@ -325,6 +484,29 @@ bool SchematicView::finishWireAt(QPoint viewPos)
     for (const chiply::Point& q : legTo(end))
         pts.push_back(q);
     const QString from = m_drawFrom, color = m_drawColor;
+    if (m_busPhase) {
+        // This wire is connected; the rest of the bus follows one by one,
+        // each from its own track.
+        const std::vector<chiply::Point> route = chiply::simplifyPolyline(pts);
+        std::vector<BusWire> rest(m_bus.begin() + 1, m_bus.end());
+        if (m_busPhase == 1)
+            for (BusWire& w : rest) {
+                const chiply::BusFanOut f = chiply::busFanOut(route, m_busFirstHorizontal, m_busFirstSign, w.start, w.rank, kGrid);
+                w.fixed = f.fixed;
+                w.stub = f.stub;
+                w.legHorizontal = f.legHorizontal;
+            }
+        const int total = m_busTotal;
+        cancelWire();
+        emit wireDrawn(from, to, color, route);
+        if (!rest.empty()) {
+            m_bus = std::move(rest);
+            m_busPhase = 2;
+            m_busTotal = total;
+            beginBusWire(viewPos);
+        }
+        return true;
+    }
     cancelWire();
     emit wireDrawn(from, to, color, chiply::simplifyPolyline(pts));
     return true;
@@ -553,10 +735,14 @@ void SchematicView::showTargetPin(QPoint viewPos)
     if (tip == m_targetTip)
         return;
     m_targetTip = tip;
-    if (tip.isEmpty())
+    if (tip.isEmpty()) {
         QToolTip::hideText();
-    else
-        QToolTip::showText(viewport()->mapToGlobal(viewPos) + QPoint(16, 16), QStringLiteral("\u2192 ") + tip, viewport());
+        return;
+    }
+    QString text = QStringLiteral("\u2192 ") + tip;
+    if (m_drawing && m_busPhase && !m_bus.empty()) // which bus wire lands here
+        text += tr("\nwire %1 of %2, from %3").arg(m_busTotal - int(m_bus.size()) + 1).arg(m_busTotal).arg(m_bus.front().from);
+    QToolTip::showText(viewport()->mapToGlobal(viewPos) + QPoint(16, 16), text, viewport());
 }
 
 void SchematicView::hideTargetPin()
@@ -1146,6 +1332,8 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
         const QString c = wokwiColorForKey(event->key());
         if (!c.isEmpty() && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
             m_drawColor = c;
+            for (BusWire& w : m_bus) // a bus: every wire still to connect
+                w.color = c;
             updateWirePreview(viewport()->mapFromGlobal(QCursor::pos()), event->modifiers());
             return;
         }
@@ -1154,7 +1342,9 @@ void SchematicView::keyPressEvent(QKeyEvent* event)
             return;
         }
         if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Delete) {
-            if (m_drawPts.size() > 1)
+            if (m_busPhase == 2 && m_drawPts.size() <= m_busBase)
+                ; // nothing of this wire's own to take back (Esc stops the bus)
+            else if (m_drawPts.size() > 1)
                 m_drawPts.pop_back();
             else
                 cancelWire();
