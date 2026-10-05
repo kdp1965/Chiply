@@ -2636,6 +2636,48 @@
     }
    },
    "source": "Chiply extended cell (PLAN.md 7.1)"
+  },
+  {
+   "type": "chiply-port-in",
+   "label": "Sheet input",
+   "category": "Sheets",
+   "prefix": "in",
+   "symbol": "port-in",
+   "units": "px",
+   "size": [
+    76.8,
+    19.2
+   ],
+   "pins": [
+    {
+     "name": "P",
+     "x": 76.8,
+     "y": 9.6,
+     "dir": "out"
+    }
+   ],
+   "source": "Chiply sheet port (PLAN.md 7.4)"
+  },
+  {
+   "type": "chiply-port-out",
+   "label": "Sheet output",
+   "category": "Sheets",
+   "prefix": "out",
+   "symbol": "port-out",
+   "units": "px",
+   "size": [
+    76.8,
+    19.2
+   ],
+   "pins": [
+    {
+     "name": "P",
+     "x": 0,
+     "y": 9.6,
+     "dir": "in"
+    }
+   ],
+   "source": "Chiply sheet port (PLAN.md 7.4)"
   }
  ]
 }

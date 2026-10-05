@@ -1,6 +1,7 @@
 #include "core/Blocks.h"
 
 #include "core/Document.h"
+#include "core/Sheets.h"
 
 #include <algorithm>
 #include <cmath>
@@ -222,8 +223,14 @@ std::vector<std::string> blockRoots(const std::string& designPath)
     return roots;
 }
 
-std::vector<std::string> blockSources(const Document& doc, const PartLibrary& lib)
+std::vector<std::string> blockSources(const Document& design, const PartLibrary& lib)
 {
+    Document doc;
+    try {
+        doc = flattenSheets(design, lib); // blocks inside sheets count
+    } catch (const FlattenError&) {
+        doc = design;
+    }
     std::vector<std::string> files;
     std::set<std::string> types;
     for (const Part& p : doc.parts) {

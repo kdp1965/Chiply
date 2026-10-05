@@ -24,6 +24,7 @@ add_library(chiply_core STATIC
   Blocks.cpp
   Memory.cpp
   BusRoute.cpp
+  Sheets.cpp
   PartLibrary.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/PartsData.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/CellsData.cpp

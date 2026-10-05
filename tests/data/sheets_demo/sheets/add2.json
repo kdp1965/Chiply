@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "author": "Chiply tests",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "chiply-port-in",
+      "id": "a0",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "a1",
+      "top": 48,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "b0",
+      "top": 96,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "b1",
+      "top": 144,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "cin",
+      "top": 192,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-sheet-fulladd",
+      "id": "fa0",
+      "top": 0,
+      "left": 192,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-sheet-fulladd",
+      "id": "fa1",
+      "top": 144,
+      "left": 192,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-out",
+      "id": "s0",
+      "top": 0,
+      "left": 480,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-out",
+      "id": "s1",
+      "top": 48,
+      "left": 480,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-out",
+      "id": "cout",
+      "top": 96,
+      "left": 480,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "a0:P",
+      "fa0:a",
+      "green",
+      []
+    ],
+    [
+      "b0:P",
+      "fa0:b",
+      "green",
+      []
+    ],
+    [
+      "cin:P",
+      "fa0:cin",
+      "green",
+      []
+    ],
+    [
+      "fa0:sum",
+      "s0:P",
+      "green",
+      []
+    ],
+    [
+      "fa0:cout",
+      "fa1:cin",
+      "green",
+      []
+    ],
+    [
+      "a1:P",
+      "fa1:a",
+      "green",
+      []
+    ],
+    [
+      "b1:P",
+      "fa1:b",
+      "green",
+      []
+    ],
+    [
+      "fa1:sum",
+      "s1:P",
+      "green",
+      []
+    ],
+    [
+      "fa1:cout",
+      "cout:P",
+      "green",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

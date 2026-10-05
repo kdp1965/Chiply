@@ -62,6 +62,8 @@ struct MemoryInfo {
     int abits = 4;  // log2(depth)
 };
 
+struct SheetInfo; // core/Sheets.h
+
 struct PartDef {
     std::string type;
     std::string label;
@@ -76,6 +78,7 @@ struct PartDef {
     std::string source;
     std::shared_ptr<const BlockInfo> block;   // custom blocks only
     std::shared_ptr<const MemoryInfo> memory; // RAM / ROM only
+    std::shared_ptr<const SheetInfo> sheet;   // sub-sheets only (core/Sheets.h)
     bool hidden = false;                      // not offered in Add Part (other memory sizes)
 
     const PinDef* findPin(const std::string& name) const;

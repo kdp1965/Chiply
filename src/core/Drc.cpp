@@ -1,6 +1,7 @@
 #include "core/Drc.h"
 
 #include "core/Memory.h"
+#include "core/Sheets.h"
 
 #include <algorithm>
 #include <chrono>
@@ -36,6 +37,8 @@ const std::vector<CheckInfo> kChecks = {
      "Two parts of the same type at the same position (an invisible duplicate)."},
     {"memory-contents", "ROM contents", Severity::Error, true,
      "A ROM whose data or file cannot be read, has more words than the ROM, or words wider than it."},
+    {"sheet-problem", "Sheet problem", Severity::Error, true,
+     "A sheet that cannot be used: it contains itself, or a part of an unknown type."},
     {"extension-part", "Chiply extension part", Severity::Warning, true,
      "A Chiply-only part (Wokwi cannot load the design). Reported in Wokwi mode only."},
     {"unconnected-output", "Unconnected output", Severity::Info, false, "An output that drives nothing."},
@@ -56,7 +59,7 @@ bool isTtBlock(const std::string& type) { return type.rfind("board-tt-block", 0)
 // the Tiny Tapeout blocks.
 bool chipPin(const Device& d, std::size_t pin)
 {
-    if (isLogicCell(d.def) || (d.def && (d.def->block || d.def->memory)))
+    if (isLogicCell(d.def) || (d.def && (d.def->block || d.def->memory || d.def->sheet)) || isPortType(d.type))
         return true;
     if (d.type == "wokwi-vcc" || d.type == "wokwi-gnd")
         return true;
@@ -179,6 +182,7 @@ void Engine::setEnabled(const std::string& check, bool on)
 
 void Engine::clear()
 {
+    m_sheetProblems.clear();
     m_viol.clear();
     m_owned.clear();
     m_ownersOf.clear();
@@ -334,7 +338,14 @@ void Engine::checkPart(int di)
         if (!err.empty())
             add({"memory-contents", {}, d.partId + ": " + err, {d.partId}, {}, "memory-contents:" + d.partId});
     }
-    if ((isLogicCell(d.def) || d.def->memory) && !isValidVerilogId(d.partId))
+    if (d.def->sheet) {
+        auto cached = m_sheetProblems.find(d.def->sheet->name);
+        if (cached == m_sheetProblems.end())
+            cached = m_sheetProblems.emplace(d.def->sheet->name, sheetProblem(*d.def->sheet, m_lib)).first;
+        if (!cached->second.empty())
+            add({"sheet-problem", {}, d.partId + ": " + cached->second, {d.partId}, {}, "sheet-problem:" + d.partId});
+    }
+    if ((isLogicCell(d.def) || d.def->memory || d.def->block || d.def->sheet) && !isValidVerilogId(d.partId))
         add({"invalid-id", {}, "\"" + d.partId + "\" is not usable as a Verilog instance name", {d.partId}, {},
              "invalid-id:" + d.partId});
     for (std::size_t i = 0; i < d.pinNames.size(); ++i) {
@@ -710,6 +721,7 @@ void Engine::checkBidirBits()
 
 const Stats& Engine::runFull(const Document& doc)
 {
+    m_sheetProblems.clear(); // sheets may have been reloaded
     const auto t0 = std::chrono::steady_clock::now();
     m_viol.clear();
     m_owned.clear();

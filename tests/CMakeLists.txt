@@ -23,6 +23,7 @@ add_executable(chiply_tests
   test_blocks.cpp
   test_memory.cpp
   test_bus.cpp
+  test_sheets.cpp
 )
 target_link_libraries(chiply_tests PRIVATE chiply_vl Catch2::Catch2WithMain)
 target_compile_definitions(chiply_tests PRIVATE

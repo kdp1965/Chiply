@@ -2,6 +2,7 @@
 
 #include "core/Blocks.h"
 #include "core/Memory.h"
+#include "core/Sheets.h"
 
 #include <cctype>
 #include <cstdio>
@@ -19,8 +20,14 @@ extern const char* const kChiplyCellsV;
 const char* ttCellsV() { return kTtCellsV; }
 const char* chiplyCellsV() { return kChiplyCellsV; }
 
-bool usesChiplyCells(const Document& doc)
+bool usesChiplyCells(const Document& design)
 {
+    Document doc;
+    try {
+        doc = flattenSheets(design); // cells inside sheets count
+    } catch (const FlattenError&) {
+        doc = design;
+    }
     for (const Part& p : doc.parts)
         if (isExtensionType(p.type))
             if (const PartDef* def = PartLibrary::builtin().find(p.type);
@@ -123,8 +130,15 @@ std::string defaultModuleName(const std::string& stem)
     return s;
 }
 
-std::string writeVerilog(const Document& doc, const PartLibrary& lib, const VerilogOptions& opt, VerilogNetMap* computed)
+std::string writeVerilog(const Document& design, const PartLibrary& lib, const VerilogOptions& opt, VerilogNetMap* computed)
 {
+    // Sheets are flattened: each instance's cells are named <instance>__<id>.
+    Document doc;
+    try {
+        doc = flattenSheets(design, lib);
+    } catch (const FlattenError& e) {
+        throw ExportError(std::string("cannot export: ") + e.what());
+    }
     const Netlist nl = Netlist::build(doc, lib);
 
     // What cannot be exported.

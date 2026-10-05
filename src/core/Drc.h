@@ -109,6 +109,7 @@ private:
     std::set<std::string> m_enabled;
     bool m_extensionsAllowed = false;
     std::string m_baseDir;
+    std::map<std::string, std::string> m_sheetProblems; // sheet name -> problem ("" = fine)
     Document m_doc;  // last checked
     Netlist m_nl;    // its netlist (devices point into m_doc)
     bool m_have = false;

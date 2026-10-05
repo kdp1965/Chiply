@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "author": "Chiply tests",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "chiply-port-in",
+      "id": "a",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "b",
+      "top": 48,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-in",
+      "id": "cin",
+      "top": 96,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gate-xor-2",
+      "id": "x1",
+      "top": 0,
+      "left": 144,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gate-xor-2",
+      "id": "x2",
+      "top": 19.2,
+      "left": 288,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gate-and-2",
+      "id": "a1",
+      "top": 96,
+      "left": 144,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gate-and-2",
+      "id": "a2",
+      "top": 96,
+      "left": 288,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gate-or-2",
+      "id": "o1",
+      "top": 96,
+      "left": 432,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-out",
+      "id": "sum",
+      "top": 19.2,
+      "left": 576,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-port-out",
+      "id": "cout",
+      "top": 96,
+      "left": 576,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dip-switch-8",
+      "id": "sw1",
+      "top": -20,
+      "left": -150,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-vcc",
+      "id": "vcc1",
+      "top": -60,
+      "left": -200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-text",
+      "id": "note",
+      "top": -80,
+      "left": 0,
+      "attrs": {
+        "text": "Full adder"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "a:P",
+      "x1:A",
+      "green",
+      []
+    ],
+    [
+      "b:P",
+      "x1:B",
+      "green",
+      []
+    ],
+    [
+      "x1:OUT",
+      "x2:A",
+      "green",
+      []
+    ],
+    [
+      "cin:P",
+      "x2:B",
+      "green",
+      []
+    ],
+    [
+      "x2:OUT",
+      "sum:P",
+      "green",
+      []
+    ],
+    [
+      "a:P",
+      "a1:A",
+      "green",
+      []
+    ],
+    [
+      "b:P",
+      "a1:B",
+      "green",
+      []
+    ],
+    [
+      "x1:OUT",
+      "a2:A",
+      "green",
+      []
+    ],
+    [
+      "cin:P",
+      "a2:B",
+      "green",
+      []
+    ],
+    [
+      "a1:OUT",
+      "o1:A",
+      "green",
+      []
+    ],
+    [
+      "a2:OUT",
+      "o1:B",
+      "green",
+      []
+    ],
+    [
+      "o1:OUT",
+      "cout:P",
+      "green",
+      []
+    ],
+    [
+      "vcc1:VCC",
+      "sw1:1a",
+      "red",
+      []
+    ],
+    [
+      "sw1:1b",
+      "a:P",
+      "green",
+      []
+    ],
+    [
+      "vcc1:VCC",
+      "sw1:2a",
+      "red",
+      []
+    ],
+    [
+      "sw1:2b",
+      "b:P",
+      "green",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

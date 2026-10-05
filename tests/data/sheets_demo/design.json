@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "author": "Chiply tests",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-tt-block-input",
+      "id": "ttin",
+      "top": 0,
+      "left": -250,
+      "attrs": {
+        "verilogRole": "input"
+      }
+    },
+    {
+      "type": "board-tt-block-output",
+      "id": "ttout",
+      "top": 0,
+      "left": 420,
+      "attrs": {
+        "verilogRole": "output"
+      }
+    },
+    {
+      "type": "chiply-sheet-add2",
+      "id": "u1",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "chiply-sheet-fulladd",
+      "id": "u2",
+      "top": 144,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-gnd",
+      "id": "gnd1",
+      "top": 160,
+      "left": 380,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "ttin:IN0",
+      "u1:a0",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN1",
+      "u1:a1",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN2",
+      "u1:b0",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN3",
+      "u1:b1",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN4",
+      "u1:cin",
+      "green",
+      []
+    ],
+    [
+      "u1:s0",
+      "ttout:OUT0",
+      "green",
+      []
+    ],
+    [
+      "u1:s1",
+      "ttout:OUT1",
+      "green",
+      []
+    ],
+    [
+      "u1:cout",
+      "ttout:OUT2",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN5",
+      "u2:a",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN6",
+      "u2:b",
+      "green",
+      []
+    ],
+    [
+      "ttin:IN7",
+      "u2:cin",
+      "green",
+      []
+    ],
+    [
+      "u2:sum",
+      "ttout:OUT3",
+      "green",
+      []
+    ],
+    [
+      "u2:cout",
+      "ttout:OUT4",
+      "green",
+      []
+    ],
+    [
+      "gnd1:GND",
+      "ttout:OUT5",
+      "black",
+      []
+    ],
+    [
+      "gnd1:GND",
+      "ttout:OUT6",
+      "black",
+      []
+    ],
+    [
+      "gnd1:GND",
+      "ttout:OUT7",
+      "black",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

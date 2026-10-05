@@ -13,6 +13,7 @@
 #include "core/Blocks.h"
 #include "core/Drc.h"
 #include "core/Netlist.h"
+#include "core/Sheets.h"
 #include "core/Verilog.h"
 #include "core/WokwiJson.h"
 #include "sim/Simulator.h"
@@ -64,6 +65,9 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
 {
     using namespace chiply::sim;
     LoadResult r = loadWokwiFile(diagram);
+    // Sheets are simulated flattened; script pins may name instance ports.
+    FlatInfo flat;
+    r.doc = flattenSheets(r.doc, PartLibrary::builtin(), &flat);
     const Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
     std::ifstream script(scriptPath);
     if (!script)
@@ -110,6 +114,8 @@ int simScript(const std::string& diagram, const std::string& scriptPath)
         const std::string where = scriptPath + ":" + std::to_string(n + 1) + ": ";
         auto pin = [&](const std::string& s) {
             auto ref = PinRef::parse(s);
+            if (ref)
+                ref = flat.resolve(*ref);
             if (!ref || sim.netOf(*ref) < 0)
                 throw std::runtime_error(where + "unknown pin \"" + s + "\"");
             return *ref;
@@ -250,6 +256,8 @@ int truthTable(int argc, char** argv)
             throw std::runtime_error("unknown option " + a);
     }
     LoadResult r = loadWokwiFile(diagram);
+    FlatInfo flat;
+    r.doc = flattenSheets(r.doc, PartLibrary::builtin(), &flat); // sheets are simulated flattened
     const Netlist nl = Netlist::build(r.doc, PartLibrary::builtin());
     opt.baseDir = folderOf(diagram);
     if (useVerilator)
@@ -271,6 +279,8 @@ int truthTable(int argc, char** argv)
     }
     for (const auto& [pinName, v] : sets) {
         auto ref = PinRef::parse(pinName);
+        if (ref)
+            ref = flat.resolve(*ref);
         if (!ref || sim.netOf(*ref) < 0)
             throw std::runtime_error("unknown pin \"" + pinName + "\"");
         sim.drive(*ref, v);
@@ -363,6 +373,8 @@ int main(int argc, char** argv)
         if (path != "--list") {
             const BlockScan scan = scanBlocks(blockRoots(path));
             for (const std::string& w : scan.warnings)
+                std::cerr << "warning: " << w << "\n";
+            for (const std::string& w : scanSheets(sheetRoots(path)).warnings)
                 std::cerr << "warning: " << w << "\n";
         }
         if (cmd == "info") {

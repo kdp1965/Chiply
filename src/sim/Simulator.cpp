@@ -28,7 +28,9 @@ bool rising(V prev, V cur)
 
 // Parts with no simulation behaviour at all (no warning).
 const std::set<std::string> kInert = {"wokwi-text", "wokwi-junction", "wokwi-led", "wokwi-7segment",
-                                      "wokwi-logic-analyzer", "wokwi-pi-pico"};
+                                      "wokwi-logic-analyzer", "wokwi-pi-pico",
+                                      // sheet ports: connection points (a top-level one can be driven by the testbench)
+                                      "chiply-port-in", "chiply-port-out"};
 
 } // namespace
 
