@@ -421,29 +421,24 @@ void WaveformView::keyPressEvent(QKeyEvent* e)
 
 void WaveformView::contextMenuEvent(QContextMenuEvent* e)
 {
-    QMenu menu(this);
-    menu.setFont(font());
+    auto* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setFont(font());
     const int row = rowAt(e->pos().y());
     auto t = trace();
     QString probe;
     if (row >= 0 && t && t->channels()[size_t(row)].scope == "probes")
         probe = QString::fromStdString(t->channels()[size_t(row)].name);
-    QAction* remove = probe.isEmpty() ? nullptr : menu.addAction(tr("Remove Probe %1").arg(probe));
-    if (remove)
-        menu.addSeparator();
-    QAction* fitA = menu.addAction(tr("Fit Whole Recording (F)"));
-    QAction* followA = menu.addAction(tr("Follow Live Edge (End)"));
-    menu.addSeparator();
-    QAction* save = menu.addAction(tr("Save Trace as VCD..."));
-    QAction* chosen = menu.exec(e->globalPos());
-    if (!chosen)
-        return;
-    if (chosen == remove && m_session)
-        m_session->removeProbe(probe);
-    else if (chosen == fitA)
-        fit();
-    else if (chosen == followA)
-        follow();
-    else if (chosen == save)
-        emit saveRequested();
+    if (!probe.isEmpty()) {
+        connect(menu->addAction(tr("Remove Probe %1").arg(probe)), &QAction::triggered, this, [this, probe] {
+            if (m_session)
+                m_session->removeProbe(probe);
+        });
+        menu->addSeparator();
+    }
+    connect(menu->addAction(tr("Fit Whole Recording (F)")), &QAction::triggered, this, &WaveformView::fit);
+    connect(menu->addAction(tr("Follow Live Edge (End)")), &QAction::triggered, this, &WaveformView::follow);
+    menu->addSeparator();
+    connect(menu->addAction(tr("Save Trace as VCD...")), &QAction::triggered, this, &WaveformView::saveRequested);
+    menu->popup(e->globalPos()); // (no nested event loops: Qt for WebAssembly)
 }

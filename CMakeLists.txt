@@ -31,8 +31,15 @@ if(EMSCRIPTEN)
   # which Emscripten leaves out unless asked; this must come before the
   # libraries. Node programs (the CLI and the tests) see the real file
   # system; the browser module in src/wasm has its own options.
-  add_compile_options(-fwasm-exceptions)
-  add_link_options(-fwasm-exceptions)
+  if(CHIPLY_BUILD_GUI)
+    # Qt's WebAssembly libraries use Emscripten's JavaScript-based
+    # setjmp/longjmp, which cannot be mixed with native Wasm exceptions.
+    add_compile_options(-fexceptions)
+    add_link_options(-fexceptions)
+  else()
+    add_compile_options(-fwasm-exceptions)
+    add_link_options(-fwasm-exceptions)
+  endif()
   set(CHIPLY_NODE_LINK_OPTIONS -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1)
 endif()
 

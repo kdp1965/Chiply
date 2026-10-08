@@ -1,7 +1,10 @@
 #pragma once
 #include "sim/ChipBackend.h"
 
+#include <functional>
 #include <memory>
+
+#include <QMessageBox>
 #include <QMainWindow>
 #include <QTimer>
 
@@ -40,8 +43,19 @@ private:
     bool saveSession(EditorSession* s, bool saveAs);
     // Full DRC before an export: errors stop it unless the user insists,
     // warnings ask. True to go ahead.
-    bool exportPreflight(EditorSession* s, const QString& what);
+    // Dialogs that do not block: Qt for WebAssembly has no nested event
+    // loops, and open() with a callback is the Qt way anyway.
+    void notify(QMessageBox::Icon icon, const QString& title, const QString& text, const QString& details = {});
+    void ask(const QString& title, const QString& text, QMessageBox::StandardButtons buttons,
+             QMessageBox::StandardButton def, std::function<void(QMessageBox::StandardButton)> then);
+    // A full DRC before an export; `go` runs if the user does not stop.
+    void exportPreflight(EditorSession* s, const QString& what, std::function<void()> go);
+    void startSimulation(EditorSession* s);
+    void pasteText(EditorSession* s, const QString& text, bool skipBlocks);
+    void removeSession(EditorSession* s);
     void exportVerilog();
+    void exportVerilogNow(EditorSession* s);
+    void exportTtProjectNow(EditorSession* s);
     // Simulation engine (PLAN.md 6.6): built-in, or the chip in Verilator.
     QAction* m_engineBuiltin = nullptr;
     QAction* m_engineVerilator = nullptr;

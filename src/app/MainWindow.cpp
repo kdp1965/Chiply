@@ -18,6 +18,7 @@
 #include "core/WokwiJson.h"
 
 #include <QAction>
+#include <QPointer>
 #include <QFontMetrics>
 #include <QVBoxLayout>
 #include <QFormLayout>
@@ -27,14 +28,18 @@
 #include <QDesktopServices>
 #include <atomic>
 #include <mutex>
+#ifndef __EMSCRIPTEN__
 #include <thread>
+#endif
 #include <QProgressDialog>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QInputDialog>
 #include <QScrollArea>
 #include <QDir>
+#ifndef Q_OS_WASM
 #include <QProcess>
+#endif
 #include <QStandardPaths>
 #include <QCheckBox>
 #include <QActionGroup>
@@ -160,8 +165,10 @@ void MainWindow::buildMenus()
     });
     file->addSeparator();
     file->addAction(tr("Export &Verilog..."), this, &MainWindow::exportVerilog)->setObjectName("exportVerilogAction");
+#ifndef Q_OS_WASM
     file->addAction(tr("Export &Tiny Tapeout Project..."), this, &MainWindow::exportTtProject)
         ->setObjectName("exportTtAction");
+#endif
     file->addSeparator();
     file->addAction(tr("&Close Tab"), QKeySequence::Close, this, [this] { closeTab(m_tabs->currentIndex()); });
     file->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
@@ -340,6 +347,7 @@ void MainWindow::buildMenus()
     QAction* replaceNames = edit->addAction(tr("Find and Replace in &Names..."), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F),
                                             this, &MainWindow::replaceInNames);
     replaceNames->setObjectName("replaceNamesAction");
+#ifndef Q_OS_WASM
     edit->addAction(tr("Open S&heet Library Folder"), this, [] {
         const QString dir = QString::fromStdString(chiply::defaultUserSheetsDir());
         QDir().mkpath(dir);
@@ -350,6 +358,7 @@ void MainWindow::buildMenus()
         QDir().mkpath(dir);
         QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
     });
+#endif
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addAction(tr("Zoom &In  (+)"), this, [this] { if (auto* s = current()) s->view()->zoomIn(); });
@@ -474,6 +483,7 @@ void MainWindow::buildMenus()
     simMenu->addAction(m_stepAction);
     simMenu->addAction(m_stopAction);
     simMenu->addSeparator();
+#ifndef Q_OS_WASM
     QMenu* engine = simMenu->addMenu(tr("&Engine"));
     auto* engines = new QActionGroup(this);
     m_engineBuiltin = engine->addAction(tr("&Built-in"));
@@ -491,6 +501,7 @@ void MainWindow::buildMenus()
     });
     connect(engine, &QMenu::aboutToShow, this, &MainWindow::updateEngineActions);
     engine->setToolTipsVisible(true);
+#endif
     m_saveTraceAction = simMenu->addAction(tr("Save Trace as &VCD..."), this, &MainWindow::saveTrace);
     m_saveTraceAction->setObjectName("saveTraceAction");
     m_gtkwaveAction = simMenu->addAction(tr("Open Trace in &GTKWave"), this, &MainWindow::openInGtkWave);
@@ -500,7 +511,7 @@ void MainWindow::buildMenus()
 
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(tr("&About Chiply"), this, [this] {
-        QMessageBox::about(this, tr("About Chiply"),
+        notify(QMessageBox::Information, tr("About Chiply"),
             tr("<b>Chiply %1</b><p>Wokwi-compatible logic schematic editor.</p>"
                "<p>BSD 3-Clause License.</p>").arg(QApplication::applicationVersion()));
     });
@@ -686,45 +697,61 @@ void MainWindow::playPause()
     EditorSession* s = current();
     if (!s)
         return;
-    if (!s->sim()) {
-        std::shared_ptr<chiply::sim::ChipBackend> chip;
-        if (s->usesBlocks() && m_engineVerilator && !m_engineVerilator->isChecked()) {
-            const auto answer = QMessageBox::question(
-                this, tr("Custom Blocks"),
-                tr("This design has custom blocks, which only the Verilator engine can simulate. "
-                   "Simulate with Verilator?\n\nNo: simulate with the built-in engine (the blocks' outputs stay floating)."),
-                QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
-            if (answer == QMessageBox::Cancel)
-                return;
-            if (answer == QMessageBox::Yes) {
-                m_engineVerilator->setChecked(true);
-                QSettings().setValue("sim/engine", "verilator");
-            }
-        }
-        if (m_engineVerilator && m_engineVerilator->isChecked()) {
-            bool fallBack = false;
-            chip = buildVerilatorChip(s, &fallBack);
-            if (!chip && !fallBack)
-                return;
-        }
-        s->startSimulation(chip);
-        if (!s->sim())
-            return;
-        if (!s->sim()->error().isEmpty())
-            statusBar()->showMessage(s->sim()->error(), 8000);
-        // Simulate anyway (Wokwi does), but say so and show where.
-        if (const int errs = s->unwaivedCount(chiply::drc::Severity::Error)) {
-            statusBar()->showMessage(tr("Simulating with %1: see the Violations pane").arg(countOf(errs, "DRC error", "DRC errors")), 8000);
-            m_violDock->show();
-        }
-        // A logic analyzer in the design opens the Waveforms pane.
-        if (s->trace() && s->trace()->hasAnalyzer() && m_waveDock && !m_waveDock->isVisible())
-            m_waveDock->show();
+    if (s->sim()) {
+        if (s->sim()->running())
+            s->sim()->pause();
+        else
+            s->sim()->play();
+        s->view()->setFocus();
+        updateSimControls();
+        return;
     }
-    if (s->sim()->running())
-        s->sim()->pause();
-    else
-        s->sim()->play();
+#ifndef Q_OS_WASM
+    if (s->usesBlocks() && m_engineVerilator && !m_engineVerilator->isChecked()) {
+        QPointer<EditorSession> sp(s);
+        ask(tr("Custom Blocks"),
+            tr("This design has custom blocks, which only the Verilator engine can simulate. "
+               "Simulate with Verilator?\n\nNo: simulate with the built-in engine (the blocks' outputs stay floating)."),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes, [this, sp](QMessageBox::StandardButton b) {
+                if (b == QMessageBox::Cancel || !sp)
+                    return;
+                if (b == QMessageBox::Yes) {
+                    m_engineVerilator->setChecked(true);
+                    QSettings().setValue("sim/engine", "verilator");
+                }
+                startSimulation(sp);
+            });
+        return;
+    }
+#endif
+    startSimulation(s);
+}
+
+void MainWindow::startSimulation(EditorSession* s)
+{
+    std::shared_ptr<chiply::sim::ChipBackend> chip;
+#ifndef Q_OS_WASM
+    if (m_engineVerilator && m_engineVerilator->isChecked()) {
+        bool fallBack = false;
+        chip = buildVerilatorChip(s, &fallBack);
+        if (!chip && !fallBack)
+            return;
+    }
+#endif
+    s->startSimulation(chip);
+    if (!s->sim())
+        return;
+    if (!s->sim()->error().isEmpty())
+        statusBar()->showMessage(s->sim()->error(), 8000);
+    // Simulate anyway (Wokwi does), but say so and show where.
+    if (const int errs = s->unwaivedCount(chiply::drc::Severity::Error)) {
+        statusBar()->showMessage(tr("Simulating with %1: see the Violations pane").arg(countOf(errs, "DRC error", "DRC errors")), 8000);
+        m_violDock->show();
+    }
+    // A logic analyzer in the design opens the Waveforms pane.
+    if (s->trace() && s->trace()->hasAnalyzer() && m_waveDock && !m_waveDock->isVisible())
+        m_waveDock->show();
+    s->sim()->play();
     s->view()->setFocus();
     updateSimControls();
 }
@@ -770,6 +797,10 @@ std::shared_ptr<chiply::sim::ChipBackend> MainWindow::buildVerilatorChip(EditorS
         offerBuiltin(tr("Verilator cannot be used: %1.").arg(why), {});
         return nullptr;
     }
+#ifdef __EMSCRIPTEN__
+    offerBuiltin(why, {});
+    return nullptr;
+#else
     const chiply::Document doc = s->document(); // the dialog is modal: no edits meanwhile
     const std::string baseDir = s->baseDir().toStdString();
     std::atomic<bool> cancel{false}, done{false};
@@ -824,6 +855,7 @@ std::shared_ptr<chiply::sim::ChipBackend> MainWindow::buildVerilatorChip(EditorS
                                             : tr("%1: chip built in %2 s").arg(QString::fromStdString(chip->name())).arg(info.seconds, 0, 'f', 1),
                              6000);
     return chip;
+#endif
 }
 
 namespace {
@@ -842,44 +874,78 @@ QString findGtkWave()
 }
 } // namespace
 
-bool MainWindow::exportPreflight(EditorSession* s, const QString& what)
+void MainWindow::exportPreflight(EditorSession* s, const QString& what, std::function<void()> go)
 {
     s->runDrc(true);
     const int errors = s->unwaivedCount(chiply::drc::Severity::Error);
     const int warnings = s->unwaivedCount(chiply::drc::Severity::Warning);
     if (errors) {
-        QMessageBox box(QMessageBox::Critical, what,
-                        tr("The design has %1. The exported Verilog would not behave like the schematic.")
-                            .arg(countOf(errors, "DRC error", "DRC errors")),
-                        QMessageBox::NoButton, this);
-        QPushButton* show = box.addButton(tr("Show Violations"), QMessageBox::AcceptRole);
-        QPushButton* anyway = box.addButton(tr("Export Anyway"), QMessageBox::DestructiveRole);
-        box.addButton(QMessageBox::Cancel);
-        box.setDefaultButton(show);
-        box.exec();
-        if (box.clickedButton() == show) {
-            m_violDock->show();
-            m_violations->next();
-        }
-        return box.clickedButton() == anyway;
+        auto* box = new QMessageBox(QMessageBox::Critical, what,
+                                    tr("The design has %1. The exported Verilog would not behave like the schematic.")
+                                        .arg(countOf(errors, "DRC error", "DRC errors")),
+                                    QMessageBox::NoButton, this);
+        box->setAttribute(Qt::WA_DeleteOnClose);
+        QPushButton* show = box->addButton(tr("Show Violations"), QMessageBox::AcceptRole);
+        QPushButton* anyway = box->addButton(tr("Export Anyway"), QMessageBox::DestructiveRole);
+        box->addButton(QMessageBox::Cancel);
+        box->setDefaultButton(show);
+        connect(box, &QMessageBox::finished, this, [this, box, show, anyway, go = std::move(go)](int) {
+            if (box->clickedButton() == show) {
+                m_violDock->show();
+                m_violations->next();
+            } else if (box->clickedButton() == anyway) {
+                go();
+            }
+        });
+        box->open();
+        return;
     }
-    if (warnings)
-        return QMessageBox::question(this, what,
-                                     tr("The design has %1. Export anyway?").arg(countOf(warnings, "DRC warning", "DRC warnings")))
-            == QMessageBox::Yes;
-    return true;
+    if (warnings) {
+        ask(what, tr("The design has %1. Export anyway?").arg(countOf(warnings, "DRC warning", "DRC warnings")),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes, [go = std::move(go)](QMessageBox::StandardButton b) {
+                if (b == QMessageBox::Yes)
+                    go();
+            });
+        return;
+    }
+    go();
 }
 
 void MainWindow::exportVerilog()
 {
     EditorSession* s = current();
-    if (!s || !exportPreflight(s, tr("Export Verilog")))
+    if (!s)
         return;
+    QPointer<EditorSession> sp(s);
+    exportPreflight(s, tr("Export Verilog"), [this, sp] {
+        if (sp)
+            exportVerilogNow(sp);
+    });
+}
+
+void MainWindow::exportVerilogNow(EditorSession* s)
+{
     const QFileInfo fi(s->filePath().isEmpty() ? QDir(lastFolder()).filePath(QStringLiteral("untitled.json")) : s->filePath());
     QString stem = fi.completeBaseName();
     if (stem.endsWith(QStringLiteral(".diagram")))
         stem.chop(8);
     const QString module = QString::fromStdString(chiply::defaultModuleName(stem.toStdString()));
+#ifdef Q_OS_WASM
+    try {
+        chiply::VerilogOptions o;
+        o.moduleName = module.toStdString();
+        o.sourceName = fi.fileName().toStdString();
+        o.baseDir = s->baseDir().toStdString();
+        const std::string v = chiply::writeVerilog(s->document(), chiply::PartLibrary::builtin(), o);
+        QFileDialog::saveFileContent(QByteArray::fromStdString(v), module + ".v");
+        if (chiply::usesChiplyCells(s->document()))
+            QFileDialog::saveFileContent(QByteArray(chiply::chiplyCellsV()), QStringLiteral("chiply_cells.v"));
+        statusBar()->showMessage(tr("Downloading %1.v (needs cells.v)").arg(module), 8000);
+    } catch (const std::exception& e) {
+        notify(QMessageBox::Critical, tr("Export Verilog"), QString::fromUtf8(e.what()));
+    }
+    return;
+#endif
     const QString path = QFileDialog::getSaveFileName(this, tr("Export Verilog"), QDir(fi.absolutePath()).filePath(module + ".v"),
                                                       tr("Verilog (*.v)"));
     if (path.isEmpty())
@@ -919,15 +985,29 @@ void MainWindow::exportVerilog()
             needs += tr("; block sources copied: %1").arg(copied.join(QStringLiteral(", ")));
         statusBar()->showMessage(tr("Exported module %1 to %2 (%3)").arg(QString::fromStdString(o.moduleName), path, needs), 8000);
     } catch (const std::exception& e) {
-        QMessageBox::critical(this, tr("Export Verilog"), QString::fromUtf8(e.what()));
+        notify(QMessageBox::Critical, tr("Export Verilog"), QString::fromUtf8(e.what()));
     }
 }
 
 void MainWindow::exportTtProject()
 {
+#ifdef Q_OS_WASM
+    notify(QMessageBox::Information, tr("Export Tiny Tapeout Project"),
+                             tr("The browser version cannot write a project folder. Export the Verilog instead."));
+    return;
+#endif
     EditorSession* s = current();
-    if (!s || !exportPreflight(s, tr("Export Tiny Tapeout Project")))
+    if (!s)
         return;
+    QPointer<EditorSession> sp(s);
+    exportPreflight(s, tr("Export Tiny Tapeout Project"), [this, sp] {
+        if (sp)
+            exportTtProjectNow(sp);
+    });
+}
+
+void MainWindow::exportTtProjectNow(EditorSession* s)
+{
     const QString start = s->filePath().isEmpty() ? lastFolder() : QFileInfo(s->filePath()).absolutePath();
     const QString dir = QFileDialog::getExistingDirectory(this, tr("Tiny Tapeout project folder (with info.yaml)"), start);
     if (dir.isEmpty())
@@ -948,7 +1028,7 @@ void MainWindow::exportTtProject()
             return;
     }
     if (!module.startsWith(QStringLiteral("tt_um_")) || !chiply::drc::isValidVerilogId(module.toStdString())) {
-        QMessageBox::warning(this, tr("Export Tiny Tapeout Project"),
+        notify(QMessageBox::Warning, tr("Export Tiny Tapeout Project"),
                              tr("\"%1\" is not a valid top module name: it must start with tt_um_ and be a Verilog identifier.").arg(module));
         return;
     }
@@ -960,9 +1040,9 @@ void MainWindow::exportTtProject()
         QString report;
         for (const std::string& line : chiply::exportTtProject(s->document(), chiply::PartLibrary::builtin(), dir.toStdString(), o))
             report += QString::fromStdString(line) + QLatin1Char('\n');
-        QMessageBox::information(this, tr("Export Tiny Tapeout Project"), report);
+        notify(QMessageBox::Information, tr("Export Tiny Tapeout Project"), report);
     } catch (const std::exception& e) {
-        QMessageBox::critical(this, tr("Export Tiny Tapeout Project"), QString::fromUtf8(e.what()));
+        notify(QMessageBox::Critical, tr("Export Tiny Tapeout Project"), QString::fromUtf8(e.what()));
     }
 }
 
@@ -1003,7 +1083,7 @@ void MainWindow::reloadLibraries(bool report)
         m_inspector->setSession(current());
     warnings.removeDuplicates();
     if (report && !warnings.isEmpty())
-        QMessageBox::warning(this, tr("Blocks and Sheets"), warnings.join(QStringLiteral("\n\n")));
+        notify(QMessageBox::Warning, tr("Blocks and Sheets"), warnings.join(QStringLiteral("\n\n")));
     if (report)
         statusBar()->showMessage(names.isEmpty() ? tr("No custom blocks or sheets found")
                                                  : tr("Blocks and sheets: %1").arg(names.join(QStringLiteral(", "))), 6000);
@@ -1016,32 +1096,36 @@ void MainWindow::replaceInNames()
         statusBar()->showMessage(tr("Select the parts whose names to change first"), 5000);
         return;
     }
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Find and Replace in Names"));
-    QFont f = dlg.font();
+    auto* dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(tr("Find and Replace in Names"));
+    QFont f = dlg->font();
     f.setPointSize(std::max(f.pointSize(), 15));
-    dlg.setFont(f);
+    dlg->setFont(f);
     auto* form = new QFormLayout;
-    auto* from = new QLineEdit(&dlg);
+    auto* from = new QLineEdit(dlg);
     from->setObjectName("replaceFrom");
-    auto* to = new QLineEdit(&dlg);
+    auto* to = new QLineEdit(dlg);
     to->setObjectName("replaceTo");
     form->addRow(tr("Find"), from);
     form->addRow(tr("Replace with"), to);
-    auto* preview = new QLabel(&dlg);
+    auto* preview = new QLabel(dlg);
     preview->setWordWrap(true);
     preview->setTextFormat(Qt::PlainText);
     preview->setMinimumWidth(420);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(tr("Replace"));
-    auto* lay = new QVBoxLayout(&dlg);
-    lay->addWidget(new QLabel(tr("In the names of the %1 selected parts (wires follow):").arg(s->selectedPartIds().size()), &dlg));
+    auto* lay = new QVBoxLayout(dlg);
+    lay->addWidget(new QLabel(tr("In the names of the %1 selected parts (wires follow):").arg(s->selectedPartIds().size()), dlg));
     lay->addLayout(form);
     lay->addWidget(preview);
     lay->addWidget(buttons);
-    auto update = [&] {
+    QPointer<EditorSession> sp(s);
+    auto update = [sp, from, to, preview, buttons] {
+        if (!sp)
+            return;
         QString err;
-        const auto map = s->previewReplaceInNames(from->text(), to->text(), &err);
+        const auto map = sp->previewReplaceInNames(from->text(), to->text(), &err);
         QString text;
         if (!err.isEmpty()) {
             text = err;
@@ -1062,19 +1146,22 @@ void MainWindow::replaceInNames()
         preview->setText(text.trimmed());
         buttons->button(QDialogButtonBox::Ok)->setEnabled(err.isEmpty() && !map.empty());
     };
-    connect(from, &QLineEdit::textChanged, &dlg, update);
-    connect(to, &QLineEdit::textChanged, &dlg, update);
-    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(from, &QLineEdit::textChanged, dlg, update);
+    connect(to, &QLineEdit::textChanged, dlg, update);
+    connect(buttons, &QDialogButtonBox::accepted, dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, dlg, &QDialog::reject);
+    connect(dlg, &QDialog::accepted, this, [this, sp, from, to] {
+        if (!sp)
+            return;
+        int changed = 0;
+        const QString err = sp->replaceInNames(from->text(), to->text(), &changed);
+        if (!err.isEmpty())
+            notify(QMessageBox::Warning, tr("Find and Replace in Names"), err);
+        else
+            statusBar()->showMessage(tr("Renamed %1").arg(countOf(changed, "part", "parts")), 5000);
+    });
     update();
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-    int changed = 0;
-    const QString err = s->replaceInNames(from->text(), to->text(), &changed);
-    if (!err.isEmpty())
-        QMessageBox::warning(this, tr("Find and Replace in Names"), err);
-    else
-        statusBar()->showMessage(tr("Renamed %1").arg(countOf(changed, "part", "parts")), 5000);
+    dlg->open();
 }
 
 void MainWindow::setExtensions(bool on)
@@ -1088,6 +1175,30 @@ void MainWindow::setExtensions(bool on)
     statusBar()->showMessage(on ? tr("Extended mode: Chiply's own parts are in Add Part. Designs using them do not load in Wokwi.")
                                 : tr("Wokwi mode: only Wokwi's parts are offered."),
                              6000);
+}
+
+void MainWindow::notify(QMessageBox::Icon icon, const QString& title, const QString& text, const QString& details)
+{
+    auto* box = new QMessageBox(icon, title, text, QMessageBox::Ok, this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    if (!details.isEmpty())
+        box->setDetailedText(details);
+    box->open();
+}
+
+void MainWindow::ask(const QString& title, const QString& text, QMessageBox::StandardButtons buttons,
+                     QMessageBox::StandardButton def, std::function<void(QMessageBox::StandardButton)> then)
+{
+    auto* box = new QMessageBox(QMessageBox::Question, title, text, buttons, this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setDefaultButton(def);
+    connect(box, &QMessageBox::finished, this, [box, then = std::move(then)](int) {
+        QMessageBox::StandardButton b = box->standardButton(box->clickedButton());
+        if (b == QMessageBox::NoButton)
+            b = QMessageBox::Cancel; // closed without a choice
+        then(b);
+    });
+    box->open();
 }
 
 void MainWindow::updateDrcStatus()
@@ -1129,19 +1240,33 @@ void MainWindow::saveTrace()
     EditorSession* s = current();
     if (!s)
         return;
+#ifdef Q_OS_WASM
+    const QString path = QDir(QDir::tempPath()).filePath(QFileInfo(s->defaultTracePath()).fileName());
+#else
     const QString path = QFileDialog::getSaveFileName(this, tr("Save Trace"), s->defaultTracePath(),
                                                       tr("Value change dump (*.vcd)"));
     if (path.isEmpty())
         return;
+#endif
     const QString err = s->writeTraceVcd(path);
+#ifdef Q_OS_WASM
+    if (err.isEmpty()) {
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly))
+            QFileDialog::saveFileContent(f.readAll(), QFileInfo(path).fileName());
+    }
+#endif
     if (!err.isEmpty())
-        QMessageBox::warning(this, tr("Save Trace"), err);
+        notify(QMessageBox::Warning, tr("Save Trace"), err);
     else
         statusBar()->showMessage(tr("Saved trace %1").arg(path), 5000);
 }
 
 void MainWindow::openInGtkWave()
 {
+#ifdef Q_OS_WASM
+    return; // no processes in the browser (the action is hidden)
+#else
     EditorSession* s = current();
     const QString gtk = findGtkWave();
     if (!s || gtk.isEmpty())
@@ -1149,13 +1274,14 @@ void MainWindow::openInGtkWave()
     const QString path = QDir(QDir::tempPath()).filePath(QFileInfo(s->defaultTracePath()).fileName());
     const QString err = s->writeTraceVcd(path);
     if (!err.isEmpty()) {
-        QMessageBox::warning(this, tr("Open in GTKWave"), err);
+        notify(QMessageBox::Warning, tr("Open in GTKWave"), err);
         return;
     }
     const bool ok = gtk.endsWith(QStringLiteral(".app"))
         ? QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-a"), gtk, path})
         : QProcess::startDetached(gtk, {path});
     statusBar()->showMessage(ok ? tr("Opened %1 in GTKWave").arg(path) : tr("Could not start %1").arg(gtk), 5000);
+#endif
 }
 
 void MainWindow::updateSimControls()
@@ -1226,10 +1352,18 @@ void MainWindow::addPart()
     EditorSession* s = current();
     if (!s)
         return;
-    PartPalette dlg(this);
-    if (dlg.exec() == QDialog::Accepted)
-        s->startPlacing(dlg.chosenType().toStdString());
-    s->view()->setFocus();
+    auto* dlg = new PartPalette(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    QPointer<EditorSession> sp(s);
+    connect(dlg, &QDialog::accepted, this, [sp, dlg] {
+        if (sp)
+            sp->startPlacing(dlg->chosenType().toStdString());
+    });
+    connect(dlg, &QDialog::finished, this, [sp](int) {
+        if (sp)
+            sp->view()->setFocus();
+    });
+    dlg->open();
 }
 
 void MainWindow::paste()
@@ -1238,18 +1372,23 @@ void MainWindow::paste()
     if (!s)
         return;
     const QString text = QApplication::clipboard()->text();
-    bool skip = false;
     const QStringList blocks = s->existingTtBlocksIn(text);
     if (!blocks.isEmpty()) {
-        auto r = QMessageBox::question(
-            this, tr("Paste"),
+        QPointer<EditorSession> sp(s);
+        ask(tr("Paste"),
             tr("The pasted parts include Tiny Tapeout I/O blocks that this design already has (%1).\n\n"
                "Skip them and the wires connected to them?").arg(blocks.join(", ")),
-            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
-        if (r == QMessageBox::Cancel)
-            return;
-        skip = r == QMessageBox::Yes;
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes, [this, sp, text](QMessageBox::StandardButton b) {
+                if (b != QMessageBox::Cancel && sp)
+                    pasteText(sp, text, b == QMessageBox::Yes);
+            });
+        return;
     }
+    pasteText(s, text, false);
+}
+
+void MainWindow::pasteText(EditorSession* s, const QString& text, bool skip)
+{
     SchematicView* v = s->view();
     const QPoint cur = v->viewport()->mapFromGlobal(QCursor::pos());
     const QPointF anchor = v->mapToScene(v->viewport()->rect().contains(cur) ? cur : v->viewport()->rect().center());
@@ -1300,10 +1439,26 @@ void MainWindow::addReplacingBlank(EditorSession* s)
 
 void MainWindow::openDialog()
 {
+#ifdef Q_OS_WASM
+    // The browser's file picker; the file lands in the in-memory file system.
+    QFileDialog::getOpenFileContent(tr("Wokwi diagrams (*.json)"), [this](const QString& name, const QByteArray& data) {
+        if (name.isEmpty())
+            return;
+        const QString path = QDir(QDir::tempPath()).filePath(QFileInfo(name).fileName());
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate) && f.write(data) == data.size()) {
+            f.close();
+            openFile(path);
+        } else {
+            notify(QMessageBox::Critical, tr("Open failed"), tr("Cannot keep %1 in memory").arg(name));
+        }
+    });
+#else
     const QStringList paths = QFileDialog::getOpenFileNames(
         this, tr("Open diagram"), lastFolder(), tr("Wokwi diagrams (*.json);;All files (*)"));
     for (const QString& p : paths)
         openFile(p);
+#endif
 }
 
 bool MainWindow::openFile(const QString& path)
@@ -1320,7 +1475,7 @@ bool MainWindow::openFile(const QString& path)
         s->load(path);
     } catch (const std::exception& e) {
         delete s;
-        QMessageBox::critical(this, tr("Open failed"), tr("%1\n\n%2").arg(path, QString::fromUtf8(e.what())));
+        notify(QMessageBox::Critical, tr("Open failed"), tr("%1\n\n%2").arg(path, QString::fromUtf8(e.what())));
         return false;
     }
     addReplacingBlank(s);
@@ -1342,6 +1497,24 @@ void MainWindow::refitAll()
 bool MainWindow::saveSession(EditorSession* s, bool saveAs)
 {
     QString path = s->filePath();
+#ifdef Q_OS_WASM
+    // In the browser a save is a download: the design is kept in memory
+    // (so it counts as saved) and offered as a file.
+    (void)saveAs;
+    const QString name = path.isEmpty() ? QStringLiteral("diagram.json") : QFileInfo(path).fileName();
+    path = QDir(QDir::tempPath()).filePath(name);
+    try {
+        s->save(path);
+    } catch (const std::exception& e) {
+        notify(QMessageBox::Critical, tr("Save failed"), QString::fromUtf8(e.what()));
+        return false;
+    }
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly))
+        QFileDialog::saveFileContent(f.readAll(), name);
+    statusBar()->showMessage(tr("Downloading %1").arg(name), 4000);
+    return true;
+#else
     if (saveAs || path.isEmpty()) {
         path = QFileDialog::getSaveFileName(this, tr("Save diagram"),
             path.isEmpty() ? QDir(lastFolder()).filePath(QStringLiteral("diagram.json")) : path, tr("Wokwi diagrams (*.json)"));
@@ -1351,7 +1524,7 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
     try {
         s->save(path);
     } catch (const std::exception& e) {
-        QMessageBox::critical(this, tr("Save failed"), QString::fromUtf8(e.what()));
+        notify(QMessageBox::Critical, tr("Save failed"), QString::fromUtf8(e.what()));
         return false;
     }
     rememberFolder(path);
@@ -1362,6 +1535,7 @@ bool MainWindow::saveSession(EditorSession* s, bool saveAs)
     else
         statusBar()->showMessage(tr("Saved %1").arg(path), 4000);
     return true;
+#endif
 }
 
 bool MainWindow::closeTab(int index)
@@ -1371,16 +1545,38 @@ bool MainWindow::closeTab(int index)
         return false;
     if (s->isModified()) {
         m_tabs->setCurrentIndex(index);
+#ifdef Q_OS_WASM
+        // No nested event loops in the browser: the tab goes when the
+        // question is answered.
+        QPointer<EditorSession> sp(s);
+        ask(tr("Unsaved changes"), tr("Save changes to %1?").arg(s->displayName()),
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save, [this, sp](QMessageBox::StandardButton b) {
+                if (!sp || b == QMessageBox::Cancel || (b == QMessageBox::Save && !saveSession(sp, false)))
+                    return;
+                removeSession(sp);
+            });
+        return false;
+#else
         auto r = QMessageBox::question(this, tr("Unsaved changes"),
             tr("Save changes to %1?").arg(s->displayName()),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
         if (r == QMessageBox::Cancel || (r == QMessageBox::Save && !saveSession(s, false)))
             return false;
+#endif
     }
-    m_tabs->removeTab(index);
+    removeSession(s);
+    return true;
+}
+
+void MainWindow::removeSession(EditorSession* s)
+{
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (sessionAt(i) == s) {
+            m_tabs->removeTab(i);
+            break;
+        }
     s->view()->deleteLater();
     s->deleteLater();
-    return true;
 }
 
 void MainWindow::saveLayout()

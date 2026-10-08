@@ -2,6 +2,14 @@
 #include "Theme.h"
 
 #include <QApplication>
+#ifdef Q_OS_WASM
+#include <QDir>
+#include <QFile>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QUrlQuery>
+#include <emscripten/emscripten.h>
+#endif
 #include <QCommandLineParser>
 #include <QTimer>
 
@@ -51,6 +59,31 @@ int main(int argc, char* argv[])
     w.show();
     for (const QString& path : cli.positionalArguments())
         w.openFile(path);
+#ifdef Q_OS_WASM
+    // chiply.html?file=design.json opens a design served next to the page.
+    {
+        const char* search = emscripten_run_script_string("window.location.search");
+        const QString file = QUrlQuery(QString::fromUtf8(search ? search : "").mid(1)).queryItemValue("file");
+        if (!file.isEmpty() && !file.contains("..")) {
+            auto* net = new QNetworkAccessManager(&w);
+            QNetworkReply* reply = net->get(QNetworkRequest(QUrl(file)));
+            QObject::connect(reply, &QNetworkReply::finished, &w, [reply, file, &w] {
+                reply->deleteLater();
+                if (reply->error() != QNetworkReply::NoError) {
+                    qWarning("cannot load %s: %s", qPrintable(file), qPrintable(reply->errorString()));
+                    return;
+                }
+                const QString path = QDir(QDir::tempPath()).filePath(QUrl(file).fileName());
+                QFile f(path);
+                if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    f.write(reply->readAll());
+                    f.close();
+                    w.openFile(path);
+                }
+            });
+        }
+    }
+#endif
 
     if (cli.isSet(shot)) {
         const QString file = cli.value(shot);

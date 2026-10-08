@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QPointer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -319,42 +320,51 @@ void ViolationsPane::showContextMenu(const QPoint& pos)
     QTreeWidgetItem* item = m_tree->itemAt(pos);
     const std::string key = item ? item->data(0, kKeyRole).toString().toStdString() : std::string();
     const Violation* v = findViolation(m_session, key);
-    QMenu menu(this);
-    menu.setFont(font());
-    QAction *waive = nullptr, *unwaive = nullptr, *disable = nullptr, *copy = nullptr;
+    auto* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setFont(font());
+    QPointer<EditorSession> sp(m_session);
     if (v) {
-        if (m_session->isWaived(key))
-            unwaive = menu.addAction(tr("Remove Waiver"));
-        else
-            waive = menu.addAction(tr("Waive This Violation..."));
+        if (m_session->isWaived(key)) {
+            connect(menu->addAction(tr("Remove Waiver")), &QAction::triggered, this, [sp, key] {
+                if (sp)
+                    sp->unwaive(key);
+            });
+        } else {
+            connect(menu->addAction(tr("Waive This Violation...")), &QAction::triggered, this, [this, sp, key] {
+                auto* dlg = new QInputDialog(this);
+                dlg->setAttribute(Qt::WA_DeleteOnClose);
+                dlg->setWindowTitle(tr("Waive Violation"));
+                dlg->setLabelText(tr("Reason (optional, saved with the design):"));
+                dlg->setInputMode(QInputDialog::TextInput);
+                dlg->setFont(font());
+                connect(dlg, &QInputDialog::textValueSelected, this, [sp, key](const QString& reason) {
+                    if (sp)
+                        sp->waive(key, reason);
+                });
+                dlg->open();
+            });
+        }
         const chiply::drc::CheckInfo* info = chiply::drc::findCheck(v->check);
-        disable = menu.addAction(tr("Disable Check \"%1\"").arg(QString::fromStdString(info ? info->title : v->check)));
-        menu.addSeparator();
-        copy = menu.addAction(tr("Copy Message"));
+        const std::string check = v->check;
+        connect(menu->addAction(tr("Disable Check \"%1\"").arg(QString::fromStdString(info ? info->title : v->check))),
+                &QAction::triggered, this, [sp, check] {
+                    if (sp)
+                        sp->setCheckEnabled(check, false);
+                });
+        menu->addSeparator();
+        const QString message = QString::fromStdString(v->message);
+        connect(menu->addAction(tr("Copy Message")), &QAction::triggered, this, [message] { QApplication::clipboard()->setText(message); });
     }
-    QAction* copyAll = menu.addAction(tr("Copy All as Text"));
-    QAction* chosen = menu.exec(m_tree->viewport()->mapToGlobal(pos));
-    if (!chosen || !m_session)
-        return;
-    if (chosen == waive) {
-        bool ok = false;
-        const QString reason = QInputDialog::getText(this, tr("Waive Violation"),
-                                                     tr("Reason (optional, saved with the design):"), QLineEdit::Normal,
-                                                     QString(), &ok);
-        if (ok)
-            m_session->waive(key, reason);
-    } else if (chosen == unwaive) {
-        m_session->unwaive(key);
-    } else if (chosen == disable) {
-        m_session->setCheckEnabled(v->check, false);
-    } else if (chosen == copy) {
-        QApplication::clipboard()->setText(QString::fromStdString(v->message));
-    } else if (chosen == copyAll) {
+    connect(menu->addAction(tr("Copy All as Text")), &QAction::triggered, this, [sp] {
+        if (!sp)
+            return;
         QString all;
-        for (const Violation& x : m_session->violations())
+        for (const Violation& x : sp->violations())
             all += QStringLiteral("%1: [%2] %3%4\n")
                        .arg(QString::fromLatin1(chiply::drc::severityName(x.severity)), QString::fromStdString(x.check),
-                            QString::fromStdString(x.message), m_session->isWaived(x.key) ? tr(" (waived)") : QString());
+                            QString::fromStdString(x.message), sp->isWaived(x.key) ? tr(" (waived)") : QString());
         QApplication::clipboard()->setText(all);
-    }
+    });
+    menu->popup(m_tree->viewport()->mapToGlobal(pos)); // (no nested event loops: Qt for WebAssembly)
 }

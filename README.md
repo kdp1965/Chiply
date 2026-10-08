@@ -71,6 +71,15 @@ engine for Node and the browser; `node build-wasm/src/cli/chiply-cli.js bench
 design.json` times it, and `wasm/dist/index.html` does the same on a dropped
 file (serve the folder, e.g. `python3 -m http.server -d wasm/dist 8000`).
 
+The whole editor also runs in a browser with Qt for WebAssembly: `wasm/build-qt.sh`
+(its header says what to install: Qt 6.11.2 `wasm_singlethread`, Emscripten
+4.0.7, a matching host Qt) builds it into `wasm/qt/`; serve that folder
+(`python3 -m http.server -d wasm/qt 8000`) and open `chiply.html`, or
+`chiply.html?file=design.json` to open a design served next to it. Files are
+opened with the browser's file picker and saved as downloads; the Verilator
+engine, GTKWave and the Tiny Tapeout project export are desktop-only. The
+download is 16.5 MB (6 MB compressed) and the first start takes about 10 s.
+
 GitHub Actions CI (Linux and macOS) runs only on request: Actions tab, CI,
 "Run workflow".
 

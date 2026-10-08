@@ -157,18 +157,20 @@ EditorSession::EditorSession(QObject* parent)
         }
         if (ref.isEmpty())
             return;
-        QMenu menu(m_view);
-        QFont f = menu.font();
+        auto* menu = new QMenu(m_view);
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+        QFont f = menu->font();
         f.setPointSize(std::max(f.pointSize(), 15)); // readable
-        menu.setFont(f);
+        menu->setFont(f);
         const bool on = isProbed(ref);
-        QAction* a = menu.addAction(on ? tr("Remove Probe %1").arg(ref) : tr("Probe %1").arg(ref));
-        if (menu.exec(global) == a) {
+        QAction* a = menu->addAction(on ? tr("Remove Probe %1").arg(ref) : tr("Probe %1").arg(ref));
+        connect(a, &QAction::triggered, this, [this, ref, on] {
             if (on)
                 removeProbe(ref);
             else
                 addProbe(ref);
-        }
+        });
+        menu->popup(global); // (no nested event loops: Qt for WebAssembly)
     });
 }
 
