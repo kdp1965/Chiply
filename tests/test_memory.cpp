@@ -102,6 +102,10 @@ std::vector<unsigned> ramSequence()
 
 std::string findTool(const char* name)
 {
+#ifdef __EMSCRIPTEN__
+    (void)name;
+    return {}; // no processes in WebAssembly
+#endif
     for (const char* dir : {"/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"})
         if (fs::exists(fs::path(dir) / name))
             return (fs::path(dir) / name).string();

@@ -1,5 +1,23 @@
 #include "vl/VerilatorChip.h"
 
+#ifdef __EMSCRIPTEN__
+// No processes, no compilers, no dynamic loading in WebAssembly: the backend
+// is simply not available (the built-in simulator does everything).
+namespace chiply::vl {
+std::optional<Tools> findTools(std::string* why)
+{
+    if (why)
+        *why = "Verilator is not available in the web version";
+    return std::nullopt;
+}
+std::shared_ptr<sim::ChipBackend> buildChip(const Document&, const Tools&, const BuildOptions&, BuildInfo*)
+{
+    throw BuildError("Verilator is not available in the web version");
+}
+std::string defaultCacheDir() { return {}; }
+} // namespace chiply::vl
+#else
+
 #include "core/Blocks.h"
 #include "core/PartLibrary.h"
 #include "core/Verilog.h"
@@ -460,3 +478,4 @@ std::shared_ptr<sim::ChipBackend> buildChip(const Document& doc, const Tools& to
 }
 
 } // namespace chiply::vl
+#endif // __EMSCRIPTEN__

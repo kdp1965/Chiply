@@ -25,6 +25,10 @@ namespace {
 
 std::string findTool(const char* name)
 {
+#ifdef __EMSCRIPTEN__
+    (void)name;
+    return {}; // no processes in WebAssembly
+#endif
     if (const char* env = std::getenv("CHIPLY_IVERILOG_DIR"))
         if (fs::exists(fs::path(env) / name))
             return (fs::path(env) / name).string();

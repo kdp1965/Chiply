@@ -726,6 +726,20 @@ Goal: the Chiply experience in a browser, with nothing to install, keeping the C
 - **First steps.** Compile core + sim + DRC to WebAssembly and run the existing Catch2 tests under Node; measure the reference design against native; then build the front end. A Qt-for-WebAssembly build of the whole app is a cheap way to preview, not the product (20-30 MB download, browser shortcut clashes such as Ctrl+W/Ctrl+N).
 - **Licensing.** The engine is BSD and Chiply's own code; option A does not ship Qt to the browser.
 
+**First step done (2026-10-08).** The engine (core, sim, DRC, Verilog export, truth tables) builds with Emscripten (`brew install emscripten`, arm64; `wasm/build.sh`): the CLI and the core test suite run under Node (`-sNODERAWFS`), and `wasm/index.html` runs `chiply-cli bench` in a Web Worker on a dropped diagram. Needed: `-fwasm-exceptions` set before the libraries (the default JavaScript-based exceptions were much slower), a stub Verilator backend, and tool lookups off in the browser. Under Node, 134 of the 148 core test cases pass (28,881 assertions); the other 14 need Icarus or Verilator and are skipped. `chiply-cli bench` times parse, netlist, a full DRC, the simulator with the clock generators running, and a chip-only random-stimulus run (or random switch presses for a design without a Tiny Tapeout input block).
+
+Measured on the fixed reference design (1023 parts, 2042 wires, 3 s simulated with the 10 kHz clock), M4 Max:
+
+| Stage | Native | WebAssembly, Node 26 | WebAssembly, Chrome 154 (warmed up) | Chrome, first run in a fresh profile |
+|---|---|---|---|---|
+| Parse JSON | 2.7 ms | 6 ms | 25 ms | 1.4 s |
+| Netlist | 1.1 ms | 2 ms | 6 ms | 2.6 s |
+| DRC, full pass | 8.5 ms | 16 ms | 16 ms | 142 ms |
+| Board run, 3 s simulated | 32 ms (94x real time, 131 M evaluations/s) | 43 ms (70x, 99 M/s) | 56 ms (54x, 75 M/s) | 82 ms |
+| Random run, 2000 cycles | 11 ms | 13 ms | 18 ms | 19 ms |
+
+So the simulator in WebAssembly runs at 1.3x (Node) to 1.75x (Chrome) the native time: still 50-70x real time on the 1024-part design, and far from the bottleneck for interactive use. The one real cost is Chrome's cold start: WebAssembly functions are compiled lazily with a baseline compiler and optimised later, so the first pass through each stage in a fresh browser profile is slow (seconds in total); Chrome then caches the compiled code, and the second page load is already at full speed. Eager compilation (`--no-wasm-lazy-compilation`) brings the cold start down to a few hundred milliseconds, which a page cannot ask for, so the web version should warm the engine up at load time by running a small built-in design through every stage in the worker before the user's first action. The `tinyqv_regs` design (996 parts) shows a second thing to fix before the web version: toggling a switch regroups the whole netlist (`regroup`), which costs 7 M evaluations/s against 130 M/s for gates; switch toggles should re-partition only the nets they touch.
+
 ---
 
 ## Appendix A. Pin calibration (no longer needed)

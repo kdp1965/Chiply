@@ -8,6 +8,8 @@
 //   chiply-cli check <diagram.json> [--enable/--disable <check>]...  design rule checks
 //   chiply-cli export-verilog <diagram.json> [-o out.v] [--module name] [--header text]
 //   chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]
+//   chiply-cli bench <diagram.json> [--seconds S] [--cycles N] [--switch part idx 0|1]... [--json]
+//                                                time the engine on a design (PLAN.md 13)
 //   chiply-cli truthtable <diagram.json> <truthtable.md> [options]
 //                                                check a Tiny Tapeout truth table
 #include "core/Blocks.h"
@@ -16,6 +18,7 @@
 #include "core/Sheets.h"
 #include "core/Verilog.h"
 #include "core/WokwiJson.h"
+#include "sim/Bench.h"
 #include "sim/Simulator.h"
 #include "sim/Trace.h"
 #include "sim/TruthTable.h"
@@ -320,6 +323,7 @@ int usage()
                  "  chiply-cli netlist <diagram.json> [--nets]\n"
                  "  chiply-cli check <diagram.json> [--enable <check>] [--disable <check>]... [--extensions]\n"
                  "  chiply-cli check --list\n"
+                 "  chiply-cli bench <diagram.json> [--seconds S] [--cycles N] [--switch part idx 0|1]... [--json]\n"
                  "  chiply-cli export-verilog <diagram.json> [-o out.v] [--module name] [--header text] [--force]\n"
                  "  chiply-cli export-tt <diagram.json> <project dir> [--module name] [--force]\n"
                  "     writes src/<module>.v and src/cells.v, updates info.yaml and test/Makefile\n"
@@ -516,6 +520,27 @@ int main(int argc, char** argv)
                 }
             }
             return 0;
+        }
+        if (cmd == "bench") {
+            sim::BenchOptions bo;
+            bool asJson = false;
+            for (int i = 3; i < argc; ++i) {
+                const std::string a = argv[i];
+                if (a == "--seconds" && i + 1 < argc)
+                    bo.boardSeconds = std::stod(argv[++i]);
+                else if (a == "--cycles" && i + 1 < argc)
+                    bo.randomCycles = std::stoi(argv[++i]);
+                else if (a == "--switch" && i + 3 < argc) {
+                    bo.switches.push_back({argv[i + 1], std::stoi(argv[i + 2]), std::string(argv[i + 3]) == "1"});
+                    i += 3;
+                } else if (a == "--json")
+                    asJson = true;
+                else
+                    throw std::runtime_error("unknown option " + a);
+            }
+            const sim::BenchResult r = sim::runBench(readFile(path), bo);
+            std::cout << (asJson ? r.json() + "\n" : r.text());
+            return r.error.empty() ? 0 : 1;
         }
         if (cmd == "truthtable") {
             if (argc < 4)

@@ -26,10 +26,25 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+if(EMSCRIPTEN)
+  # WebAssembly (PLAN.md 13). The engine reports errors with exceptions,
+  # which Emscripten leaves out unless asked; this must come before the
+  # libraries. Node programs (the CLI and the tests) see the real file
+  # system; the browser module in src/wasm has its own options.
+  add_compile_options(-fwasm-exceptions)
+  add_link_options(-fwasm-exceptions)
+  set(CHIPLY_NODE_LINK_OPTIONS -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1)
+endif()
+
 add_subdirectory(src/core)
 add_subdirectory(src/sim)
 add_subdirectory(src/vl)
 add_subdirectory(src/cli)
+
+if(EMSCRIPTEN)
+  target_link_options(chiply-cli PRIVATE ${CHIPLY_NODE_LINK_OPTIONS})
+  add_subdirectory(src/wasm)
+endif()
 
 if(CHIPLY_BUILD_GUI)
   add_subdirectory(src/app)

@@ -65,6 +65,12 @@ Optional: with Verilator installed (`brew install verilator`), Simulation >
 Engine > Verilator simulates the chip in Verilator. Nothing is needed at build
 time; Chiply compiles Verilator's output itself and caches it.
 
+WebAssembly (an experiment towards the web version, see PLAN.md section 13):
+with Emscripten installed (`brew install emscripten`), `wasm/build.sh` builds the
+engine for Node and the browser; `node build-wasm/src/cli/chiply-cli.js bench
+design.json` times it, and `wasm/dist/index.html` does the same on a dropped
+file (serve the folder, e.g. `python3 -m http.server -d wasm/dist 8000`).
+
 GitHub Actions CI (Linux and macOS) runs only on request: Actions tab, CI,
 "Run workflow".
 
@@ -79,6 +85,8 @@ chiply-cli sim diagram.json script.sim   # scripted stimulus and checks (see --h
 chiply-cli check diagram.json            # design rule checks (exit 1 on errors)
 chiply-cli export-verilog diagram.json -o tt_um_name.v
 chiply-cli export-tt diagram.json path/to/tt-project   # src/*.v, cells.v, info.yaml
+chiply-cli bench diagram.json [--seconds S] [--cycles N] [--switch part idx 0|1]
+                                         # time parse, netlist, DRC and simulation
 chiply-cli truthtable diagram.json truthtable.md [--vcd out.vcd]
                                          # Tiny Tapeout truth table on the chip
 ```

@@ -31,8 +31,13 @@ target_compile_definitions(chiply_tests PRIVATE
   CHIPLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
   CHIPLY_VL_TEST_CACHE="${CMAKE_BINARY_DIR}/verilator-test-cache")
 
-include(Catch)
-catch_discover_tests(chiply_tests)
+if(EMSCRIPTEN)
+  target_link_options(chiply_tests PRIVATE ${CHIPLY_NODE_LINK_OPTIONS})
+  add_test(NAME core_tests_node COMMAND chiply_tests) # run by node (the cross-compiling emulator)
+else()
+  include(Catch)
+  catch_discover_tests(chiply_tests)
+endif()
 
 # GUI tests (offscreen Qt platform)
 if(CHIPLY_BUILD_GUI)

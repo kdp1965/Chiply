@@ -135,6 +135,10 @@ TEST_CASE("saving over a read-only file is refused")
 {
     namespace fs = std::filesystem;
     const fs::path p = fs::temp_directory_path() / "chiply_readonly_test.json";
+    if (fs::exists(p)) { // left behind by an interrupted run
+        fs::permissions(p, fs::perms::owner_all);
+        fs::remove(p);
+    }
     Document d = Document::makeEmpty("t");
     saveWokwiFile(d, p.string());
     fs::permissions(p, fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read);

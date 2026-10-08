@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chiply engine benchmark</title>
+<style>
+  :root { --bg: #ffffff; --fg: #111; --muted: #555; --accent: #1e88e5; --box: #f3f3f3; --line: #ccc; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1e1e1e; --fg: #f0f0f0; --muted: #bbb; --accent: #64b5f6; --box: #2a2a2a; --line: #555; }
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 18px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p { margin: 8px 0; }
+  .drop { border: 3px dashed var(--line); border-radius: 12px; padding: 28px; text-align: center; margin: 16px 0; font-size: 20px; }
+  .drop.over { border-color: var(--accent); }
+  label { display: inline-block; margin: 6px 16px 6px 0; }
+  input[type=number], input[type=text] { font-size: 18px; padding: 4px 8px; width: 7em; }
+  input[type=text] { width: 22em; }
+  button { font-size: 18px; padding: 8px 18px; }
+  table { border-collapse: collapse; margin: 12px 0; font-size: 18px; }
+  td, th { border: 1px solid var(--line); padding: 6px 12px; text-align: left; }
+  th { background: var(--box); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status { color: var(--muted); }
+  pre { background: var(--box); padding: 12px; overflow: auto; font-size: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Chiply engine benchmark</h1>
+  <p>Chiply's engine (loading, netlist, DRC and the simulator) compiled to WebAssembly, running in this page in a Web Worker. Drop a Wokwi or Chiply <code>diagram.json</code> to time it, and compare with <code>chiply-cli bench</code> on the same file.</p>
+  <div class="drop" id="drop">Drop a diagram.json here, or <label style="color: var(--accent); cursor: pointer; margin: 0"><u>choose a file</u><input type="file" id="file" accept=".json,application/json" style="display: none"></label></div>
+  <div>
+    <label>Board run, simulated seconds <input type="number" id="seconds" value="1" min="0" step="0.5"></label>
+    <label>Random cycles <input type="number" id="cycles" value="2000" min="0" step="500"></label>
+    <label>Switches <input type="text" id="switches" placeholder="e.g. sw1,4,1;sw2,0,0" title="part,index,on separated by ;"></label>
+  </div>
+  <p><button id="run" disabled>Run again</button> <span class="status" id="status">No file yet.</span></p>
+  <div id="results"></div>
+</main>
+<script>
+const worker = new Worker('worker.js');
+let fileName = '', json = '';
+const $ = (id) => document.getElementById(id);
+const status = (t) => { $('status').textContent = t; };
+const fmt = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d);
+
+function run() {
+    if (!json) return;
+    $('run').disabled = true;
+    status('Running on ' + fileName + ' ...');
+    worker.postMessage({ json, seconds: Number($('seconds').value), cycles: Number($('cycles').value), switches: $('switches').value.trim() });
+}
+worker.onmessage = (e) => {
+    $('run').disabled = false;
+    if (!e.data.ok) { status('Failed: ' + e.data.error); return; }
+    const r = e.data.result;
+    status('Done (' + fmt(e.data.totalMs) + ' ms in the worker; engine load ' + fmt(e.data.engineLoadMs) + ' ms).');
+    const ratio = r.boardMs > 0 ? r.boardSeconds * 1000 / r.boardMs : 0;
+    const rows = [
+        ['Design', r.parts + ' parts, ' + r.wires + ' wires, ' + r.nets + ' nets'],
+        ['Parse JSON', fmt(r.parseMs) + ' ms'],
+        ['Netlist', fmt(r.netlistMs) + ' ms'],
+        ['DRC (full)', fmt(r.drcMs) + ' ms'],
+        ['Simulator compile', fmt(r.compileMs) + ' ms'],
+        ['Board run', fmt(r.boardMs) + ' ms for ' + fmt(r.boardSeconds, 3) + ' s simulated (' + fmt(ratio) + '× real time, ' + r.boardEvals + ' evaluations, ' + fmt(r.boardMs > 0 ? r.boardEvals / r.boardMs / 1000 : 0, 2) + ' M/s)'],
+        ['Random run', fmt(r.randomMs) + ' ms for ' + r.randomCycles + ' cycles (' + fmt(r.randomMs > 0 ? r.randomCycles / r.randomMs * 1000 : 0, 0) + ' cycles/s, ' + r.randomEvals + ' evaluations, ' + fmt(r.randomMs > 0 ? r.randomEvals / r.randomMs / 1000 : 0, 2) + ' M/s)'],
+    ];
+    if (r.error) rows.push(['Error', r.error]);
+    $('results').innerHTML = '<table><tr><th>Stage</th><th>' + fileName.replace(/</g, '&lt;') + '</th></tr>'
+        + rows.map(([k, v]) => '<tr><td>' + k + '</td><td>' + v.replace(/</g, '&lt;') + '</td></tr>').join('') + '</table>'
+        + '<pre id="json"></pre>';
+    $('json').textContent = JSON.stringify(r);
+};
+function take(file) {
+    if (!file) return;
+    fileName = file.name;
+    file.text().then((t) => { json = t; $('run').disabled = false; run(); });
+}
+$('file').addEventListener('change', (e) => take(e.target.files[0]));
+$('run').addEventListener('click', run);
+const drop = $('drop');
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); take(e.dataTransfer.files[0]); });
+// ?file=name.json&seconds=3&cycles=2000&switches=sw1,4,1 runs a file served
+// next to this page (handy for scripted comparisons).
+const params = new URLSearchParams(location.search);
+if (params.get('file')) {
+    for (const k of ['seconds', 'cycles', 'switches'])
+        if (params.get(k) !== null) $(k).value = params.get(k);
+    fetch(params.get('file')).then((r) => r.text()).then((t) => { fileName = params.get('file'); json = t; $('run').disabled = false; run(); })
+        .catch((err) => status('Cannot load ' + params.get('file') + ': ' + err));
+}
+</script>
+</body>
+</html>
