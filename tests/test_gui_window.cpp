@@ -98,6 +98,49 @@ private slots:
         QSettings().clear();
     }
 
+    void dockColumnIgnoresCheckText()
+    {
+        // Dragging a part re-runs the live check at every step, and the
+        // Violations pane rewrites its "Checked N of M parts ..." line each
+        // time. The dock column must not follow that text (it made the
+        // canvas jump under the part being placed).
+        MainWindow w;
+        w.resize(780, 600);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        QVERIFY(w.openFile(QStringLiteral(CHIPLY_REFERENCE_DIR "/wokwi_414123795172381697.diagram.json")));
+        QApplication::processEvents();
+        auto* insp = w.findChild<QDockWidget*>("inspector");
+        auto* viol = w.findChild<QDockWidget*>("violations");
+        auto* stats = w.findChild<QLabel*>("drcStats");
+        QVERIFY(insp && viol && stats);
+        QVERIFY(viol->widget()->minimumSizeHint().width() <= 220);
+        QCOMPARE(viol->width(), insp->width());
+        const int width = insp->width();
+        auto* v = qobject_cast<SchematicView*>(w.findChild<QTabWidget*>()->currentWidget());
+        auto* s = qobject_cast<EditorSession*>(v->property("session").value<QObject*>());
+        QVERIFY(s);
+        EditorSession::setDrcLive(true);
+        for (QGraphicsItem* it : v->scene()->items())
+            if (itemPartId(it) == "mux1")
+                v->selectOnly(it);
+        QCOMPARE(s->selectedPartIds().size(), std::size_t(1));
+        s->beginMove();
+        for (int i = 1; i <= 6; ++i) {
+            s->previewMove(9.6 * i, 9.6 * i);
+            QTest::qWait(150); // the live check runs 100 ms after an edit
+            QVERIFY2(stats->text().startsWith("Checked"), qPrintable(stats->text()));
+            QCOMPARE(insp->width(), width);
+            QCOMPARE(viol->width(), width);
+        }
+        s->endMove(false); // back where it was: nothing to save on close
+        QTest::qWait(150);
+        QCOMPARE(insp->width(), width);
+        QCOMPARE(viol->width(), width);
+        QVERIFY(w.close());
+        QSettings().clear();
+    }
+
     void themeButtonTogglesAndPersists()
     {
         Theme::instance().setMode(Theme::Mode::Light);

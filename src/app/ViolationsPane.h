@@ -36,7 +36,13 @@ public:
     QTreeWidget* tree() const { return m_tree; }
     QString countsText() const;
 
-    QSize sizeHint() const override { return {320, 300}; }
+    // The pane never asks the dock column for room: its width is the
+    // user's (or the default) and never follows the text it shows, so the
+    // canvas does not jump while an edit re-runs the live check.
+    QSize sizeHint() const override { return {kDefaultWidth, 300}; }
+    QSize minimumSizeHint() const override { return {kMinWidth, 120}; }
+    static constexpr int kDefaultWidth = 380;
+    static constexpr int kMinWidth = 220;
 
 private:
     void rebuild();

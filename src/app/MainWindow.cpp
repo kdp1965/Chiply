@@ -412,6 +412,9 @@ void MainWindow::buildMenus()
     m_violDock->setWidget(m_violations);
     addDockWidget(Qt::RightDockWidgetArea, m_violDock);
     splitDockWidget(inspDock, m_violDock, Qt::Vertical);
+    // The column starts at the Inspector's width whatever the panes show;
+    // a saved layout (restoreLayout) or the user's splitter drag overrides it.
+    resizeDocks({inspDock, m_violDock}, {Inspector::kDefaultWidth, Inspector::kDefaultWidth}, Qt::Horizontal);
     view->addAction(m_violDock->toggleViewAction());
     QMenu* check = menuBar()->addMenu(tr("&Check"));
     QAction* full = check->addAction(tr("Run &Full DRC"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D), this, [this] {

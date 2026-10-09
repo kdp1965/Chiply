@@ -87,6 +87,8 @@ ViolationsPane::ViolationsPane(QWidget* parent)
     m_counts = new QLabel(this);
     m_counts->setObjectName("drcCounts");
     m_stats = new QLabel(this);
+    m_stats->setObjectName("drcStats");
+    m_stats->setWordWrap(true); // never wider than the pane
     QFont sf = font();
     sf.setPointSize(std::max(12, sf.pointSize() - 3));
     m_stats->setFont(sf);
