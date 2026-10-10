@@ -1,9 +1,12 @@
 #include "core/Edit.h"
+#include "core/Geometry.h"
+#include "core/PartLibrary.h"
 #include "core/WokwiJson.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 
@@ -208,4 +211,83 @@ TEST_CASE("find and replace in names, with the wires", "[edit]")
     CHECK(map.empty()); // empty "from": nothing to do
     renameParts(doc, {{"r5_b0", "r2_b0"}, {"r2_b0", "r5_b0"}});
     CHECK(doc.wires[0].from.str() == "r2_b0:OUT");
+}
+
+TEST_CASE("selected wires to parts outside the selection paste as ends that connect where they land", "[edit]")
+{
+    const PartLibrary& lib = PartLibrary::builtin();
+    Document d = ref();
+    // A wire with exactly one end on flop238.
+    std::size_t wi = d.wires.size();
+    for (std::size_t i = 0; i < d.wires.size() && wi == d.wires.size(); ++i)
+        if ((d.wires[i].from.part == "flop238") != (d.wires[i].to.part == "flop238"))
+            wi = i;
+    REQUIRE(wi < d.wires.size());
+    const Wire orig = d.wires[wi];
+    const PinRef far = orig.from.part == "flop238" ? orig.to : orig.from;
+
+    Fragment f = extractFragment(d, lib, {"flop238"}, {wi});
+    REQUIRE(f.parts.size() == 2); // the flop and one placeholder
+    const Part& ph = f.parts[1];
+    CHECK(isEndPlaceholder(ph));
+    CHECK(ph.type == "wokwi-junction");
+    CHECK(ph.attrs["end"] == far.str());
+    const auto at = pinPosition(ph, *lib.find("wokwi-junction"), "J");
+    const auto want = pinPosition(d, lib, far);
+    REQUIRE((at && want));
+    CHECK(std::fabs(at->x - want->x) < 0.02);
+    CHECK(std::fabs(at->y - want->y) < 0.02);
+    REQUIRE(f.wires.size() == 1);
+    CHECK(((f.wires[0].from.part == ph.id) != (f.wires[0].to.part == ph.id)));
+    CHECK(f.wires[0].path == orig.path);
+
+    // The clipboard text is plain Wokwi JSON and keeps the placeholder.
+    const auto back = fragmentFromText(fragmentToText(f));
+    REQUIRE(back);
+    REQUIRE(back->parts.size() == 2);
+    CHECK(isEndPlaceholder(back->parts[1]));
+
+    // Pasted in place, the end lands on the original pin and connects to it.
+    {
+        Document e = d;
+        const std::size_t parts = e.parts.size(), wires = e.wires.size();
+        const auto ids = insertFragment(e, *back, 0, 0);
+        REQUIRE(ids.size() == 2);
+        const EndResolution r = resolveEnds(e, lib, ids, 1.5);
+        CHECK(r.connected == 1);
+        CHECK(r.left == 0);
+        CHECK(e.parts.size() == parts + 1); // the placeholder is gone
+        CHECK(e.findPart(ids[1]) == nullptr);
+        REQUIRE(e.wires.size() == wires + 1);
+        const Wire& w = e.wires.back();
+        CHECK(((w.from.str() == far.str()) != (w.to.str() == far.str())));
+        CHECK(((w.from.part == ids[0]) != (w.to.part == ids[0])));
+    }
+    // Pasted where nothing is, it stays as an ordinary junction.
+    {
+        Document g = d;
+        const auto ids = insertFragment(g, *back, 5000, 5000);
+        const EndResolution r = resolveEnds(g, lib, ids, 1.5);
+        CHECK(r.connected == 0);
+        CHECK(r.left == 1);
+        const Part* j = g.findPart(ids[1]);
+        REQUIRE(j);
+        CHECK(j->type == "wokwi-junction");
+        CHECK(!isEndPlaceholder(*j));
+        CHECK(g.wires.back().to.pin == "J");
+    }
+    // A wire alone (both parts outside) pastes as two ends.
+    {
+        Fragment w = extractFragment(d, lib, {}, {wi});
+        CHECK(w.parts.size() == 2);
+        CHECK(w.wires.size() == 1);
+        CHECK((isEndPlaceholder(w.parts[0]) && isEndPlaceholder(w.parts[1])));
+        Document e = d;
+        const auto ids = insertFragment(e, w, 0, 0);
+        const EndResolution r = resolveEnds(e, lib, ids, 1.5);
+        CHECK(r.connected == 2);
+        CHECK(e.parts.size() == d.parts.size());
+        CHECK(e.wires.back().from.str() == orig.from.str());
+        CHECK(e.wires.back().to.str() == orig.to.str());
+    }
 }

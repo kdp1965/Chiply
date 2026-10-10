@@ -107,8 +107,10 @@ public:
     std::string defaultWireColor(const chiply::PinRef& from) const;
 
     // ---- clipboard (PLAN.md 4.7) ----
-    // Selected parts plus the wires between them, as Wokwi JSON text; empty
-    // if nothing is selected.
+    // Selected parts plus the wires between them, and the selected wires to
+    // parts outside the selection (their far ends ride along as junction
+    // placeholders that connect to the pin they are dropped on), as Wokwi
+    // JSON text; empty if nothing is selected.
     QString copySelection() const;
     void cutSelection(); // copy is done by the caller; this deletes
     struct PasteReport {
@@ -116,6 +118,7 @@ public:
         int renamed = 0;       // ids that changed
         int droppedWires = 0;  // wires to parts not in the fragment / skipped
         int skippedBlocks = 0; // Tiny Tapeout I/O blocks left out
+        int ends = 0;          // wire ends that connect where the drop lands
         QString error;
     };
     // Tiny Tapeout I/O block types in `text` that this document already has.
@@ -224,6 +227,9 @@ signals:
     void documentChanged(); // any edit, including undo/redo
     void simulationChanged(); // started, stopped, running state or time
     void probesChanged();
+    // A dropped paste connected its wire ends: how many found a pin, how
+    // many stay as junctions.
+    void pasteEndsResolved(int connected, int left);
 
 private:
     void rebuildScene();
@@ -261,6 +267,8 @@ private:
     std::string m_simHeldButton;
     bool m_pasteFloating = false;
     QPointF m_pasteAnchor;
+    std::vector<std::string> m_pasteEnds; // placeholder junctions of the floating paste
+    static constexpr double kEndTolerance = 1.5; // px: a placeholder connects to a pin this close
     class DocumentCommand* m_pasteCmd = nullptr;
     const QUndoCommand* m_pasteCmdBase = nullptr; // same object, for comparisons
     void finishPaste(bool keep);

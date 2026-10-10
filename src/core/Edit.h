@@ -55,6 +55,27 @@ struct Fragment {
 };
 Fragment extractFragment(const Document& doc, const std::set<std::string>& partIds);
 
+// The same plus the selected wires whose far end is on a part outside the
+// selection (PLAN.md 4.7). Such an end becomes a placeholder: a
+// wokwi-junction "end<n>" sitting exactly on that pin, with attrs
+// {"end": "<part>:<pin>"}. The clipboard stays plain Wokwi JSON (a junction
+// at the wire's end), and resolveEnds() turns each placeholder back into a
+// pin connection where it lands.
+class PartLibrary;
+Fragment extractFragment(const Document& doc, const PartLibrary& lib, const std::set<std::string>& partIds,
+                         const std::set<std::size_t>& wireIndices);
+bool isEndPlaceholder(const Part& p);
+struct EndResolution {
+    int connected = 0; // placeholders that found a pin and were removed
+    int left = 0;      // placeholders kept as ordinary junctions
+};
+// For each placeholder among `ids`: its wires move to the pin of another
+// part within `tolerance` px of it (the pin named in the placeholder when
+// several coincide) and the placeholder goes; one that lands on nothing
+// stays as an ordinary junction.
+EndResolution resolveEnds(Document& doc, const PartLibrary& lib, const std::vector<std::string>& ids,
+                          double tolerance);
+
 // Clipboard text: a Wokwi-format JSON object {"parts": [...],
 // "connections": [...]}, formatted like diagram.json.
 std::string fragmentToText(const Fragment& f);

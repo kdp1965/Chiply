@@ -2,11 +2,13 @@
 #include "EditorSession.h"
 #include "SchematicItems.h"
 #include "SchematicView.h"
+#include "core/Edit.h"
 #include "core/Geometry.h"
 #include "core/WokwiJson.h"
 
 #include <QGraphicsScene>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QTest>
 
 using namespace chiply;
@@ -86,6 +88,67 @@ private slots:
         s->undoStack()->redo();
         QCOMPARE(saveWokwi(s->document()), dropped);
         s->undoStack()->undo();
+    }
+
+    void selectedWiresToOtherPartsComeAlong()
+    {
+        // flop238 plus one of its wires to a part that is not selected: the
+        // wire pastes too, its far end connecting to the pin it lands on.
+        std::size_t wi = s->document().wires.size();
+        for (std::size_t i = 0; i < s->document().wires.size() && wi == s->document().wires.size(); ++i) {
+            const Wire& w = s->document().wires[i];
+            if ((w.from.part == "flop238") != (w.to.part == "flop238"))
+                wi = i;
+        }
+        QVERIFY(wi < s->document().wires.size());
+        const Wire orig = s->document().wires[wi];
+        const PinRef far = orig.from.part == "flop238" ? orig.to : orig.from;
+        v->clearSelection();
+        itemOf("flop238")->setSelected(true);
+        for (QGraphicsItem* it : v->scene()->items())
+            if (it->type() == WireItem::Type && static_cast<WireItem*>(it)->index() == int(wi))
+                it->setSelected(true);
+        emit v->selectionEdited();
+        const QString text = s->copySelection();
+        QVERIFY(text.contains("\"end\""));
+        const std::size_t parts = s->document().parts.size(), wires = s->document().wires.size();
+        // Pasted exactly over the original, the end lands on the far pin.
+        const auto frag = fragmentFromText(text.toStdString());
+        QVERIFY(frag);
+        const Point o = fragmentOrigin(*frag);
+        const QPointF anchor(o.x, o.y);
+        auto rep = s->paste(text, anchor, false);
+        QVERIFY(rep.error.isEmpty());
+        QCOMPARE(rep.parts, 1);
+        QCOMPARE(rep.ends, 1);
+        QCOMPARE(s->document().parts.size(), parts + 2); // the flop and its placeholder float
+        QSignalSpy resolved(s, &EditorSession::pasteEndsResolved);
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(anchor));
+        QVERIFY(!s->pasteFloating());
+        QCOMPARE(resolved.count(), 1);
+        QCOMPARE(resolved.first().at(0).toInt(), 1);
+        QCOMPARE(resolved.first().at(1).toInt(), 0);
+        QCOMPARE(s->document().parts.size(), parts + 1); // placeholder gone
+        QCOMPARE(s->document().wires.size(), wires + 1);
+        const Wire& w = s->document().wires.back();
+        QVERIFY((w.from.str() == far.str()) != (w.to.str() == far.str()));
+        QVERIFY(w.from.part != "flop238" && w.to.part != "flop238"); // the copy, not the original
+        for (const Part& p : s->document().parts)
+            QVERIFY(!isEndPlaceholder(p));
+        s->undoStack()->undo();
+        QCOMPARE(saveWokwi(s->document()), original);
+        // Dropped in empty space, the end stays as a junction to wire up.
+        rep = s->paste(text, anchor + QPointF(4000, 4000), false);
+        QVERIFY(rep.error.isEmpty());
+        QTest::mouseClick(v->viewport(), Qt::LeftButton, {}, v->mapFromScene(anchor + QPointF(4000, 4000)));
+        QVERIFY(!s->pasteFloating());
+        QCOMPARE(resolved.count(), 2);
+        QCOMPARE(resolved.last().at(1).toInt(), 1);
+        QCOMPARE(s->document().parts.size(), parts + 2);
+        QVERIFY(s->document().parts.back().type == "wokwi-junction");
+        QVERIFY(!isEndPlaceholder(s->document().parts.back()));
+        s->undoStack()->undo();
+        QCOMPARE(saveWokwi(s->document()), original);
     }
 
     void escCancelsPaste()

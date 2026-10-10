@@ -54,6 +54,7 @@ EditorSession::EditorSession(QObject* parent)
         if (m_pasteFloating && m_undo.command(m_undo.index() - 1) != m_pasteCmdBase) {
             m_pasteFloating = false;
             m_pasteCmd = nullptr;
+            m_pasteEnds.clear();
             m_moveStart.clear();
             m_moveWireStart.clear();
             m_moveGrab.clear();
@@ -1335,13 +1336,22 @@ QString EditorSession::writeTraceVcd(const QString& path) const
 std::string EditorSession::duplicateInPlace(const std::string& grab)
 {
     const std::vector<std::string> ids = selectedPartIds();
+    std::set<std::size_t> wires;
+    for (int i : selectedWireIndices())
+        if (i >= 0)
+            wires.insert(std::size_t(i));
     chiply::Document after = m_doc;
-    chiply::Fragment f = chiply::extractFragment(after, std::set<std::string>(ids.begin(), ids.end()));
-    const std::vector<std::string> newIds = chiply::insertFragment(after, f, 0, 0, nullptr, pasteFormat());
+    chiply::Fragment f = chiply::extractFragment(after, chiply::PartLibrary::builtin(),
+                                                 std::set<std::string>(ids.begin(), ids.end()), wires);
+    std::vector<std::string> newIds = chiply::insertFragment(after, f, 0, 0, nullptr, pasteFormat());
     std::string g = grab;
     for (std::size_t i = 0; i < f.parts.size(); ++i)
         if (f.parts[i].id == grab)
             g = newIds[i];
+    // In place, selected wires to other parts simply connect to the same
+    // pins again: the copy starts wired like the original.
+    chiply::resolveEnds(after, chiply::PartLibrary::builtin(), newIds, kEndTolerance);
+    std::erase_if(newIds, [&](const std::string& id) { return !after.findPart(id); });
     m_undo.push(new DocumentCommand(this, tr("Duplicate"), m_doc, after, ids, newIds));
     return g;
 }
@@ -1349,9 +1359,16 @@ std::string EditorSession::duplicateInPlace(const std::string& grab)
 QString EditorSession::copySelection() const
 {
     const std::vector<std::string> ids = selectedPartIds();
-    if (ids.empty())
+    std::set<std::size_t> wires;
+    for (int i : selectedWireIndices())
+        if (i >= 0)
+            wires.insert(std::size_t(i));
+    if (ids.empty() && wires.empty())
         return {};
-    const chiply::Fragment f = chiply::extractFragment(m_doc, std::set<std::string>(ids.begin(), ids.end()));
+    const chiply::Fragment f = chiply::extractFragment(m_doc, chiply::PartLibrary::builtin(),
+                                                       std::set<std::string>(ids.begin(), ids.end()), wires);
+    if (f.parts.empty())
+        return {};
     return QString::fromStdString(chiply::fragmentToText(f));
 }
 
@@ -1432,9 +1449,18 @@ EditorSession::PasteReport EditorSession::paste(const QString& text, QPointF anc
     int dropped = 0;
     const std::vector<std::string> newIds = chiply::insertFragment(after, f, dx, dy, &dropped, pasteFormat());
     rep.droppedWires += dropped;
-    rep.parts = int(newIds.size());
-    for (std::size_t i = 0; i < newIds.size(); ++i)
+    // Placeholder junctions float with the parts and connect to the pins
+    // they land on when dropped (finishPaste).
+    m_pasteEnds.clear();
+    for (std::size_t i = 0; i < newIds.size(); ++i) {
+        if (chiply::isEndPlaceholder(f.parts[i])) {
+            m_pasteEnds.push_back(newIds[i]);
+            continue;
+        }
+        ++rep.parts;
         rep.renamed += newIds[i] != f.parts[i].id;
+    }
+    rep.ends = int(m_pasteEnds.size());
 
     auto* cmd = new DocumentCommand(this, tr("Paste %1").arg(countOf(rep.parts, "part", "parts")), m_doc, after,
                                     selectedPartIds(), newIds, selectedWireIndices(), {});
@@ -1460,6 +1486,7 @@ void EditorSession::finishPaste(bool keep)
         m_moveStart.clear();
         m_moveWireStart.clear();
         m_pasteCmd = nullptr;
+        m_pasteEnds.clear();
         m_undo.undo(); // removes the pasted parts
         return;
     }
@@ -1467,6 +1494,19 @@ void EditorSession::finishPaste(bool keep)
     m_moveStart.clear();
     m_moveWireStart.clear();
     m_moveGrab.clear();
+    if (!m_pasteEnds.empty()) {
+        // The placeholder ends connect to whatever pin they landed on.
+        chiply::Document after = m_doc;
+        const chiply::EndResolution r =
+            chiply::resolveEnds(after, chiply::PartLibrary::builtin(), m_pasteEnds, kEndTolerance);
+        m_pasteEnds.clear();
+        std::vector<std::string> keepSel;
+        for (const std::string& id : selectedPartIds())
+            if (after.findPart(id))
+                keepSel.push_back(id);
+        replaceDocument(after, keepSel, {});
+        emit pasteEndsResolved(r.connected, r.left);
+    }
     if (m_pasteCmd && m_undo.command(m_undo.index() - 1) == m_pasteCmd)
         m_pasteCmd->setAfter(m_doc);
     m_pasteCmd = nullptr;

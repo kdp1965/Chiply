@@ -1,5 +1,10 @@
 #include "core/Edit.h"
 
+#include "core/Geometry.h"
+#include "core/PartLibrary.h"
+
+#include <cmath>
+
 #include <regex>
 
 #include <cctype>
@@ -129,6 +134,130 @@ Fragment extractFragment(const Document& doc, const std::set<std::string>& ids)
         if (ids.count(w.from.part) && ids.count(w.to.part))
             f.wires.push_back(w);
     return f;
+}
+
+namespace {
+constexpr const char* kEndAttr = "end";
+constexpr const char* kJunction = "wokwi-junction";
+} // namespace
+
+bool isEndPlaceholder(const Part& p)
+{
+    return p.type == kJunction && p.attrs.is_object() && p.attrs.contains(kEndAttr);
+}
+
+Fragment extractFragment(const Document& doc, const PartLibrary& lib, const std::set<std::string>& ids,
+                         const std::set<std::size_t>& wireIndices)
+{
+    Fragment f = extractFragment(doc, ids);
+    const PartDef* jdef = lib.find(kJunction);
+    std::map<std::string, std::string> placeholders; // "part:pin" -> placeholder id
+    std::set<std::string> taken = ids;
+    int n = 0;
+    // The wire end as it goes on the clipboard: itself inside the selection,
+    // otherwise the placeholder standing on its pin (one per pin).
+    auto endFor = [&](const PinRef& ref) -> std::optional<PinRef> {
+        if (ids.count(ref.part))
+            return ref;
+        if (auto it = placeholders.find(ref.str()); it != placeholders.end())
+            return PinRef{it->second, "J"};
+        const std::optional<Point> at = pinPosition(doc, lib, ref);
+        if (!at || !jdef || jdef->pins.empty())
+            return std::nullopt;
+        std::string id;
+        do
+            id = "end" + std::to_string(++n);
+        while (taken.count(id));
+        taken.insert(id);
+        Part j;
+        j.type = kJunction;
+        j.id = id;
+        j.left = round2(at->x - jdef->pins.front().x);
+        j.top = round2(at->y - jdef->pins.front().y);
+        j.attrs = Json{{kEndAttr, ref.str()}};
+        f.parts.push_back(std::move(j));
+        placeholders.emplace(ref.str(), id);
+        return PinRef{id, "J"};
+    };
+    for (std::size_t i : wireIndices) {
+        if (i >= doc.wires.size())
+            continue;
+        const Wire& w = doc.wires[i];
+        if (ids.count(w.from.part) && ids.count(w.to.part))
+            continue; // already in
+        const auto a = endFor(w.from), b = endFor(w.to);
+        if (!a || !b)
+            continue;
+        Wire c = w;
+        c.from = *a;
+        c.to = *b;
+        f.wires.push_back(std::move(c));
+    }
+    return f;
+}
+
+EndResolution resolveEnds(Document& doc, const PartLibrary& lib, const std::vector<std::string>& ids, double tolerance)
+{
+    EndResolution r;
+    struct Candidate {
+        PinRef ref;
+        Point at;
+    };
+    std::vector<Candidate> candidates;
+    for (const Part& p : doc.parts) {
+        if (isEndPlaceholder(p))
+            continue;
+        const PartDef* def = lib.find(p.type);
+        if (!def)
+            continue;
+        for (const PinDef& pin : def->pins)
+            if (const auto at = pinPosition(p, *def, pin.name))
+                candidates.push_back({PinRef{p.id, pin.name}, *at});
+    }
+    std::map<std::string, PinRef> rewire; // placeholder id -> the pin it landed on
+    for (const std::string& id : ids) {
+        Part* p = doc.findPart(id);
+        if (!p || !isEndPlaceholder(*p))
+            continue;
+        std::string wantPin;
+        if (p->attrs[kEndAttr].is_string()) {
+            const std::string s = p->attrs[kEndAttr].get<std::string>();
+            if (const auto c = s.find(':'); c != std::string::npos)
+                wantPin = s.substr(c + 1);
+        }
+        const Candidate* best = nullptr;
+        double bestD = 0;
+        bool bestNamed = false;
+        if (const auto at = pinPosition(doc, lib, PinRef{id, "J"}))
+            for (const Candidate& c : candidates) {
+                const double d = std::hypot(c.at.x - at->x, c.at.y - at->y);
+                if (d > tolerance)
+                    continue;
+                const bool named = c.ref.pin == wantPin;
+                if (!best || (named && !bestNamed) || (named == bestNamed && d < bestD)) {
+                    best = &c;
+                    bestD = d;
+                    bestNamed = named;
+                }
+            }
+        if (best) {
+            rewire.emplace(id, best->ref);
+            ++r.connected;
+        } else {
+            p->attrs.erase(kEndAttr); // an ordinary junction from now on
+            ++r.left;
+        }
+    }
+    if (rewire.empty())
+        return r;
+    for (Wire& w : doc.wires) {
+        if (auto it = rewire.find(w.from.part); it != rewire.end() && w.from.pin == "J")
+            w.from = it->second;
+        if (auto it = rewire.find(w.to.part); it != rewire.end() && w.to.pin == "J")
+            w.to = it->second;
+    }
+    std::erase_if(doc.parts, [&](const Part& p) { return rewire.count(p.id) != 0; });
+    return r;
 }
 
 std::vector<std::string> insertFragment(Document& doc, Fragment frag, double dx, double dy, int* dropped,

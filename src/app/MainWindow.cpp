@@ -576,6 +576,17 @@ int MainWindow::addSession(EditorSession* s)
         if (s == current())
             updateStatus();
     });
+    connect(s, &EditorSession::pasteEndsResolved, this, [this](int connected, int left) {
+        QString msg;
+        if (connected)
+            msg = tr("Connected %1 to the pins under them").arg(countOf(connected, "wire end", "wire ends"));
+        if (left)
+            msg += (msg.isEmpty() ? QString() : tr("; "))
+                   + tr("%1 found no pin and stay as junctions: drag each to its pin")
+                         .arg(countOf(left, "wire end", "wire ends"));
+        if (!msg.isEmpty())
+            statusBar()->showMessage(msg, 8000);
+    });
     int i = m_tabs->addTab(s->view(), s->displayName());
     m_tabs->setCurrentIndex(i);
     updateTitles();
@@ -1407,6 +1418,8 @@ void MainWindow::pasteText(EditorSession* s, const QString& text, bool skip)
         msg += tr(", %1 skipped").arg(countOf(rep.skippedBlocks, "I/O block", "I/O blocks"));
     if (rep.droppedWires)
         msg += tr(", %1 dropped").arg(countOf(rep.droppedWires, "wire", "wires"));
+    if (rep.ends)
+        msg += tr(", %1 will connect to the pins they land on").arg(countOf(rep.ends, "wire end", "wire ends"));
     statusBar()->showMessage(msg + tr(" - click to drop, Esc to cancel"), 8000);
     v->setFocus();
 }
